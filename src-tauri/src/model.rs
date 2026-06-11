@@ -42,8 +42,28 @@ pub struct WorkRow {
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct DiscoveryWork {
+    pub work_id: i64,
+    pub base_title: String,
+    pub author_id: i64,
+    pub author_name: String,
+    pub unplayed_count: i64,
+    pub shared_tags: Vec<String>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MoreWork {
+    pub work_id: i64,
+    pub base_title: String,
+    pub unplayed_count: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct AuthorDetail {
     pub id: i64,
     pub name: String,
+    pub tags: Vec<String>,
     pub works: Vec<WorkRow>,
 }

@@ -11,7 +11,7 @@ const authors: AuthorRow[] = [
 
 describe("LibraryView", () => {
   it("lists authors and filters by search", async () => {
-    render(<LibraryView authors={authors} onOpenAuthor={() => {}} />);
+    render(<LibraryView authors={authors} onOpenAuthor={() => {}} onOpenDiscovery={() => {}} />);
     expect(screen.getByText("Alice")).toBeInTheDocument();
     expect(screen.getByText("Bob")).toBeInTheDocument();
 
@@ -22,8 +22,15 @@ describe("LibraryView", () => {
 
   it("invokes onOpenAuthor when a row is clicked", async () => {
     const onOpen = vi.fn();
-    render(<LibraryView authors={authors} onOpenAuthor={onOpen} />);
+    render(<LibraryView authors={authors} onOpenAuthor={onOpen} onOpenDiscovery={() => {}} />);
     await userEvent.click(screen.getByText("Bob"));
     expect(onOpen).toHaveBeenCalledWith(2);
+  });
+
+  it("opens discovery", async () => {
+    const onDisc = vi.fn();
+    render(<LibraryView authors={authors} onOpenAuthor={() => {}} onOpenDiscovery={onDisc} />);
+    await userEvent.click(screen.getByRole("button", { name: "Discover" }));
+    expect(onDisc).toHaveBeenCalled();
   });
 });
