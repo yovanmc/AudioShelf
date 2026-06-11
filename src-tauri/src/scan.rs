@@ -4,6 +4,7 @@
 use crate::grouping::{group_author, Work};
 use crate::model::ScanResult;
 use crate::natsort::natural_cmp;
+use crate::regroup::regroup_author;
 use rusqlite::{params, Connection};
 use std::path::Path;
 
@@ -107,6 +108,9 @@ pub fn scan_into(conn: &Connection, root: &Path) -> rusqlite::Result<ScanResult>
                 upsert_chapter(conn, work_id, &path_str, &raw, chapter.chapter_no, &format, duration)?;
             }
         }
+
+        // Re-apply any saved grouping overrides for this author (DB-only).
+        regroup_author(conn, author_id)?;
     }
 
     Ok(ScanResult {
@@ -177,6 +181,29 @@ mod tests {
         assert_eq!(report.authors, 1);
         assert_eq!(report.works, 2);
         assert_eq!(report.chapters, 4);
+    }
+
+    #[test]
+    fn scan_reapplies_grouping_overrides() {
+        let tmp = tempfile::tempdir().unwrap();
+        let author = tmp.path().join("A");
+        touch(&author.join("Tale.mp3"));
+        touch(&author.join("Other.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan_into(&conn, tmp.path()).unwrap();
+        // Two standalone works initially.
+        assert_eq!(count(&conn, "works"), 2);
+
+        // Override "Other.mp3" to merge into "Tale".
+        let path: String = conn.query_row(
+            "SELECT file_path FROM chapters WHERE raw_filename='Other.mp3'", [], |r| r.get(0)).unwrap();
+        conn.execute(
+            "INSERT INTO grouping_overrides(chapter_path, base_title, chapter_no) VALUES (?1,'Tale',2)",
+            params![path]).unwrap();
+
+        // A fresh scan must re-apply the override (not just the regroup command).
+        scan_into(&conn, tmp.path()).unwrap();
+        assert_eq!(count(&conn, "works"), 1);
     }
 
     #[test]
