@@ -2,8 +2,9 @@
 
 use crate::db;
 use crate::model::{AuthorDetail, AuthorRow, ChapterRow, DiscoveryWork, MoreWork, RenameItem, RenameResult, ScanResult, UndoResult, WorkRow};
-use crate::rename;
 use crate::natsort::natural_cmp;
+use crate::regroup;
+use crate::rename;
 use crate::scan;
 use rusqlite::params;
 use std::sync::Mutex;
@@ -373,6 +374,52 @@ pub fn undo_renames(state: tauri::State<DbState>, manifest_path: String) -> Resu
     })
 }
 
+/// Resolve a chapter's current file path and its author id.
+fn chapter_path_and_author(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<(String, i64)> {
+    conn.query_row(
+        "SELECT c.file_path, w.author_id FROM chapters c JOIN works w ON c.work_id=w.id WHERE c.id=?1",
+        params![chapter_id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+}
+
+#[tauri::command]
+pub fn set_grouping_override(
+    state: tauri::State<DbState>,
+    chapter_id: i64,
+    base_title: Option<String>,
+    chapter_no: Option<i64>,
+) -> Result<AuthorDetail, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let (path, author_id) = chapter_path_and_author(&conn, chapter_id).map_err(|e| e.to_string())?;
+    if base_title.is_none() && chapter_no.is_none() {
+        conn.execute("DELETE FROM grouping_overrides WHERE chapter_path=?1", params![path])
+            .map_err(|e| e.to_string())?;
+    } else {
+        conn.execute(
+            "INSERT INTO grouping_overrides(chapter_path, base_title, chapter_no) VALUES (?1, ?2, ?3)
+             ON CONFLICT(chapter_path) DO UPDATE SET base_title=excluded.base_title, chapter_no=excluded.chapter_no",
+            params![path, base_title, chapter_no],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    regroup::regroup_author(&conn, author_id).map_err(|e| e.to_string())?;
+    query_author_detail(&conn, author_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn clear_grouping_override(
+    state: tauri::State<DbState>,
+    chapter_id: i64,
+) -> Result<AuthorDetail, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let (path, author_id) = chapter_path_and_author(&conn, chapter_id).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM grouping_overrides WHERE chapter_path=?1", params![path])
+        .map_err(|e| e.to_string())?;
+    regroup::regroup_author(&conn, author_id).map_err(|e| e.to_string())?;
+    query_author_detail(&conn, author_id).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,6 +528,35 @@ mod tests {
         assert_eq!(res[1].author_name, "Bob");
         // All works here have 1 unplayed chapter.
         assert!(res.iter().all(|w| w.unplayed_count == 1));
+    }
+
+    #[test]
+    fn grouping_override_merges_then_clears() {
+        let tmp = tempfile::tempdir().unwrap();
+        let author = tmp.path().join("Jane Doe");
+        touch(&author.join("Cool Story.mp3"));
+        touch(&author.join("Cool Story 2 the sequel.mp3"));
+        touch(&author.join("Another Standalone Tale.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, tmp.path()).unwrap();
+        let id = query_authors(&conn).unwrap()[0].id;
+
+        let path: String = conn.query_row(
+            "SELECT file_path FROM chapters WHERE raw_filename='Another Standalone Tale.mp3'",
+            [], |r| r.get(0)).unwrap();
+
+        // Merge: emulate set_grouping_override's DB write + regroup.
+        conn.execute(
+            "INSERT INTO grouping_overrides(chapter_path, base_title, chapter_no) VALUES (?1,'Cool Story',3)
+             ON CONFLICT(chapter_path) DO UPDATE SET base_title=excluded.base_title, chapter_no=excluded.chapter_no",
+            params![path]).unwrap();
+        crate::regroup::regroup_author(&conn, id).unwrap();
+        assert_eq!(query_author_detail(&conn, id).unwrap().works.len(), 1);
+
+        // Clear: emulate clear_grouping_override.
+        conn.execute("DELETE FROM grouping_overrides WHERE chapter_path=?1", params![path]).unwrap();
+        crate::regroup::regroup_author(&conn, id).unwrap();
+        assert_eq!(query_author_detail(&conn, id).unwrap().works.len(), 2);
     }
 
     #[test]
