@@ -61,6 +61,11 @@ export const applyRenames = (chapterIds: number[], nowMs: number) =>
 export const undoRenames = (manifestPath: string) =>
   invoke<UndoResult>("undo_renames", { manifestPath });
 
+export const setGroupingOverride = (chapterId: number, baseTitle: string | null, chapterNo: number | null) =>
+  invoke<AuthorDetail>("set_grouping_override", { chapterId, baseTitle, chapterNo });
+export const clearGroupingOverride = (chapterId: number) =>
+  invoke<AuthorDetail>("clear_grouping_override", { chapterId });
+
 export const captureWindow = (path: string) => invoke("capture_window", { path });
 export const finishWalkthrough = (doneSignal: string | null, exitWhenDone: boolean) =>
   invoke("finish_walkthrough", { doneSignal, exitWhenDone });
