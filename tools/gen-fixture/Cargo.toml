@@ -1,0 +1,15 @@
+[package]
+name = "gen-fixture"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "gen_fixture"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gen-fixture"
+path = "src/main.rs"
+
+[dependencies]
+hound = "3"

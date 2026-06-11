@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install front-end dependencies
+        run: npm ci
+
+      # Type-check + production build. This also produces `dist/`, which the Rust
+      # crate embeds at compile time via `tauri::generate_context!()`, so it must
+      # run before the Rust build below.
+      - name: Build front-end (tsc + vite)
+        run: npm run build
+
+      - name: Front-end tests (vitest)
+        run: npm test
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Builds the app library + the gen-fixture path dependency and runs all
+      # Rust unit tests plus the fixture scan integration test.
+      - name: Build & test Rust core
+        run: cargo test --manifest-path src-tauri/Cargo.toml
