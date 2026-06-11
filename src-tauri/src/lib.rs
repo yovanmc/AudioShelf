@@ -41,7 +41,10 @@ pub fn run() {
             commands::set_author_tags,
             commands::get_discovery,
             commands::get_discovery_by_tags,
-            commands::get_more_from_author
+            commands::get_more_from_author,
+            commands::preview_renames,
+            commands::apply_renames,
+            commands::undo_renames
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -51,5 +54,6 @@ pub fn run() {
 pub mod testing {
     pub use crate::commands::{query_author_detail, query_authors};
     pub use crate::db::open_in_memory;
+    pub use crate::rename::{build_plan, execute, undo, ItemStatus};
     pub use crate::scan::scan_into;
 }
