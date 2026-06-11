@@ -174,7 +174,7 @@ export default function App() {
         />
       );
     }
-    return <LibraryView authors={authors} onOpenAuthor={openAuthor} />;
+    return <LibraryView authors={authors} onOpenAuthor={openAuthor} onOpenDiscovery={() => {}} />;
   }
 
   return (
