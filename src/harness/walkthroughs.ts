@@ -31,5 +31,17 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["browse", "player"] as const;
+export const walkthroughs = ["browse", "player", "discovery"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
+
+export function discoverySteps(nav: {
+  seed: () => Promise<void>;
+  openDiscovery: () => Promise<void>;
+  pickFirstTag: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "seed", run: nav.seed },
+    { name: "discovery", run: nav.openDiscovery },
+    { name: "by-tag", run: nav.pickFirstTag },
+  ];
+}
