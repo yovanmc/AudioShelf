@@ -10,6 +10,15 @@ import { ScanView } from "./views/ScanView";
 import { runSteps } from "./harness/runner";
 import { browseSteps } from "./harness/walkthroughs";
 
+// Wait for React to commit and the browser to paint before a harness screenshot,
+// so each shot reflects the state the preceding step just set (two rAFs guarantee
+// a paint has occurred; the timeout adds margin).
+function settle(): Promise<void> {
+  return new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 60))),
+  );
+}
+
 type Route =
   | { kind: "loading" }
   | { kind: "scan" }
@@ -58,7 +67,7 @@ export default function App() {
             if (list.length > 0) await openAuthor(list[0].id);
           },
         });
-        await runSteps(steps, args.shots, async (p) => { await captureWindow(p); });
+        await runSteps(steps, args.shots, async (p) => { await settle(); await captureWindow(p); });
         await finishWalkthrough(args.doneSignal, args.exitWhenDone);
       } else {
         setRoute({ kind: "library" });

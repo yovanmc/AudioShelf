@@ -22,7 +22,7 @@ export function LibraryView(props: {
         {shown.map((a) => (
           <li key={a.id}>
             <button onClick={() => props.onOpenAuthor(a.id)}>
-              <span className="author-name">{a.name}</span>
+              <span className="author-name">{a.name}</span>{" — "}
               <span className="author-summary">{summarizeAuthor(a)}</span>
             </button>
           </li>

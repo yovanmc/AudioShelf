@@ -29,7 +29,7 @@ export function AuthorDetailView(props: {
                     onChange={(e) => props.onTogglePlayed(c.id, e.target.checked)}
                   />
                 </label>
-                <span className="chapter-title">{c.title}</span>
+                <span className="chapter-title">{c.title}</span>{" — "}
                 <span className="chapter-duration">{formatDuration(c.durationSecs)}</span>
               </li>
             ))}

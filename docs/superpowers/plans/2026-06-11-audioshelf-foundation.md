@@ -464,6 +464,14 @@ titles like "Area 51").
 - Create: `src-tauri/src/grouping.rs`
 - Modify: `src-tauri/src/lib.rs` (add `mod grouping;`)
 
+> **Implementation correction (applied during execution):** `Chapter` carries BOTH a
+> canonical display `stem` (e.g. `"Cool Story 2"`) AND an `original_stem` field holding the
+> verbatim on-disk filename stem (e.g. `"Cool Story 2 the sequel"`); `Parsed` gains an
+> `original` field. `scan.rs` MUST match files by `original_stem`, because the canonical
+> `stem` drops the trailing extra words and would fail to locate the file. See the committed
+> `src-tauri/src/grouping.rs` and `src-tauri/src/scan.rs` for the authoritative version. The
+> skeleton below is the pre-correction draft kept for context.
+
 - [ ] **Step 1: Write the failing test + implementation skeleton** (`src-tauri/src/grouping.rs`)
 
 ```rust
