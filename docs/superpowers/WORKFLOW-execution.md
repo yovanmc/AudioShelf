@@ -4,9 +4,12 @@
 **Opus controller** orchestrating. Adapted from VideoTriage's remediation runbook for this app's
 Tauri + React + SQLite stack.
 
-**Mode:** Run **one milestone per invocation**. Each run: pick the next unstarted milestone, write
-its plan if missing, execute it end-to-end (plan → implement → review → self-verify → PR → CI →
-merge), update the Progress Log, stop.
+**Mode:** Default is **one milestone per invocation** (pick the next unstarted milestone, write its
+plan if missing, execute end-to-end: plan → implement → review → self-verify → PR → CI → merge,
+update the Progress Log, stop). **Override:** if the user asks to "run the whole workflow" / "get the
+entire workflow done," chain milestones **continuously** — after merging one, immediately start the
+next (sync main, branch, plan, execute…) until all are merged, without stopping to check in. Never
+stall at the CI step waiting for a prompt (see §6).
 
 **Authoritative inputs:**
 - Design spec: `docs/superpowers/specs/2026-06-11-audioshelf-design.md`
@@ -199,9 +202,16 @@ cd "/c/Agent Projects/AudioShelf" && git push -u origin m<N>-<slug>
 # 3. Create the PR (Summary + Test Plan; close with the Claude Code footer)
 gh pr create --title "Milestone <N>: <Title>" --body "<summary + test plan>"
 
-# 4. Watch CI to green (build-and-test on windows-latest)
-gh pr checks <PR#> --watch --interval 30
+# 4. Watch CI to green (build-and-test on windows-latest) — RUN IN THE FOREGROUND (BLOCKING)
+gh pr checks <PR#> --watch --interval 20
 ```
+
+> **CI must not require a user prompt.** Run `gh pr checks <PR#> --watch` as a **foreground/blocking**
+> command with a large timeout (~590000 ms; CI runs ~6 min, well under the 10-min cap). It exits 0 when
+> all checks pass and non-zero on failure. Because it blocks, control returns to this turn automatically
+> the moment CI resolves, and you proceed straight to merge — **do NOT end the turn at the CI step and
+> wait to be re-prompted.** Do not use a background poll loop for the CI gate. If `--watch` ever times
+> out (CI exceeded the cap), re-invoke it once; only escalate if it genuinely stalls.
 ```bash
 # 5. Merge — FROM main (checkout main first so --delete-branch can remove the feature branch)
 cd "/c/Agent Projects/AudioShelf" && git checkout main && \
