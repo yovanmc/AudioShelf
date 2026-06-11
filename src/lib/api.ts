@@ -27,6 +27,8 @@ export const getAuthorDetail = (authorId: number) =>
   invoke<AuthorDetail>("get_author_detail", { authorId });
 export const setChapterPlayed = (chapterId: number, played: boolean) =>
   invoke("set_chapter_played", { chapterId, played });
+export const markChapterFinished = (chapterId: number, nowMs: number) =>
+  invoke("mark_chapter_finished", { chapterId, nowMs });
 export const setAuthorDisplayName = (authorId: number, name: string | null) =>
   invoke("set_author_display_name", { authorId, name });
 
