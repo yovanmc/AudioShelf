@@ -5,6 +5,7 @@ mod grouping;
 mod launch;
 mod model;
 mod natsort;
+mod regroup;
 mod rename;
 mod scan;
 
