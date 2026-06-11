@@ -18,9 +18,13 @@ pub fn init_db(app: &tauri::AppHandle) -> rusqlite::Connection {
 }
 
 #[tauri::command]
-pub fn scan_library(state: tauri::State<DbState>, root: String) -> Result<ScanResult, String> {
+pub fn scan_library(app: tauri::AppHandle, state: tauri::State<DbState>, root: String) -> Result<ScanResult, String> {
+    use tauri::Manager;
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    scan::scan_into(&conn, std::path::Path::new(&root)).map_err(|e| e.to_string())
+    let report = scan::scan_into(&conn, std::path::Path::new(&root)).map_err(|e| e.to_string())?;
+    // Allow the WebView <audio> element to read files under the library root only.
+    let _ = app.asset_protocol_scope().allow_directory(&root, true);
+    Ok(report)
 }
 
 #[tauri::command]
