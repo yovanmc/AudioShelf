@@ -202,7 +202,6 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tempfile",
- "walkdir",
  "windows 0.61.3",
  "xcap",
 ]
