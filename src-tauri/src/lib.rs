@@ -1,4 +1,5 @@
 mod natsort;
+mod grouping;
 
 pub fn run() {
     tauri::Builder::default()
