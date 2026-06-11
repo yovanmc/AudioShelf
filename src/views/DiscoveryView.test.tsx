@@ -8,23 +8,33 @@ const forYou: DiscoveryWork[] = [
   { workId: 1, baseTitle: "Night Walk", authorId: 2, authorName: "Sam Smith", unplayedCount: 2, sharedTags: ["cozy"] },
 ];
 
+const byTagWork: DiscoveryWork[] = [
+  { workId: 5, baseTitle: "Area 51", authorId: 3, authorName: "Trap Author", unplayedCount: 1, sharedTags: ["cozy"] },
+];
+
 describe("DiscoveryView", () => {
   it("shows the For You suggestions", () => {
-    render(<DiscoveryView forYou={forYou} allTags={["cozy", "calm"]} byTags={[]} onPickTags={() => {}} onOpenAuthor={() => {}} onBack={() => {}} />);
+    render(<DiscoveryView forYou={forYou} allTags={["cozy", "calm"]} byTags={[]} picked={[]} onPickTags={() => {}} onOpenAuthor={() => {}} onBack={() => {}} />);
     expect(screen.getByText("Night Walk")).toBeInTheDocument();
     expect(screen.getByText(/Sam Smith/)).toBeInTheDocument();
   });
 
   it("requests by-tag discovery when tags are picked", async () => {
     const onPick = vi.fn();
-    render(<DiscoveryView forYou={forYou} allTags={["cozy", "calm"]} byTags={[]} onPickTags={onPick} onOpenAuthor={() => {}} onBack={() => {}} />);
+    render(<DiscoveryView forYou={forYou} allTags={["cozy", "calm"]} byTags={[]} picked={[]} onPickTags={onPick} onOpenAuthor={() => {}} onBack={() => {}} />);
     await userEvent.click(screen.getByLabelText("Filter by tag cozy"));
     expect(onPick).toHaveBeenCalledWith(["cozy"]);
   });
 
+  it("reflects the controlled picked state and renders by-tag results", () => {
+    render(<DiscoveryView forYou={forYou} allTags={["cozy", "calm"]} byTags={byTagWork} picked={["cozy"]} onPickTags={() => {}} onOpenAuthor={() => {}} onBack={() => {}} />);
+    expect((screen.getByRole("checkbox", { name: "Filter by tag cozy" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText("Area 51")).toBeInTheDocument();
+  });
+
   it("opens an author from a suggestion", async () => {
     const onOpen = vi.fn();
-    render(<DiscoveryView forYou={forYou} allTags={["cozy"]} byTags={[]} onPickTags={() => {}} onOpenAuthor={onOpen} onBack={() => {}} />);
+    render(<DiscoveryView forYou={forYou} allTags={["cozy"]} byTags={[]} picked={[]} onPickTags={() => {}} onOpenAuthor={onOpen} onBack={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "Open Sam Smith" }));
     expect(onOpen).toHaveBeenCalledWith(2);
   });

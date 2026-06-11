@@ -36,6 +36,7 @@ export default function App() {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [forYou, setForYou] = useState<DiscoveryWork[]>([]);
   const [byTags, setByTags] = useState<DiscoveryWork[]>([]);
+  const [pickedTags, setPickedTags] = useState<string[]>([]);
 
   // ---- player state ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -68,10 +69,12 @@ export default function App() {
     setForYou(await getDiscovery());
     await refreshTags();
     setByTags([]);
+    setPickedTags([]);
     setRoute({ kind: "discovery" });
   }
 
   async function pickTags(tags: string[]) {
+    setPickedTags(tags);
     setByTags(tags.length === 0 ? [] : await getDiscoveryByTags(tags));
   }
 
@@ -220,6 +223,7 @@ export default function App() {
           forYou={forYou}
           allTags={allTags}
           byTags={byTags}
+          picked={pickedTags}
           onPickTags={pickTags}
           onOpenAuthor={openAuthor}
           onBack={() => setRoute({ kind: "library" })}
