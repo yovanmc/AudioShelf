@@ -1,7 +1,7 @@
 //! Tauri commands and the shared DB state.
 
 use crate::db;
-use crate::model::{AuthorDetail, AuthorRow, ChapterRow, ScanResult, WorkRow};
+use crate::model::{AuthorDetail, AuthorRow, ChapterRow, DiscoveryWork, MoreWork, ScanResult, WorkRow};
 use crate::natsort::natural_cmp;
 use crate::scan;
 use rusqlite::params;
@@ -66,6 +66,37 @@ pub fn set_author_display_name(state: tauri::State<DbState>, author_id: i64, nam
 pub fn mark_chapter_finished(state: tauri::State<DbState>, chapter_id: i64, now_ms: i64) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     mark_finished(&conn, chapter_id, now_ms).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_all_tags(state: tauri::State<DbState>) -> Result<Vec<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT DISTINCT tag FROM author_tags ORDER BY tag").map_err(|e| e.to_string())?;
+    let tags = stmt
+        .query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<Vec<String>>>().map_err(|e| e.to_string())?;
+    Ok(tags)
+}
+
+#[tauri::command]
+pub fn set_author_tags(state: tauri::State<DbState>, author_id: i64, tags: Vec<String>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    set_tags(&conn, author_id, &tags).map_err(|e| e.to_string())
+}
+
+/// Replace an author's tag set (deduped, blanks dropped, trimmed).
+pub(crate) fn set_tags(conn: &rusqlite::Connection, author_id: i64, tags: &[String]) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM author_tags WHERE author_id=?1", params![author_id])?;
+    let mut seen = std::collections::BTreeSet::new();
+    for raw in tags {
+        let t = raw.trim();
+        if t.is_empty() || !seen.insert(t.to_string()) { continue; }
+        conn.execute(
+            "INSERT OR IGNORE INTO author_tags(author_id, tag) VALUES (?1, ?2)",
+            params![author_id, t],
+        )?;
+    }
+    Ok(())
 }
 
 // ---- query helpers (pub so integration tests and the testing module can call them) ----
@@ -150,7 +181,135 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
         work.chapters = chapters;
     }
 
-    Ok(AuthorDetail { id: author_id, name, works })
+    let mut tstmt = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1 ORDER BY tag")?;
+    let tags: Vec<String> = tstmt
+        .query_map(params![author_id], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<_>>()?;
+
+    Ok(AuthorDetail { id: author_id, name, tags, works })
+}
+
+/// Works (with unplayed chapters) by authors having any of `tags`, ranked by
+/// shared-tag count then unplayed count. `exclude_authors` are filtered out.
+pub(crate) fn discovery_for_tags(
+    conn: &rusqlite::Connection,
+    tags: &[String],
+    exclude_authors: &[i64],
+    cap: usize,
+) -> rusqlite::Result<Vec<DiscoveryWork>> {
+    if tags.is_empty() {
+        return Ok(Vec::new());
+    }
+    // Candidate authors: those sharing >=1 tag, not excluded.
+    let mut works: Vec<DiscoveryWork> = Vec::new();
+    let mut astmt = conn.prepare("SELECT id, COALESCE(display_name, folder_name) FROM authors WHERE status='active'")?;
+    let authors: Vec<(i64, String)> = astmt
+        .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    for (author_id, author_name) in authors {
+        if exclude_authors.contains(&author_id) {
+            continue;
+        }
+        let mut tstmt = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1")?;
+        let author_tags: Vec<String> = tstmt
+            .query_map(params![author_id], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        let mut shared: Vec<String> = author_tags.iter().filter(|t| tags.contains(t)).cloned().collect();
+        shared.sort();
+        if shared.is_empty() {
+            continue;
+        }
+        // This author's works that have >=1 unplayed chapter.
+        let mut wstmt = conn.prepare(
+            "SELECT w.id, w.base_title,
+                    (SELECT count(*) FROM chapters c WHERE c.work_id=w.id AND c.status='active' AND c.played=0)
+             FROM works w WHERE w.author_id=?1 AND w.status='active'",
+        )?;
+        let rows: Vec<(i64, String, i64)> = wstmt
+            .query_map(params![author_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        for (work_id, base_title, unplayed) in rows {
+            if unplayed > 0 {
+                works.push(DiscoveryWork {
+                    work_id,
+                    base_title,
+                    author_id,
+                    author_name: author_name.clone(),
+                    unplayed_count: unplayed,
+                    shared_tags: shared.clone(),
+                });
+            }
+        }
+    }
+    works.sort_by(|a, b| {
+        b.shared_tags.len().cmp(&a.shared_tags.len())
+            .then(b.unplayed_count.cmp(&a.unplayed_count))
+            .then(a.base_title.to_lowercase().cmp(&b.base_title.to_lowercase()))
+    });
+    works.truncate(cap);
+    Ok(works)
+}
+
+/// Authors of chapters in play_events, most-recent first.
+pub(crate) fn recent_authors(conn: &rusqlite::Connection, limit: usize) -> rusqlite::Result<Vec<i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT w.author_id, MAX(pe.played_at) AS last
+         FROM play_events pe
+         JOIN chapters c ON pe.chapter_id=c.id
+         JOIN works w ON c.work_id=w.id
+         GROUP BY w.author_id ORDER BY last DESC",
+    )?;
+    let ids: Vec<i64> = stmt
+        .query_map([], |r| r.get::<_, i64>(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(ids.into_iter().take(limit).collect())
+}
+
+pub(crate) fn discovery_for_you(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<DiscoveryWork>> {
+    let recent = recent_authors(conn, 10)?;
+    if recent.is_empty() {
+        return Ok(Vec::new());
+    }
+    // Tags of recently-played authors.
+    let mut tags: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for id in &recent {
+        let mut stmt = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1")?;
+        for t in stmt.query_map(params![id], |r| r.get::<_, String>(0))? {
+            tags.insert(t?);
+        }
+    }
+    let tag_vec: Vec<String> = tags.into_iter().collect();
+    discovery_for_tags(conn, &tag_vec, &recent, 20)
+}
+
+pub(crate) fn more_from_author(conn: &rusqlite::Connection, author_id: i64) -> rusqlite::Result<Vec<MoreWork>> {
+    let mut stmt = conn.prepare(
+        "SELECT w.id, w.base_title,
+                (SELECT count(*) FROM chapters c WHERE c.work_id=w.id AND c.status='active' AND c.played=0)
+         FROM works w WHERE w.author_id=?1 AND w.status='active' ORDER BY w.sort_key",
+    )?;
+    let rows = stmt
+        .query_map(params![author_id], |r| Ok(MoreWork { work_id: r.get(0)?, base_title: r.get(1)?, unplayed_count: r.get(2)? }))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
+#[tauri::command]
+pub fn get_discovery(state: tauri::State<DbState>) -> Result<Vec<DiscoveryWork>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    discovery_for_you(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_discovery_by_tags(state: tauri::State<DbState>, tags: Vec<String>) -> Result<Vec<DiscoveryWork>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    discovery_for_tags(&conn, &tags, &[], 50).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_more_from_author(state: tauri::State<DbState>, author_id: i64) -> Result<Vec<MoreWork>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    more_from_author(&conn, author_id).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -202,6 +361,24 @@ mod tests {
     }
 
     #[test]
+    fn tags_round_trip_and_dedupe() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("A").join("X.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let id = query_authors(&conn).unwrap()[0].id;
+
+        super::set_tags(&conn, id, &["cozy".into(), " cozy ".into(), "".into(), "thriller".into()]).unwrap();
+        let detail = query_author_detail(&conn, id).unwrap();
+        assert_eq!(detail.tags, vec!["cozy".to_string(), "thriller".to_string()]);
+
+        // Replace-all semantics.
+        super::set_tags(&conn, id, &["calm".into()]).unwrap();
+        assert_eq!(query_author_detail(&conn, id).unwrap().tags, vec!["calm".to_string()]);
+    }
+
+    #[test]
     fn finishing_a_chapter_marks_played_and_records_event() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
@@ -221,5 +398,49 @@ mod tests {
             |r| r.get(0),
         ).unwrap();
         assert_eq!(events, 1);
+    }
+
+    #[test]
+    fn discovery_by_tags_ranks_shared_then_unplayed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Alice").join("Tale.mp3"));
+        touch(&root.join("Bob").join("Saga.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+        super::set_tags(&conn, ids["Alice"], &["cozy".into(), "calm".into()]).unwrap();
+        super::set_tags(&conn, ids["Bob"], &["cozy".into()]).unwrap();
+
+        let res = super::discovery_for_tags(&conn, &["cozy".into(), "calm".into()], &[], 50).unwrap();
+        // Alice shares 2 tags, Bob shares 1 -> Alice ranks first.
+        assert_eq!(res[0].author_name, "Alice");
+        assert_eq!(res[0].shared_tags, vec!["calm".to_string(), "cozy".to_string()]);
+        assert_eq!(res[1].author_name, "Bob");
+        // All works here have 1 unplayed chapter.
+        assert!(res.iter().all(|w| w.unplayed_count == 1));
+    }
+
+    #[test]
+    fn for_you_uses_recent_play_tags_and_excludes_recent_author() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Alice").join("Tale.mp3"));
+        touch(&root.join("Bob").join("Saga.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+        super::set_tags(&conn, ids["Alice"], &["cozy".into()]).unwrap();
+        super::set_tags(&conn, ids["Bob"], &["cozy".into()]).unwrap();
+        // Play Alice's chapter -> Alice is "recent"; For-you should suggest Bob (shares "cozy"), not Alice.
+        let alice_detail = query_author_detail(&conn, ids["Alice"]).unwrap();
+        let ch = alice_detail.works[0].chapters[0].id;
+        super::mark_finished(&conn, ch, 1_700_000_000_000).unwrap();
+
+        let res = super::discovery_for_you(&conn).unwrap();
+        assert!(res.iter().any(|w| w.author_name == "Bob"));
+        assert!(res.iter().all(|w| w.author_name != "Alice"));
     }
 }

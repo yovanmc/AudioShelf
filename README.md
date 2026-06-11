@@ -30,6 +30,20 @@ When a chapter reaches its end it is **auto-marked played** (and a play event is
 
 ---
 
+## Tags & Discovery (Milestone 3)
+
+Authors can be **tagged** with free-text labels (e.g. `cozy`, `mystery`, `short`) from the author view — an inline tag editor with autocomplete drawn from tags you've already used. Tags are **author-level** (not per-work or per-chapter), and the audio files are never touched.
+
+A **Discover** panel (reachable from the library) turns those tags plus your play history into suggestions:
+
+- **For you** — works by authors who share tags with the authors you've recently played, ranked by how many tags they share. Only works with unplayed chapters appear.
+- **Pick a tag** — check one or more tags to list mostly-unplayed works carrying those tags, ranked by shared-tag count.
+- **More from this author** — every suggestion links straight to its author's full work list.
+
+Discovery is computed entirely from the existing `author_tags` and `play_events` tables — no schema change, and read-only with respect to your audio.
+
+---
+
 ## Filename Grouping Convention
 
 AudioShelf groups files under one author by detecting a trailing chapter number in the filename stem. The rule is:
@@ -160,9 +174,12 @@ The `tools\verify.ps1` script provides an end-to-end smoke test:
 
 # Increase the timeout
 .\tools\verify.ps1 -Walkthrough browse -TimeoutSec 300
+
+# Verify the discovery panel (tags → For-you → pick-a-tag)
+.\tools\verify.ps1 -Walkthrough discovery
 ```
 
-Available walkthroughs: `browse` (scan result → library → author detail) and `player` (author detail → now-playing bar).
+Available walkthroughs: `browse` (scan result → library → author detail), `player` (author detail → now-playing bar), and `discovery` (seed tags + play history → For-you → pick a tag).
 
 Screenshots are saved to `.shots\<walkthrough>\`. See [`tools/README.md`](tools/README.md) for full harness documentation.
 
@@ -174,12 +191,12 @@ Screenshots are saved to `.shots\<walkthrough>\`. See [`tools/README.md`](tools/
 |-----------|--------|-------------|
 | **M1 — Foundation** | Shipped | Scan, group, browse, played markers |
 | **M2 — Playback** | Shipped | Now-playing bar: play/pause, seek, skip ±15/30s, volume, sleep timer; auto-mark played on finish |
-| **M3 — Tags & Discovery** | Planned | Author tags, filtering, discovery panel |
+| **M3 — Tags & Discovery** | Shipped | Author tags with autocomplete; Discover panel (For-you, pick-a-tag, more-from-author) |
 | **M4 — Rename tool** | Planned | Opt-in batch rename to normalise filenames |
 
 Design spec: [`docs/superpowers/specs/2026-06-11-audioshelf-design.md`](docs/superpowers/specs/2026-06-11-audioshelf-design.md)
 
-Implementation plans: [M1 — Foundation](docs/superpowers/plans/2026-06-11-audioshelf-foundation.md) · [M2 — Playback](docs/superpowers/plans/2026-06-11-audioshelf-m2-playback.md)
+Implementation plans: [M1 — Foundation](docs/superpowers/plans/2026-06-11-audioshelf-foundation.md) · [M2 — Playback](docs/superpowers/plans/2026-06-11-audioshelf-m2-playback.md) · [M3 — Tags & Discovery](docs/superpowers/plans/2026-06-11-audioshelf-m3-discovery.md)
 
 ---
 
