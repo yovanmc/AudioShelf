@@ -231,7 +231,7 @@ cd "/c/Agent Projects/AudioShelf" && git checkout main && \
 | Milestone | Branch | PR | Status | Notes |
 |---|---|---|---|---|
 | 1 — Foundation & Library Browsing | `m1-foundation` | #1 | ✅ Merged | Scan Author/ dirs → filename grouping (`original_stem` threaded for file lookup; canonical `stem` drops trailing words) → browse Author→works→chapters + played toggle. Read-only verified. Harness + WAV fixture + CI added. 25 tests. Screenshot-verified. |
-| 2 — Playback & Progress | `m2-playback` | — | [ ] Not started | Write plan first. WebView `<audio>`: play/pause + seek, skip ±15/30s, volume, sleep timer; auto-mark-played on finish (+ `play_events`); stop after each chapter (no auto-advance). Add `player` walkthrough. |
+| 2 — Playback & Progress | `m2-playback` | #2 | ✅ Merged | Now-playing PlayerBar (play/pause, seek, skip ±15/30s, volume, sleep timer); auto-mark-played on finish + `play_events`; stop after each chapter; per-chapter ▶. `mark_chapter_finished` command. Asset scope hardened to `[]` + runtime grant of library root. `player` walkthrough. Screenshot-verified. |
 | 3 — Tags & Discovery | `m3-discovery` | — | [ ] Not started | Author tag editor; discovery panel "For you" / "Pick a tag" (mostly-unplayed) / "More from this author". Commands: get_tags/set_author_tags/get_discovery/get_discovery_by_tags/get_more_from_author. |
 | 4 — Opt-in Rename Tool | `m4-rename` | — | [ ] Not started | Separate screen, off by default. Preview diff → confirm → defensive rename + undo manifest. Plus grouping-override UI writing `grouping_overrides`. Honor destructive-op discipline. |
 
