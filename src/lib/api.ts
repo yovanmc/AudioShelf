@@ -17,6 +17,14 @@ export interface DiscoveryWork {
 }
 export interface MoreWork { workId: number; baseTitle: string; unplayedCount: number; }
 
+export interface RenameItem {
+  chapterId: number; authorName: string; baseTitle: string;
+  fromName: string; toName: string;
+  status: "ok" | "noop" | "conflict"; conflictReason: string | null;
+}
+export interface RenameResult { renamedCount: number; failures: string[]; manifestPath: string; }
+export interface UndoResult { revertedCount: number; failures: string[]; }
+
 export interface LaunchArgs {
   library: string | null;
   autostart: boolean;
@@ -46,6 +54,12 @@ export const getDiscoveryByTags = (tags: string[]) =>
   invoke<DiscoveryWork[]>("get_discovery_by_tags", { tags });
 export const getMoreFromAuthor = (authorId: number) =>
   invoke<MoreWork[]>("get_more_from_author", { authorId });
+
+export const previewRenames = () => invoke<RenameItem[]>("preview_renames");
+export const applyRenames = (chapterIds: number[], nowMs: number) =>
+  invoke<RenameResult>("apply_renames", { chapterIds, nowMs });
+export const undoRenames = (manifestPath: string) =>
+  invoke<UndoResult>("undo_renames", { manifestPath });
 
 export const captureWindow = (path: string) => invoke("capture_window", { path });
 export const finishWalkthrough = (doneSignal: string | null, exitWhenDone: boolean) =>
