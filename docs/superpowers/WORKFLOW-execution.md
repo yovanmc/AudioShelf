@@ -237,7 +237,9 @@ cd "/c/Agent Projects/AudioShelf" && git checkout main && \
 
 ---
 
-## 7. Progress Log (update at the end of every run)
+## 7. Progress Log → moved to `ROADMAP.md`
+
+> **The milestone table is now the canonical [`ROADMAP.md`](../../ROADMAP.md) at the repo root** (single source of truth per the `/roadmap` workflow). Update milestone status there, not here. The table below is retained for history only — prefer ROADMAP.md.
 
 | Milestone | Branch | PR | Status | Notes |
 |---|---|---|---|---|
