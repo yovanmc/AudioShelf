@@ -21,7 +21,7 @@ const detail: AuthorDetail = {
 
 describe("AuthorDetailView", () => {
   it("renders works, chapters, and a played marker", () => {
-    render(<AuthorDetailView detail={detail} onTogglePlayed={() => {}} onBack={() => {}} />);
+    render(<AuthorDetailView detail={detail} onTogglePlayed={() => {}} onPlayChapter={() => {}} onBack={() => {}} />);
     expect(screen.getByText("Jane Doe")).toBeInTheDocument();
     expect(screen.getByText("Cool Story")).toBeInTheDocument();
     const ch2 = screen.getByText("Cool Story 2 the sequel").closest("li")!;
@@ -30,9 +30,15 @@ describe("AuthorDetailView", () => {
 
   it("toggles played when the checkbox is clicked", async () => {
     const onToggle = vi.fn();
-    render(<AuthorDetailView detail={detail} onTogglePlayed={onToggle} onBack={() => {}} />);
-    const ch1Toggle = screen.getByLabelText("Mark 'Cool Story' played");
-    await userEvent.click(ch1Toggle);
+    render(<AuthorDetailView detail={detail} onTogglePlayed={onToggle} onPlayChapter={() => {}} onBack={() => {}} />);
+    await userEvent.click(screen.getByLabelText("Mark 'Cool Story' played"));
     expect(onToggle).toHaveBeenCalledWith(100, true);
+  });
+
+  it("plays a chapter when its play button is clicked", async () => {
+    const onPlay = vi.fn();
+    render(<AuthorDetailView detail={detail} onTogglePlayed={() => {}} onPlayChapter={onPlay} onBack={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "Play 'Cool Story'" }));
+    expect(onPlay).toHaveBeenCalledWith(detail.works[0].chapters[0]);
   });
 });

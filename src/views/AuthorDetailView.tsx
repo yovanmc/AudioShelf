@@ -1,4 +1,4 @@
-import type { AuthorDetail } from "../lib/api";
+import type { AuthorDetail, ChapterRow } from "../lib/api";
 
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -9,6 +9,7 @@ function formatDuration(secs: number): string {
 export function AuthorDetailView(props: {
   detail: AuthorDetail;
   onTogglePlayed: (chapterId: number, played: boolean) => void;
+  onPlayChapter: (chapter: ChapterRow) => void;
   onBack: () => void;
 }) {
   const { detail } = props;
@@ -22,6 +23,7 @@ export function AuthorDetailView(props: {
           <ul>
             {w.chapters.map((c) => (
               <li key={c.id} data-played={c.played ? "true" : "false"}>
+                <button aria-label={`Play '${c.title}'`} onClick={() => props.onPlayChapter(c)}>▶</button>
                 <label aria-label={`Mark '${c.title}' played`}>
                   <input
                     type="checkbox"
