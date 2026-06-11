@@ -2,6 +2,7 @@ mod db;
 mod model;
 mod natsort;
 mod grouping;
+mod scan;
 
 pub fn run() {
     tauri::Builder::default()
