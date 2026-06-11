@@ -229,6 +229,45 @@ pub fn execute(
     })
 }
 
+#[derive(Debug)]
+pub struct UndoOutcome {
+    pub reverted_count: usize,
+    pub failures: Vec<(String, String)>,
+}
+
+/// Reverse a rename batch. Tolerant: only reverses an entry when the new path
+/// exists and the original path is free, so a crash in any prior step is safe
+/// and a second undo is a no-op.
+pub fn undo(conn: &Connection, manifest_path: &Path) -> rusqlite::Result<UndoOutcome> {
+    let text = std::fs::read_to_string(manifest_path).unwrap_or_default();
+    let mut entries: Vec<ManifestEntry> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str::<ManifestEntry>(l).ok())
+        .collect();
+    entries.reverse();
+
+    let mut reverted_count = 0usize;
+    let mut failures: Vec<(String, String)> = Vec::new();
+    for e in entries {
+        let to = Path::new(&e.to_path);
+        let from = Path::new(&e.from_path);
+        if !to.exists() || from.exists() {
+            continue; // never executed, or already undone
+        }
+        if let Err(err) = std::fs::rename(to, from) {
+            failures.push((e.to_path.clone(), format!("undo rename failed: {err}")));
+            continue;
+        }
+        conn.execute(
+            "UPDATE chapters SET file_path=?2, raw_filename=?3 WHERE id=?1",
+            rusqlite::params![e.chapter_id, e.from_path, e.from_name],
+        )?;
+        reverted_count += 1;
+    }
+    Ok(UndoOutcome { reverted_count, failures })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,5 +369,38 @@ mod tests {
         // Manifest exists and has one line.
         let manifest = std::fs::read_to_string(&result.manifest_path).unwrap();
         assert_eq!(manifest.lines().count(), 1);
+    }
+
+    #[test]
+    fn undo_reverses_completed_renames_and_restores_db() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let author = root.join("Jane Doe");
+        touch(&author.join("Cool Story.mp3"));
+        touch(&author.join("Cool Story 2 the sequel.mp3"));
+        let conn = open_in_memory().unwrap();
+        crate::scan::scan_into(&conn, root).unwrap();
+
+        let manifests = tmp.path().join("manifests");
+        let plan = super::build_plan(&conn).unwrap();
+        let ok_ids: Vec<i64> =
+            plan.iter().filter(|i| i.status == super::ItemStatus::Ok).map(|i| i.chapter_id).collect();
+        let res = super::execute(&conn, &ok_ids, &manifests, 1_700_000_000_000).unwrap();
+        assert!(author.join("Cool Story 2.mp3").exists());
+
+        let undo = super::undo(&conn, Path::new(&res.manifest_path)).unwrap();
+        assert_eq!(undo.reverted_count, 1);
+        // Disk restored.
+        assert!(author.join("Cool Story 2 the sequel.mp3").exists());
+        assert!(!author.join("Cool Story 2.mp3").exists());
+        // DB restored.
+        let raw: String = conn.query_row(
+            "SELECT raw_filename FROM chapters WHERE raw_filename='Cool Story 2 the sequel.mp3'",
+            [], |r| r.get(0)).unwrap();
+        assert_eq!(raw, "Cool Story 2 the sequel.mp3");
+
+        // Idempotent: undoing again reverts nothing.
+        let again = super::undo(&conn, Path::new(&res.manifest_path)).unwrap();
+        assert_eq!(again.reverted_count, 0);
     }
 }
