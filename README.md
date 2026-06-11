@@ -17,6 +17,19 @@ AudioShelf is **read-only** with respect to your audio files. It never moves, re
 
 ---
 
+## Playback (Milestone 2)
+
+A persistent **now-playing bar** appears once you start a chapter (▶ next to any chapter in the author view):
+
+- **Play / pause** and a **draggable seek bar** showing current / total time
+- **Skip** back/forward **±15s** and **±30s**
+- **Volume** control
+- **Sleep timer** — auto-stop after 15, 30, or 60 minutes
+
+When a chapter reaches its end it is **auto-marked played** (and a play event is recorded for future discovery), then playback **stops** — there is no auto-advance or queue, and no per-second resume (progress is played/unplayed only). You can still toggle played state manually at any time.
+
+---
+
 ## Filename Grouping Convention
 
 AudioShelf groups files under one author by detecting a trailing chapter number in the filename stem. The rule is:
@@ -142,9 +155,14 @@ The `tools\verify.ps1` script provides an end-to-end smoke test:
 # Skip the build step if the binary is already current
 .\tools\verify.ps1 -SkipBuild
 
-# Use a different walkthrough and increase the timeout
+# Verify the now-playing player bar
+.\tools\verify.ps1 -Walkthrough player
+
+# Increase the timeout
 .\tools\verify.ps1 -Walkthrough browse -TimeoutSec 300
 ```
+
+Available walkthroughs: `browse` (scan result → library → author detail) and `player` (author detail → now-playing bar).
 
 Screenshots are saved to `.shots\<walkthrough>\`. See [`tools/README.md`](tools/README.md) for full harness documentation.
 
@@ -155,13 +173,13 @@ Screenshots are saved to `.shots\<walkthrough>\`. See [`tools/README.md`](tools/
 | Milestone | Status | Description |
 |-----------|--------|-------------|
 | **M1 — Foundation** | Shipped | Scan, group, browse, played markers |
-| **M2 — Playback** | Planned | In-app audio player and playback controls |
+| **M2 — Playback** | Shipped | Now-playing bar: play/pause, seek, skip ±15/30s, volume, sleep timer; auto-mark played on finish |
 | **M3 — Tags & Discovery** | Planned | Author tags, filtering, discovery panel |
 | **M4 — Rename tool** | Planned | Opt-in batch rename to normalise filenames |
 
 Design spec: [`docs/superpowers/specs/2026-06-11-audioshelf-design.md`](docs/superpowers/specs/2026-06-11-audioshelf-design.md)
 
-M1 implementation plan: [`docs/superpowers/plans/2026-06-11-audioshelf-foundation.md`](docs/superpowers/plans/2026-06-11-audioshelf-foundation.md)
+Implementation plans: [M1 — Foundation](docs/superpowers/plans/2026-06-11-audioshelf-foundation.md) · [M2 — Playback](docs/superpowers/plans/2026-06-11-audioshelf-m2-playback.md)
 
 ---
 
