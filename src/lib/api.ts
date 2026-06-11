@@ -9,7 +9,13 @@ export interface ChapterRow {
   durationSecs: number; filePath: string; played: boolean;
 }
 export interface WorkRow { id: number; baseTitle: string; chapters: ChapterRow[]; }
-export interface AuthorDetail { id: number; name: string; works: WorkRow[]; }
+export interface AuthorDetail { id: number; name: string; tags: string[]; works: WorkRow[]; }
+
+export interface DiscoveryWork {
+  workId: number; baseTitle: string; authorId: number; authorName: string;
+  unplayedCount: number; sharedTags: string[];
+}
+export interface MoreWork { workId: number; baseTitle: string; unplayedCount: number; }
 
 export interface LaunchArgs {
   library: string | null;
@@ -31,6 +37,15 @@ export const markChapterFinished = (chapterId: number, nowMs: number) =>
   invoke("mark_chapter_finished", { chapterId, nowMs });
 export const setAuthorDisplayName = (authorId: number, name: string | null) =>
   invoke("set_author_display_name", { authorId, name });
+
+export const getAllTags = () => invoke<string[]>("get_all_tags");
+export const setAuthorTags = (authorId: number, tags: string[]) =>
+  invoke("set_author_tags", { authorId, tags });
+export const getDiscovery = () => invoke<DiscoveryWork[]>("get_discovery");
+export const getDiscoveryByTags = (tags: string[]) =>
+  invoke<DiscoveryWork[]>("get_discovery_by_tags", { tags });
+export const getMoreFromAuthor = (authorId: number) =>
+  invoke<MoreWork[]>("get_more_from_author", { authorId });
 
 export const captureWindow = (path: string) => invoke("capture_window", { path });
 export const finishWalkthrough = (doneSignal: string | null, exitWhenDone: boolean) =>

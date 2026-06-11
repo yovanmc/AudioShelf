@@ -7,6 +7,7 @@ import type { AuthorDetail } from "../lib/api";
 const detail: AuthorDetail = {
   id: 1,
   name: "Jane Doe",
+  tags: [],
   works: [
     {
       id: 10,
