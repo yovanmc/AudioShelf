@@ -1,4 +1,5 @@
 mod db;
+mod model;
 mod natsort;
 mod grouping;
 
