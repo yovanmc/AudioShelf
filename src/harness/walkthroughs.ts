@@ -31,7 +31,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["browse", "player", "discovery", "rename"] as const;
+export const walkthroughs = ["browse", "player", "discovery", "rename", "grouping"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -59,5 +59,22 @@ export function renameSteps(nav: {
     { name: "preview", run: nav.openRename },
     { name: "applied", run: nav.applyAll },
     { name: "undone", run: nav.undoLast },
+  ];
+}
+
+/**
+ * Build the "grouping" walkthrough: open the first author, merge its standalone
+ * work into "Cool Story" via an override, then reset — a round-trip that leaves
+ * the DB grouping as it began.
+ */
+export function groupingSteps(nav: {
+  openFirstAuthor: () => Promise<void>;
+  mergeDemo: () => Promise<void>;
+  resetDemo: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "before", run: nav.openFirstAuthor },
+    { name: "merged", run: nav.mergeDemo },
+    { name: "reset", run: nav.resetDemo },
   ];
 }
