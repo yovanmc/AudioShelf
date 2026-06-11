@@ -17,5 +17,19 @@ export function browseSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["browse"] as const;
+/**
+ * Build the "player" walkthrough: open the first author, then start playback of
+ * its first chapter so the now-playing bar is captured.
+ */
+export function playerSteps(nav: {
+  openFirstAuthor: () => Promise<void>;
+  playFirstChapter: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "author-detail", run: nav.openFirstAuthor },
+    { name: "player", run: nav.playFirstChapter },
+  ];
+}
+
+export const walkthroughs = ["browse", "player"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
