@@ -1,4 +1,5 @@
 mod capture;
+mod commands;
 mod db;
 mod launch;
 mod model;
