@@ -58,9 +58,9 @@ pub fn set_author_display_name(state: tauri::State<DbState>, author_id: i64, nam
     Ok(())
 }
 
-// ---- query helpers (pub(crate) so integration tests can call them) ----
+// ---- query helpers (pub so integration tests and the testing module can call them) ----
 
-pub(crate) fn query_authors(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<AuthorRow>> {
+pub fn query_authors(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<AuthorRow>> {
     let mut stmt = conn.prepare(
         "SELECT a.id,
                 COALESCE(a.display_name, a.folder_name) AS name,
@@ -86,7 +86,7 @@ pub(crate) fn query_authors(conn: &rusqlite::Connection) -> rusqlite::Result<Vec
     Ok(rows)
 }
 
-pub(crate) fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusqlite::Result<AuthorDetail> {
+pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusqlite::Result<AuthorDetail> {
     let name: String = conn.query_row(
         "SELECT COALESCE(display_name, folder_name) FROM authors WHERE id=?1",
         params![author_id],
