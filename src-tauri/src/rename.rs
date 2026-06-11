@@ -138,6 +138,97 @@ fn classify(items: &mut [PlanItem]) {
     }
 }
 
+use serde::Serialize;
+use std::io::Write;
+
+/// One completed-intent record in the JSONL manifest.
+#[derive(Serialize, serde::Deserialize, Debug, Clone)]
+pub struct ManifestEntry {
+    pub chapter_id: i64,
+    pub from_path: String,
+    pub to_path: String,
+    pub from_name: String,
+    pub to_name: String,
+}
+
+#[derive(Debug)]
+pub struct ExecOutcome {
+    pub renamed_count: usize,
+    pub failures: Vec<(String, String)>, // (from_path, error)
+    pub manifest_path: String,
+}
+
+/// Rename the given chapter ids (only those still classified Ok). Crash-safe:
+/// each intended op is appended+flushed to the manifest BEFORE the disk rename,
+/// so undo can recover regardless of where a crash lands. Items are independent;
+/// a failure is recorded and the batch continues.
+pub fn execute(
+    conn: &Connection,
+    chapter_ids: &[i64],
+    manifest_dir: &Path,
+    now_ms: i64,
+) -> rusqlite::Result<ExecOutcome> {
+    let plan = build_plan(conn)?;
+    let wanted: std::collections::HashSet<i64> = chapter_ids.iter().copied().collect();
+    let todo: Vec<PlanItem> = plan
+        .into_iter()
+        .filter(|i| i.status == ItemStatus::Ok && wanted.contains(&i.chapter_id))
+        .collect();
+
+    std::fs::create_dir_all(manifest_dir).ok();
+    let manifest_path = manifest_dir.join(format!("{now_ms}.jsonl"));
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&manifest_path)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+    let mut renamed_count = 0usize;
+    let mut failures: Vec<(String, String)> = Vec::new();
+
+    for it in todo {
+        // Re-validate at execution time (TOCTOU guard).
+        if !Path::new(&it.from_path).exists() {
+            failures.push((it.from_path.clone(), "source no longer exists".into()));
+            continue;
+        }
+        if Path::new(&it.to_path).exists() {
+            failures.push((it.from_path.clone(), "target appeared before rename".into()));
+            continue;
+        }
+        // 1) record intent + flush
+        let entry = ManifestEntry {
+            chapter_id: it.chapter_id,
+            from_path: it.from_path.clone(),
+            to_path: it.to_path.clone(),
+            from_name: it.from_name.clone(),
+            to_name: it.to_name.clone(),
+        };
+        let line = serde_json::to_string(&entry).unwrap();
+        if let Err(e) = writeln!(file, "{line}").and_then(|_| file.flush()) {
+            failures.push((it.from_path.clone(), format!("manifest write failed: {e}")));
+            continue;
+        }
+        // 2) rename on disk
+        if let Err(e) = std::fs::rename(&it.from_path, &it.to_path) {
+            failures.push((it.from_path.clone(), format!("rename failed: {e}")));
+            continue;
+        }
+        // 3) update DB
+        conn.execute(
+            "UPDATE chapters SET file_path=?2, raw_filename=?3 WHERE id=?1",
+            rusqlite::params![it.chapter_id, it.to_path, it.to_name],
+        )?;
+        renamed_count += 1;
+    }
+
+    Ok(ExecOutcome {
+        renamed_count,
+        failures,
+        manifest_path: manifest_path.to_string_lossy().to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,5 +297,38 @@ mod tests {
         // "My  Tale.mp3" wants "My Tale.mp3" which already exists on disk -> conflict.
         let item = plan.iter().find(|i| i.from_name == "My  Tale.mp3").unwrap();
         assert_eq!(item.status, super::ItemStatus::Conflict);
+    }
+
+    #[test]
+    fn execute_renames_ok_items_writes_manifest_and_updates_db() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let author = root.join("Jane Doe");
+        touch(&author.join("Cool Story.mp3"));
+        touch(&author.join("Cool Story 2 the sequel.mp3"));
+        let conn = open_in_memory().unwrap();
+        crate::scan::scan_into(&conn, root).unwrap();
+
+        let manifests = tmp.path().join("manifests");
+        let plan = super::build_plan(&conn).unwrap();
+        let ok_ids: Vec<i64> = plan.iter()
+            .filter(|i| i.status == super::ItemStatus::Ok)
+            .map(|i| i.chapter_id).collect();
+
+        let result = super::execute(&conn, &ok_ids, &manifests, 1_700_000_000_000).unwrap();
+        assert_eq!(result.renamed_count, 1);
+        assert!(result.failures.is_empty());
+
+        // Disk: new name exists, old name gone.
+        assert!(author.join("Cool Story 2.mp3").exists());
+        assert!(!author.join("Cool Story 2 the sequel.mp3").exists());
+        // DB: file_path/raw_filename updated.
+        let raw: String = conn.query_row(
+            "SELECT raw_filename FROM chapters WHERE raw_filename='Cool Story 2.mp3'",
+            [], |r| r.get(0)).unwrap();
+        assert_eq!(raw, "Cool Story 2.mp3");
+        // Manifest exists and has one line.
+        let manifest = std::fs::read_to_string(&result.manifest_path).unwrap();
+        assert_eq!(manifest.lines().count(), 1);
     }
 }
