@@ -4,7 +4,7 @@
 use crate::grouping::{group_author, Work};
 use crate::model::ScanResult;
 use crate::natsort::natural_cmp;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 use std::path::Path;
 
 const AUDIO_EXTS: &[&str] = &["mp3", "m4a", "aac", "mp4", "opus", "ogg", "flac", "wav"];
@@ -125,10 +125,8 @@ fn upsert_chapter(
     format: &str,
     duration: i64,
 ) -> rusqlite::Result<()> {
-    // Preserve the played flag on re-scan by only updating non-played columns.
-    let _existing: Option<i64> = conn
-        .query_row("SELECT id FROM chapters WHERE file_path=?1", params![path], |r| r.get(0))
-        .optional()?;
+    // The UPSERT below is self-sufficient: on conflict it updates every column
+    // EXCEPT `played`, so re-scanning preserves listening progress.
     conn.execute(
         "INSERT INTO chapters(work_id, file_path, raw_filename, chapter_no, format, duration_secs, status)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active')
