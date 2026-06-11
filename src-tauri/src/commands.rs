@@ -68,6 +68,37 @@ pub fn mark_chapter_finished(state: tauri::State<DbState>, chapter_id: i64, now_
     mark_finished(&conn, chapter_id, now_ms).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn get_all_tags(state: tauri::State<DbState>) -> Result<Vec<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT DISTINCT tag FROM author_tags ORDER BY tag").map_err(|e| e.to_string())?;
+    let tags = stmt
+        .query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<Vec<String>>>().map_err(|e| e.to_string())?;
+    Ok(tags)
+}
+
+#[tauri::command]
+pub fn set_author_tags(state: tauri::State<DbState>, author_id: i64, tags: Vec<String>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    set_tags(&conn, author_id, &tags).map_err(|e| e.to_string())
+}
+
+/// Replace an author's tag set (deduped, blanks dropped, trimmed).
+pub(crate) fn set_tags(conn: &rusqlite::Connection, author_id: i64, tags: &[String]) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM author_tags WHERE author_id=?1", params![author_id])?;
+    let mut seen = std::collections::BTreeSet::new();
+    for raw in tags {
+        let t = raw.trim();
+        if t.is_empty() || !seen.insert(t.to_string()) { continue; }
+        conn.execute(
+            "INSERT OR IGNORE INTO author_tags(author_id, tag) VALUES (?1, ?2)",
+            params![author_id, t],
+        )?;
+    }
+    Ok(())
+}
+
 // ---- query helpers (pub so integration tests and the testing module can call them) ----
 
 /// Atomically mark a chapter played and record a play event at `now_ms`.
@@ -150,7 +181,12 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
         work.chapters = chapters;
     }
 
-    Ok(AuthorDetail { id: author_id, name, works })
+    let mut tstmt = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1 ORDER BY tag")?;
+    let tags: Vec<String> = tstmt
+        .query_map(params![author_id], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<_>>()?;
+
+    Ok(AuthorDetail { id: author_id, name, tags, works })
 }
 
 #[cfg(test)]
@@ -199,6 +235,24 @@ mod tests {
         conn.execute("UPDATE chapters SET played=1 WHERE id=?1", params![ch]).unwrap();
         let authors = query_authors(&conn).unwrap();
         assert_eq!(authors[0].unplayed_count, 0);
+    }
+
+    #[test]
+    fn tags_round_trip_and_dedupe() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("A").join("X.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let id = query_authors(&conn).unwrap()[0].id;
+
+        super::set_tags(&conn, id, &["cozy".into(), " cozy ".into(), "".into(), "thriller".into()]).unwrap();
+        let detail = query_author_detail(&conn, id).unwrap();
+        assert_eq!(detail.tags, vec!["cozy".to_string(), "thriller".to_string()]);
+
+        // Replace-all semantics.
+        super::set_tags(&conn, id, &["calm".into()]).unwrap();
+        assert_eq!(query_author_detail(&conn, id).unwrap().tags, vec!["calm".to_string()]);
     }
 
     #[test]

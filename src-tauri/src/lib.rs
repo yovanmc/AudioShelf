@@ -35,7 +35,9 @@ pub fn run() {
             commands::get_author_detail,
             commands::set_chapter_played,
             commands::mark_chapter_finished,
-            commands::set_author_display_name
+            commands::set_author_display_name,
+            commands::get_all_tags,
+            commands::set_author_tags
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

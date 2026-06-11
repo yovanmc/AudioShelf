@@ -45,5 +45,6 @@ pub struct WorkRow {
 pub struct AuthorDetail {
     pub id: i64,
     pub name: String,
+    pub tags: Vec<String>,
     pub works: Vec<WorkRow>,
 }
