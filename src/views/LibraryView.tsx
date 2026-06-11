@@ -5,6 +5,7 @@ import { matchesSearch, summarizeAuthor } from "../lib/library";
 export function LibraryView(props: {
   authors: AuthorRow[];
   onOpenAuthor: (id: number) => void;
+  onOpenDiscovery: () => void;
 }) {
   const [query, setQuery] = useState("");
   const shown = useMemo(
@@ -13,11 +14,8 @@ export function LibraryView(props: {
   );
   return (
     <div className="library">
-      <input
-        placeholder="Search authors"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
+      <button onClick={props.onOpenDiscovery}>Discover</button>
+      <input placeholder="Search authors" value={query} onChange={(e) => setQuery(e.target.value)} />
       <ul>
         {shown.map((a) => (
           <li key={a.id}>
