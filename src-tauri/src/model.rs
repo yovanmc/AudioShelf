@@ -67,3 +67,30 @@ pub struct AuthorDetail {
     pub tags: Vec<String>,
     pub works: Vec<WorkRow>,
 }
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameItem {
+    pub chapter_id: i64,
+    pub author_name: String,
+    pub base_title: String,
+    pub from_name: String,
+    pub to_name: String,
+    pub status: String,            // "ok" | "noop" | "conflict"
+    pub conflict_reason: Option<String>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameResult {
+    pub renamed_count: usize,
+    pub failures: Vec<String>,     // human-readable "<file>: <error>"
+    pub manifest_path: String,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UndoResult {
+    pub reverted_count: usize,
+    pub failures: Vec<String>,
+}

@@ -31,7 +31,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["browse", "player", "discovery"] as const;
+export const walkthroughs = ["browse", "player", "discovery", "rename"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -43,5 +43,21 @@ export function discoverySteps(nav: {
     { name: "seed", run: nav.seed },
     { name: "discovery", run: nav.openDiscovery },
     { name: "by-tag", run: nav.pickFirstTag },
+  ];
+}
+
+/**
+ * Build the "rename" walkthrough: preview the diff, apply all Ok renames, then
+ * undo — a full round-trip that leaves the fixture on disk exactly as it began.
+ */
+export function renameSteps(nav: {
+  openRename: () => Promise<void>;
+  applyAll: () => Promise<void>;
+  undoLast: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "preview", run: nav.openRename },
+    { name: "applied", run: nav.applyAll },
+    { name: "undone", run: nav.undoLast },
   ];
 }

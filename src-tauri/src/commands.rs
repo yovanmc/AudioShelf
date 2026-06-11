@@ -1,7 +1,8 @@
 //! Tauri commands and the shared DB state.
 
 use crate::db;
-use crate::model::{AuthorDetail, AuthorRow, ChapterRow, DiscoveryWork, MoreWork, ScanResult, WorkRow};
+use crate::model::{AuthorDetail, AuthorRow, ChapterRow, DiscoveryWork, MoreWork, RenameItem, RenameResult, ScanResult, UndoResult, WorkRow};
+use crate::rename;
 use crate::natsort::natural_cmp;
 use crate::scan;
 use rusqlite::params;
@@ -310,6 +311,66 @@ pub fn get_discovery_by_tags(state: tauri::State<DbState>, tags: Vec<String>) ->
 pub fn get_more_from_author(state: tauri::State<DbState>, author_id: i64) -> Result<Vec<MoreWork>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     more_from_author(&conn, author_id).map_err(|e| e.to_string())
+}
+
+fn status_str(s: &rename::ItemStatus) -> &'static str {
+    match s {
+        rename::ItemStatus::Ok => "ok",
+        rename::ItemStatus::Noop => "noop",
+        rename::ItemStatus::Conflict => "conflict",
+    }
+}
+
+/// `<app_data>/rename-manifests`.
+fn rename_manifest_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
+    use tauri::Manager;
+    let dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir());
+    dir.join("rename-manifests")
+}
+
+#[tauri::command]
+pub fn preview_renames(state: tauri::State<DbState>) -> Result<Vec<RenameItem>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let plan = rename::build_plan(&conn).map_err(|e| e.to_string())?;
+    Ok(plan
+        .into_iter()
+        .map(|i| RenameItem {
+            chapter_id: i.chapter_id,
+            author_name: i.author_name,
+            base_title: i.base_title,
+            from_name: i.from_name,
+            to_name: i.to_name,
+            status: status_str(&i.status).to_string(),
+            conflict_reason: i.conflict_reason,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn apply_renames(
+    app: tauri::AppHandle,
+    state: tauri::State<DbState>,
+    chapter_ids: Vec<i64>,
+    now_ms: i64,
+) -> Result<RenameResult, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let dir = rename_manifest_dir(&app);
+    let out = rename::execute(&conn, &chapter_ids, &dir, now_ms).map_err(|e| e.to_string())?;
+    Ok(RenameResult {
+        renamed_count: out.renamed_count,
+        failures: out.failures.into_iter().map(|(f, e)| format!("{f}: {e}")).collect(),
+        manifest_path: out.manifest_path,
+    })
+}
+
+#[tauri::command]
+pub fn undo_renames(state: tauri::State<DbState>, manifest_path: String) -> Result<UndoResult, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let out = rename::undo(&conn, std::path::Path::new(&manifest_path)).map_err(|e| e.to_string())?;
+    Ok(UndoResult {
+        reverted_count: out.reverted_count,
+        failures: out.failures.into_iter().map(|(f, e)| format!("{f}: {e}")).collect(),
+    })
 }
 
 #[cfg(test)]
