@@ -1,4 +1,5 @@
 import type { AuthorDetail, ChapterRow } from "../lib/api";
+import { TagEditor } from "./TagEditor";
 
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -10,6 +11,8 @@ export function AuthorDetailView(props: {
   detail: AuthorDetail;
   onTogglePlayed: (chapterId: number, played: boolean) => void;
   onPlayChapter: (chapter: ChapterRow) => void;
+  onSetTags: (tags: string[]) => void;
+  allTags: string[];
   onBack: () => void;
 }) {
   const { detail } = props;
@@ -17,6 +20,7 @@ export function AuthorDetailView(props: {
     <div className="author-detail">
       <button onClick={props.onBack}>← Library</button>
       <h1>{detail.name}</h1>
+      <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
       {detail.works.map((w) => (
         <section key={w.id} className="work">
           <h2><span className="work-title">{w.baseTitle}{" "}({w.chapters.length})</span></h2>

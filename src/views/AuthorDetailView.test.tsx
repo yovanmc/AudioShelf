@@ -22,7 +22,7 @@ const detail: AuthorDetail = {
 
 describe("AuthorDetailView", () => {
   it("renders works, chapters, and a played marker", () => {
-    render(<AuthorDetailView detail={detail} onTogglePlayed={() => {}} onPlayChapter={() => {}} onBack={() => {}} />);
+    render(<AuthorDetailView detail={detail} onTogglePlayed={() => {}} onPlayChapter={() => {}} onSetTags={() => {}} allTags={[]} onBack={() => {}} />);
     expect(screen.getByText("Jane Doe")).toBeInTheDocument();
     expect(screen.getByText("Cool Story")).toBeInTheDocument();
     const ch2 = screen.getByText("Cool Story 2 the sequel").closest("li")!;
@@ -31,15 +31,24 @@ describe("AuthorDetailView", () => {
 
   it("toggles played when the checkbox is clicked", async () => {
     const onToggle = vi.fn();
-    render(<AuthorDetailView detail={detail} onTogglePlayed={onToggle} onPlayChapter={() => {}} onBack={() => {}} />);
+    render(<AuthorDetailView detail={detail} onTogglePlayed={onToggle} onPlayChapter={() => {}} onSetTags={() => {}} allTags={[]} onBack={() => {}} />);
     await userEvent.click(screen.getByLabelText("Mark 'Cool Story' played"));
     expect(onToggle).toHaveBeenCalledWith(100, true);
   });
 
   it("plays a chapter when its play button is clicked", async () => {
     const onPlay = vi.fn();
-    render(<AuthorDetailView detail={detail} onTogglePlayed={() => {}} onPlayChapter={onPlay} onBack={() => {}} />);
+    render(<AuthorDetailView detail={detail} onTogglePlayed={() => {}} onPlayChapter={onPlay} onSetTags={() => {}} allTags={[]} onBack={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "Play 'Cool Story'" }));
     expect(onPlay).toHaveBeenCalledWith(detail.works[0].chapters[0]);
+  });
+
+  it("renders the tag editor and reports tag changes", async () => {
+    const onSetTags = vi.fn();
+    const withTags = { ...detail, tags: ["cozy"] };
+    render(<AuthorDetailView detail={withTags} onTogglePlayed={() => {}} onPlayChapter={() => {}} onSetTags={onSetTags} allTags={["cozy", "calm"]} onBack={() => {}} />);
+    expect(screen.getByText("cozy")).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("Remove tag cozy"));
+    expect(onSetTags).toHaveBeenCalledWith([]);
   });
 });

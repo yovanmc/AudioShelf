@@ -170,6 +170,8 @@ export default function App() {
           detail={detail}
           onTogglePlayed={togglePlayed}
           onPlayChapter={playChapter}
+          onSetTags={() => {}}
+          allTags={[]}
           onBack={() => setRoute({ kind: "library" })}
         />
       );
