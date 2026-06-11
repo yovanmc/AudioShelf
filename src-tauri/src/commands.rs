@@ -18,9 +18,13 @@ pub fn init_db(app: &tauri::AppHandle) -> rusqlite::Connection {
 }
 
 #[tauri::command]
-pub fn scan_library(state: tauri::State<DbState>, root: String) -> Result<ScanResult, String> {
+pub fn scan_library(app: tauri::AppHandle, state: tauri::State<DbState>, root: String) -> Result<ScanResult, String> {
+    use tauri::Manager;
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    scan::scan_into(&conn, std::path::Path::new(&root)).map_err(|e| e.to_string())
+    let report = scan::scan_into(&conn, std::path::Path::new(&root)).map_err(|e| e.to_string())?;
+    // Allow the WebView <audio> element to read files under the library root only.
+    let _ = app.asset_protocol_scope().allow_directory(&root, true);
+    Ok(report)
 }
 
 #[tauri::command]
@@ -58,7 +62,23 @@ pub fn set_author_display_name(state: tauri::State<DbState>, author_id: i64, nam
     Ok(())
 }
 
+#[tauri::command]
+pub fn mark_chapter_finished(state: tauri::State<DbState>, chapter_id: i64, now_ms: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    mark_finished(&conn, chapter_id, now_ms).map_err(|e| e.to_string())
+}
+
 // ---- query helpers (pub so integration tests and the testing module can call them) ----
+
+/// Atomically mark a chapter played and record a play event at `now_ms`.
+pub(crate) fn mark_finished(conn: &rusqlite::Connection, chapter_id: i64, now_ms: i64) -> rusqlite::Result<()> {
+    conn.execute("UPDATE chapters SET played=1 WHERE id=?1", params![chapter_id])?;
+    conn.execute(
+        "INSERT INTO play_events(chapter_id, played_at) VALUES (?1, ?2)",
+        params![chapter_id, now_ms],
+    )?;
+    Ok(())
+}
 
 pub fn query_authors(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<AuthorRow>> {
     let mut stmt = conn.prepare(
@@ -179,5 +199,27 @@ mod tests {
         conn.execute("UPDATE chapters SET played=1 WHERE id=?1", params![ch]).unwrap();
         let authors = query_authors(&conn).unwrap();
         assert_eq!(authors[0].unplayed_count, 0);
+    }
+
+    #[test]
+    fn finishing_a_chapter_marks_played_and_records_event() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("A").join("X.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let detail = query_author_detail(&conn, query_authors(&conn).unwrap()[0].id).unwrap();
+        let ch = detail.works[0].chapters[0].id;
+
+        super::mark_finished(&conn, ch, 1_700_000_000_000).unwrap();
+
+        let played: i64 = conn.query_row("SELECT played FROM chapters WHERE id=?1", params![ch], |r| r.get(0)).unwrap();
+        assert_eq!(played, 1);
+        let events: i64 = conn.query_row(
+            "SELECT count(*) FROM play_events WHERE chapter_id=?1 AND played_at=1700000000000",
+            params![ch],
+            |r| r.get(0),
+        ).unwrap();
+        assert_eq!(events, 1);
     }
 }

@@ -34,6 +34,7 @@ pub fn run() {
             commands::get_authors,
             commands::get_author_detail,
             commands::set_chapter_played,
+            commands::mark_chapter_finished,
             commands::set_author_display_name
         ])
         .run(tauri::generate_context!())
