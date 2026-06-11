@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { DiscoveryWork } from "../lib/api";
 
 function WorkList(props: { works: DiscoveryWork[]; onOpenAuthor: (id: number) => void }) {
@@ -22,15 +21,15 @@ export function DiscoveryView(props: {
   forYou: DiscoveryWork[];
   allTags: string[];
   byTags: DiscoveryWork[];
+  picked: string[];
   onPickTags: (tags: string[]) => void;
   onOpenAuthor: (id: number) => void;
   onBack: () => void;
 }) {
-  const [picked, setPicked] = useState<string[]>([]);
+  const { picked } = props;
 
   function toggleTag(tag: string) {
     const next = picked.includes(tag) ? picked.filter((t) => t !== tag) : [...picked, tag];
-    setPicked(next);
     props.onPickTags(next);
   }
 
