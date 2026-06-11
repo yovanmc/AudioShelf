@@ -138,8 +138,12 @@ export default function App() {
             ? playerSteps({
                 openFirstAuthor,
                 playFirstChapter: async () => {
-                  const d = detailRef.current;
-                  const first = d?.works[0]?.chapters[0];
+                  // Self-contained: fetch directly rather than reading detailRef,
+                  // whose render from the prior step may not have committed yet.
+                  const list = await getAuthors();
+                  if (list.length === 0) return;
+                  const d = await getAuthorDetail(list[0].id);
+                  const first = d.works[0]?.chapters[0];
                   if (first) playChapter(first);
                 },
               })
