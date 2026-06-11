@@ -83,6 +83,7 @@ export default function App() {
       <AuthorDetailView
         detail={detail}
         onTogglePlayed={togglePlayed}
+        onPlayChapter={() => {}}
         onBack={() => setRoute({ kind: "library" })}
       />
     );
