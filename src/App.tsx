@@ -4,6 +4,7 @@ import {
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
   getAllTags, setAuthorTags, getDiscovery, getDiscoveryByTags,
   previewRenames, applyRenames, undoRenames,
+  setGroupingOverride, clearGroupingOverride,
   type AuthorRow, type AuthorDetail, type ChapterRow, type ScanResult, type DiscoveryWork,
   type RenameItem, type RenameResult,
 } from "./lib/api";
@@ -15,7 +16,7 @@ import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
 import { clampSeek } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { browseSteps, playerSteps, discoverySteps, renameSteps } from "./harness/walkthroughs";
+import { browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps } from "./harness/walkthroughs";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -117,6 +118,17 @@ export default function App() {
   async function togglePlayed(chapterId: number, played: boolean) {
     await setChapterPlayed(chapterId, played);
     if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+    await loadAuthors();
+  }
+
+  async function setGrouping(chapterId: number, baseTitle: string, chapterNo: number) {
+    const d = await setGroupingOverride(chapterId, baseTitle, chapterNo);
+    setDetail(d);
+    await loadAuthors();
+  }
+  async function clearGrouping(chapterId: number) {
+    const d = await clearGroupingOverride(chapterId);
+    setDetail(d);
     await loadAuthors();
   }
 
@@ -237,6 +249,27 @@ export default function App() {
                   setRenameItems(await previewRenames());
                 },
               })
+            : args.walkthrough === "grouping"
+            ? groupingSteps({
+                openFirstAuthor,
+                mergeDemo: async () => {
+                  const list = await getAuthors();
+                  if (list.length === 0) return;
+                  const d = await getAuthorDetail(list[0].id);
+                  const standalone = d.works.find((w) => w.baseTitle === "Another Standalone Tale");
+                  const ch = standalone?.chapters[0];
+                  if (ch) setDetail(await setGroupingOverride(ch.id, "Cool Story", 4));
+                },
+                resetDemo: async () => {
+                  const list = await getAuthors();
+                  if (list.length === 0) return;
+                  // The merged chapter now lives under "Cool Story"; find it by title.
+                  const d = await getAuthorDetail(list[0].id);
+                  const cool = d.works.find((w) => w.baseTitle === "Cool Story");
+                  const merged = cool?.chapters.find((c) => c.title === "Another Standalone Tale");
+                  if (merged) setDetail(await clearGroupingOverride(merged.id));
+                },
+              })
             : browseSteps({
                 showScanResult: async () => setRoute({ kind: "scan" }),
                 showLibrary: async () => setRoute({ kind: "library" }),
@@ -261,6 +294,8 @@ export default function App() {
           onTogglePlayed={togglePlayed}
           onPlayChapter={playChapter}
           onSetTags={setTags}
+          onSetGrouping={setGrouping}
+          onClearGrouping={clearGrouping}
           allTags={allTags}
           onBack={() => setRoute({ kind: "library" })}
         />
