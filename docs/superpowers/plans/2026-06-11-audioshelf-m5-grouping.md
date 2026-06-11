@@ -22,7 +22,7 @@
 - `src/App.tsx` — `openAuthor` loads detail via `getAuthorDetail`; `togglePlayed` pattern refreshes `setDetail` + `loadAuthors`; harness dispatch ternary keyed on `args.walkthrough` (browse/player/discovery/rename); `settle()` before capture.
 - `src/harness/walkthroughs.ts` — `walkthroughs` tuple + per-walkthrough `*Steps` builders. `src/harness/types.ts` — `Step { name, run }`.
 
-**Conventions:** Windows; cargo via `cmd /c "tools\dev-env.cmd cargo ..."` in the FOREGROUND with a LARGE timeout (300000 ms); `npm run build` before any `cargo tauri build`; commit per task, human author (`Yovan <yovanfly@gmail.com>`) + `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`, **no Codex trailer**.
+**Conventions:** Windows; cargo via `cmd /c "tools\dev-env.cmd cargo ..."` in the FOREGROUND with a LARGE timeout (300000 ms); `npm run build` before any `cargo tauri build`; commit per task, human author (`yovanmc <yovanmc@users.noreply.github.com>`) + `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`, **no Codex trailer**.
 
 **App ships NO stylesheet in v1** — render plain HTML controls, consistent with the rest of the app. Do not add CSS.
 
@@ -273,7 +273,7 @@ Expected: 4 passing.
 
 ```powershell
 git add src-tauri/src/regroup.rs src-tauri/src/lib.rs
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(grouping): regroup_author applies per-chapter overrides on the heuristic"
+git commit -m "feat(grouping): regroup_author applies per-chapter overrides on the heuristic"
 ```
 
 ---
@@ -329,7 +329,7 @@ Run: `cmd /c "tools\dev-env.cmd cargo test --manifest-path src-tauri\Cargo.toml 
 
 ```powershell
 git add src-tauri/src/scan.rs
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(grouping): scan re-applies saved grouping overrides per author"
+git commit -m "feat(grouping): scan re-applies saved grouping overrides per author"
 ```
 
 ---
@@ -432,7 +432,7 @@ Run: `cmd /c "tools\dev-env.cmd cargo test --manifest-path src-tauri\Cargo.toml 
 
 ```powershell
 git add src-tauri/src/commands.rs
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(grouping): set/clear_grouping_override commands return fresh AuthorDetail"
+git commit -m "feat(grouping): set/clear_grouping_override commands return fresh AuthorDetail"
 ```
 
 ---
@@ -471,7 +471,7 @@ Expected: everything green (existing + new regroup/scan/commands tests).
 
 ```powershell
 git add src-tauri/src/lib.rs
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(grouping): register override commands + export regroup_author for tests"
+git commit -m "feat(grouping): register override commands + export regroup_author for tests"
 ```
 
 ---
@@ -499,7 +499,7 @@ Expected: clean (App.tsx not wired yet, but these wrappers don't break anything)
 
 ```powershell
 git add src/lib/api.ts
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(grouping): api wrappers set/clearGroupingOverride"
+git commit -m "feat(grouping): api wrappers set/clearGroupingOverride"
 ```
 
 ---
@@ -671,7 +671,7 @@ Run: `npx vitest run src/views/AuthorDetailView.test.tsx`
 
 ```powershell
 git add src/views/AuthorDetailView.tsx src/views/AuthorDetailView.test.tsx
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(grouping): inline per-chapter work/chapter override editor"
+git commit -m "feat(grouping): inline per-chapter work/chapter override editor"
 ```
 
 ---
@@ -744,7 +744,7 @@ Expected: tsc clean; all tests pass.
 
 ```powershell
 git add src/App.tsx
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(grouping): wire AuthorDetailView override handlers + grouping harness branch"
+git commit -m "feat(grouping): wire AuthorDetailView override handlers + grouping harness branch"
 ```
 
 ---
@@ -787,7 +787,7 @@ Run: `npx tsc --noEmit`
 
 ```powershell
 git add src/harness/walkthroughs.ts
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(grouping): grouping harness walkthrough (before/merged/reset)"
+git commit -m "feat(grouping): grouping harness walkthrough (before/merged/reset)"
 ```
 
 > Order note: Task 7 imports `groupingSteps`, which this task defines. If you implement Task 7 before Task 8, `tsc` will error until Task 8 lands — that's fine; do them back-to-back and run the gates after Task 8.
@@ -852,7 +852,7 @@ Run: `cmd /c "tools\dev-env.cmd cargo test --manifest-path src-tauri\Cargo.toml 
 
 ```powershell
 git add src-tauri/tests/grouping_roundtrip.rs
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "test(grouping): end-to-end merge + reset round-trip"
+git commit -m "test(grouping): end-to-end merge + reset round-trip"
 ```
 
 ---
@@ -868,7 +868,7 @@ git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "test(grou
 
 ```powershell
 git add README.md
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "docs(grouping): README M5 grouping review section"
+git commit -m "docs(grouping): README M5 grouping review section"
 ```
 
 - [ ] **Step 3: Visual self-verification** (controller). Run the grouping walkthrough and inspect the three screenshots:

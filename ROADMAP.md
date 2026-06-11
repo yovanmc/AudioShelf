@@ -16,7 +16,7 @@ Windows desktop app for listening to a large library of short-form spoken audio 
 
 - Cargo via `cmd /c "tools\dev-env.cmd cargo ..."` in the FOREGROUND (large timeout); `npm run build` before any `cargo tauri build`.
 - Gates: `npx tsc --noEmit` · `npm test` · `cargo test` · `tools\verify.ps1 -Walkthrough <name>` (screenshot self-verification).
-- Commits: human author `Yovan <yovanfly@gmail.com>` + `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. **No Codex trailer.**
+- Commits: use the repo's configured git identity (`yovanmc <yovanmc@users.noreply.github.com>`) — never pass `-c user.email=...` overrides. Add trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. **No Codex trailer.**
 - CI: `build-and-test` on windows-latest. Merge PRs `--merge --delete-branch` from main; FOREGROUND `gh pr checks <PR#> --watch`.
 - App ships **no stylesheet** in v1 (intentionally unstyled).
 

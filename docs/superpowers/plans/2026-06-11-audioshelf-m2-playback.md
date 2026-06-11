@@ -113,7 +113,7 @@ Expected: compiles.
 - [ ] **Step 5: Commit.**
 
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: mark_chapter_finished command (played flag + play event)"
+git add -A; git commit -m "feat: mark_chapter_finished command (played flag + play event)"
 ```
 
 ---
@@ -203,7 +203,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit.**
 
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: pure playback helpers (seek clamp, time format, skip deltas)"
+git add -A; git commit -m "feat: pure playback helpers (seek clamp, time format, skip deltas)"
 ```
 
 ---
@@ -366,7 +366,7 @@ Expected: PASS (5 tests).
 - [ ] **Step 5: Commit.**
 
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: presentational now-playing PlayerBar"
+git add -A; git commit -m "feat: presentational now-playing PlayerBar"
 ```
 
 ---
@@ -391,7 +391,7 @@ Expected: no errors.
 - [ ] **Step 3: Commit.**
 
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: markChapterFinished invoke wrapper"
+git add -A; git commit -m "feat: markChapterFinished invoke wrapper"
 ```
 
 ---
@@ -512,7 +512,7 @@ Expected: PASS (3 tests).
 - [ ] **Step 5: Commit.**
 
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: per-chapter play button in author detail"
+git add -A; git commit -m "feat: per-chapter play button in author detail"
 ```
 
 ---
@@ -570,7 +570,7 @@ Expected: tsc clean; the runner tests still pass (they don't reference `playerSt
 - [ ] **Step 3: Commit.**
 
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: player harness walkthrough steps"
+git add -A; git commit -m "feat: player harness walkthrough steps"
 ```
 
 ---
@@ -799,7 +799,7 @@ Expected: tsc clean; all Vitest tests pass; `vite build` succeeds.
 - [ ] **Step 3: Commit.**
 
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: wire audio element, player state, and persistent PlayerBar"
+git add -A; git commit -m "feat: wire audio element, player state, and persistent PlayerBar"
 ```
 
 ---
@@ -829,7 +829,7 @@ Expected: `WALKTHROUGH OK`; screenshots in `.shots\player\`: `01-author-detail.p
 - [ ] **Step 4: Commit** any fixes.
 
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "fix: player UI defects found in visual verification"
+git add -A; git commit -m "fix: player UI defects found in visual verification"
 ```
 (If no fixes were needed, skip this commit.)
 
@@ -872,7 +872,7 @@ Expected: build OK; `WALKTHROUGH OK`; `02-player.png` still shows the bar with t
 - [ ] **Step 4: Commit.**
 
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "harden: restrict asset-protocol scope to the scanned library root"
+git add -A; git commit -m "harden: restrict asset-protocol scope to the scanned library root"
 ```
 
 ---
@@ -887,7 +887,7 @@ git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -
 - [ ] **Step 2: Commit.**
 
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "docs: README playback (M2) update"
+git add -A; git commit -m "docs: README playback (M2) update"
 ```
 
 ---

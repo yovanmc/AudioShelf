@@ -135,7 +135,7 @@ Expected: existing + `tags_round_trip_and_dedupe` pass.
 
 - [ ] **Step 5: Commit.**
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: author tags (model + get_all_tags/set_author_tags commands)"
+git add -A; git commit -m "feat: author tags (model + get_all_tags/set_author_tags commands)"
 ```
 
 ---
@@ -348,7 +348,7 @@ Expected: all pass (M1+M2 tests + the new discovery tests).
 
 - [ ] **Step 6: Commit.**
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: discovery queries (for-you, by-tags, more-from-author)"
+git add -A; git commit -m "feat: discovery queries (for-you, by-tags, more-from-author)"
 ```
 
 ---
@@ -383,7 +383,7 @@ export interface AuthorDetail { id: number; name: string; tags: string[]; works:
 
 - [ ] **Step 3: Commit.**
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: tags + discovery api wrappers and types"
+git add -A; git commit -m "feat: tags + discovery api wrappers and types"
 ```
 
 ---
@@ -493,7 +493,7 @@ export function TagEditor(props: {
 
 - [ ] **Step 5: Commit.**
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: TagEditor component with autocomplete"
+git add -A; git commit -m "feat: TagEditor component with autocomplete"
 ```
 
 ---
@@ -568,7 +568,7 @@ export function AuthorDetailView(props: {
 
 - [ ] **Step 5: Commit.**
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: author tag editing in the author view"
+git add -A; git commit -m "feat: author tag editing in the author view"
 ```
 
 ---
@@ -682,7 +682,7 @@ export function DiscoveryView(props: {
 
 - [ ] **Step 5: Commit.**
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: DiscoveryView (For you + Pick a tag)"
+git add -A; git commit -m "feat: DiscoveryView (For you + Pick a tag)"
 ```
 
 ---
@@ -742,7 +742,7 @@ export function LibraryView(props: {
 
 - [ ] **Step 5: Commit.**
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: Discover entry point in the library view"
+git add -A; git commit -m "feat: Discover entry point in the library view"
 ```
 
 ---
@@ -774,7 +774,7 @@ export const walkthroughs = ["browse", "player", "discovery"] as const;
 
 - [ ] **Step 3: Commit.**
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: discovery harness walkthrough steps"
+git add -A; git commit -m "feat: discovery harness walkthrough steps"
 ```
 
 ---
@@ -872,7 +872,7 @@ Expected: tsc clean; all Vitest tests pass; vite build succeeds. If tsc flags a 
 
 - [ ] **Step 3: Commit.**
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat: wire discovery route, tag editing, and discovery walkthrough into App"
+git add -A; git commit -m "feat: wire discovery route, tag editing, and discovery walkthrough into App"
 ```
 
 ---
@@ -900,7 +900,7 @@ powershell -ExecutionPolicy Bypass -File tools\verify.ps1 -Walkthrough player -S
 - [ ] **Step 1: Update README** — move M3 to Shipped; add a "Tags & Discovery" section (tag authors; For-you / Pick-a-tag / discovery); mention the `discovery` walkthrough; link the M3 plan.
 - [ ] **Step 2: Commit.**
 ```powershell
-git add -A; git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "docs: README tags & discovery (M3) update"
+git add -A; git commit -m "docs: README tags & discovery (M3) update"
 ```
 - [ ] **Step 3: Finish per the runbook** (controller): final gates (tsc, npm test, cargo test) → push `m3-discovery` → `gh pr create` → **foreground** `gh pr checks <PR#> --watch` → merge from main with `--merge --delete-branch` → sync main → update the runbook Progress Log.
 

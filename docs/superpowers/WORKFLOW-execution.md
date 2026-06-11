@@ -262,7 +262,7 @@ authoritative scope; M7 completes it.
 
 ## 8. Commit & authorship conventions
 
-- Keep the human (`Yovan <yovanfly@gmail.com>`) as git author/committer.
+- Use the repo's configured git identity (`yovanmc <yovanmc@users.noreply.github.com>`) as git author/committer — never override `user.email` per-commit (no `-c user.email=...`).
 - Append the Claude trailer to AI-generated commits:
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 - **No Codex trailer** — AudioShelf's plans are Claude-authored, not Codex-derived (this differs from

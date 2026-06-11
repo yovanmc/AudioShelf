@@ -19,7 +19,7 @@
 - `src/harness/walkthroughs.ts` — `browseSteps`/`playerSteps`/`discoverySteps`, `walkthroughs` tuple. `src/harness/runner.ts` — `runSteps(steps, dir, capture)`. `src/harness/types.ts` — `Step { name, run }`.
 - `tools/verify.ps1` — `-Walkthrough <name>`; generic, needs no change for a new walkthrough.
 
-**Conventions:** Windows; cargo via `cmd /c "tools\dev-env.cmd cargo ..."` in the FOREGROUND with a large timeout; `npm run build` before cargo; commit per task, human author (`Yovan <yovanfly@gmail.com>`) + `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`, **no Codex trailer**.
+**Conventions:** Windows; cargo via `cmd /c "tools\dev-env.cmd cargo ..."` in the FOREGROUND with a large timeout; `npm run build` before cargo; commit per task, human author (`yovanmc <yovanmc@users.noreply.github.com>`) + `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`, **no Codex trailer**.
 
 **Out of scope (M5, separate plan):** the grouping-override review UI that writes `grouping_overrides` (merge/split/reassign/set-base-title). M4 renames files to match the *current* detected grouping; correcting wrong grouping is M5.
 
@@ -120,7 +120,7 @@ Expected: 2 passing.
 
 ```powershell
 git add src-tauri/src/rename.rs src-tauri/src/lib.rs src-tauri/Cargo.toml
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(rename): canonical_name + sanitize pure helpers"
+git commit -m "feat(rename): canonical_name + sanitize pure helpers"
 ```
 
 ---
@@ -321,7 +321,7 @@ Expected: all passing.
 
 ```powershell
 git add src-tauri/src/rename.rs
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(rename): build_plan with noop/conflict classification"
+git commit -m "feat(rename): build_plan with noop/conflict classification"
 ```
 
 ---
@@ -473,7 +473,7 @@ Run: `cmd /c "tools\dev-env.cmd cargo test --manifest-path src-tauri\Cargo.toml 
 
 ```powershell
 git add src-tauri/src/rename.rs
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(rename): defensive crash-safe execute with JSONL manifest"
+git commit -m "feat(rename): defensive crash-safe execute with JSONL manifest"
 ```
 
 ---
@@ -571,7 +571,7 @@ pub fn undo(conn: &Connection, manifest_path: &Path) -> rusqlite::Result<UndoOut
 
 ```powershell
 git add src-tauri/src/rename.rs
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(rename): tolerant idempotent undo from manifest"
+git commit -m "feat(rename): tolerant idempotent undo from manifest"
 ```
 
 ---
@@ -621,7 +621,7 @@ Expected: builds (warnings about unused structs are fine until Task 6).
 
 ```powershell
 git add src-tauri/src/model.rs
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(rename): model structs RenameItem/RenameResult/UndoResult"
+git commit -m "feat(rename): model structs RenameItem/RenameResult/UndoResult"
 ```
 
 ---
@@ -710,7 +710,7 @@ Run: `cmd /c "tools\dev-env.cmd cargo build --manifest-path src-tauri\Cargo.toml
 
 ```powershell
 git add src-tauri/src/commands.rs
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(rename): preview/apply/undo Tauri commands"
+git commit -m "feat(rename): preview/apply/undo Tauri commands"
 ```
 
 ---
@@ -748,7 +748,7 @@ Run: `cmd /c "tools\dev-env.cmd cargo build --manifest-path src-tauri\Cargo.toml
 
 ```powershell
 git add src-tauri/src/lib.rs
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(rename): register commands and export test helpers"
+git commit -m "feat(rename): register commands and export test helpers"
 ```
 
 ---
@@ -789,7 +789,7 @@ Expected: clean.
 
 ```powershell
 git add src/lib/api.ts
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(rename): api types and command wrappers"
+git commit -m "feat(rename): api types and command wrappers"
 ```
 
 ---
@@ -931,7 +931,7 @@ Run: `npx vitest run src/views/RenameView.test.tsx`
 
 ```powershell
 git add src/views/RenameView.tsx src/views/RenameView.test.tsx
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(rename): RenameView preview/confirm/undo component"
+git commit -m "feat(rename): RenameView preview/confirm/undo component"
 ```
 
 ---
@@ -974,7 +974,7 @@ Run: `npx vitest run src/views/LibraryView.test.tsx`
 
 ```powershell
 git add src/views/LibraryView.tsx src/views/LibraryView.test.tsx
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(rename): Rename tool entry button in LibraryView"
+git commit -m "feat(rename): Rename tool entry button in LibraryView"
 ```
 
 ---
@@ -1016,7 +1016,7 @@ Run: `npx tsc --noEmit`
 
 ```powershell
 git add src/harness/walkthroughs.ts
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(rename): rename harness walkthrough (preview/apply/undo)"
+git commit -m "feat(rename): rename harness walkthrough (preview/apply/undo)"
 ```
 
 ---
@@ -1127,7 +1127,7 @@ Expected: tsc clean; all tests pass.
 
 ```powershell
 git add src/App.tsx
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "feat(rename): wire RenameView route, handlers, and harness branch"
+git commit -m "feat(rename): wire RenameView route, handlers, and harness branch"
 ```
 
 ---
@@ -1191,7 +1191,7 @@ Run: `cmd /c "tools\dev-env.cmd cargo test --manifest-path src-tauri\Cargo.toml 
 
 ```powershell
 git add src-tauri/tests/rename_roundtrip.rs
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "test(rename): end-to-end rename + undo round-trip"
+git commit -m "test(rename): end-to-end rename + undo round-trip"
 ```
 
 ---
@@ -1209,7 +1209,7 @@ git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "test(rena
 
 ```powershell
 git add README.md
-git -c user.name="Yovan" -c user.email="yovanfly@gmail.com" commit -m "docs(rename): README M4 rename tool section"
+git commit -m "docs(rename): README M4 rename tool section"
 ```
 
 - [ ] **Step 3: Visual self-verification** (controller). Run the rename walkthrough and inspect all three screenshots:

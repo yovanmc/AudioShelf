@@ -11,7 +11,7 @@
 **Conventions (from [ROADMAP.md](../../../ROADMAP.md)):**
 - Cargo via `cmd /c "tools\dev-env.cmd cargo ..."` in the FOREGROUND (large timeout). `npm run build` before any `cargo tauri build`.
 - Gates: `npx tsc --noEmit` · `npm test` · `cmd /c "tools\dev-env.cmd cargo test"` · `tools\verify.ps1 -Walkthrough <name>`.
-- Commits: human author `Yovan <yovanfly@gmail.com>` + trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. **No Codex trailer.**
+- Commits: use the repo's configured git identity (`yovanmc <yovanmc@users.noreply.github.com>`) — never pass `-c user.email=...` overrides. Add trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. **No Codex trailer.**
 - App ships **no stylesheet** in v1 (intentionally unstyled) — do not add CSS.
 - Views never call `invoke` directly; they receive callback props (keeps them unit-testable without mocking Tauri). All IPC lives in `src/lib/api.ts`.
 - Tauri serializes Rust `snake_case` ↔ JS `camelCase` automatically; command arg objects use camelCase keys.
