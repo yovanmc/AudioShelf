@@ -3,16 +3,19 @@ import {
   getLaunchArgs, scanLibrary, getAuthors, getAuthorDetail,
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
   getAllTags, setAuthorTags, getDiscovery, getDiscoveryByTags,
+  previewRenames, applyRenames, undoRenames,
   type AuthorRow, type AuthorDetail, type ChapterRow, type ScanResult, type DiscoveryWork,
+  type RenameItem, type RenameResult,
 } from "./lib/api";
 import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
 import { DiscoveryView } from "./views/DiscoveryView";
+import { RenameView } from "./views/RenameView";
 import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
 import { clampSeek } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { browseSteps, playerSteps, discoverySteps } from "./harness/walkthroughs";
+import { browseSteps, playerSteps, discoverySteps, renameSteps } from "./harness/walkthroughs";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -26,7 +29,8 @@ type Route =
   | { kind: "scan" }
   | { kind: "library" }
   | { kind: "author" }
-  | { kind: "discovery" };
+  | { kind: "discovery" }
+  | { kind: "rename" };
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ kind: "loading" });
@@ -37,6 +41,11 @@ export default function App() {
   const [forYou, setForYou] = useState<DiscoveryWork[]>([]);
   const [byTags, setByTags] = useState<DiscoveryWork[]>([]);
   const [pickedTags, setPickedTags] = useState<string[]>([]);
+
+  // ---- rename state ----
+  const [renameItems, setRenameItems] = useState<RenameItem[]>([]);
+  const [renameResult, setRenameResult] = useState<RenameResult | null>(null);
+  const lastManifestRef = useRef<string | null>(null);
 
   // ---- player state ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -63,6 +72,28 @@ export default function App() {
     await setAuthorTags(detailRef.current.id, tags);
     setDetail(await getAuthorDetail(detailRef.current.id));
     await refreshTags();
+  }
+
+  async function openRename() {
+    setRenameResult(null);
+    setRenameItems(await previewRenames());
+    setRoute({ kind: "rename" });
+  }
+  async function reloadRenamePreview() {
+    setRenameResult(null);
+    setRenameItems(await previewRenames());
+  }
+  async function doApplyRenames(chapterIds: number[]) {
+    const res = await applyRenames(chapterIds, Date.now());
+    lastManifestRef.current = res.manifestPath;
+    setRenameResult(res);
+    setRenameItems(await previewRenames()); // reflect new on-disk names
+  }
+  async function doUndoRenames() {
+    if (!renameResult) return;
+    await undoRenames(renameResult.manifestPath);
+    setRenameResult(null);
+    setRenameItems(await previewRenames());
   }
 
   async function openDiscovery() {
@@ -188,6 +219,24 @@ export default function App() {
                 openDiscovery,
                 pickFirstTag: async () => { await pickTags(["cozy"]); },
               })
+            : args.walkthrough === "rename"
+            ? renameSteps({
+                openRename,
+                applyAll: async () => {
+                  const items = await previewRenames();
+                  const okIds = items.filter((i) => i.status === "ok").map((i) => i.chapterId);
+                  const res = await applyRenames(okIds, Date.now());
+                  lastManifestRef.current = res.manifestPath;
+                  setRenameResult(res);
+                  setRenameItems(await previewRenames());
+                  setRoute({ kind: "rename" });
+                },
+                undoLast: async () => {
+                  if (lastManifestRef.current) await undoRenames(lastManifestRef.current);
+                  setRenameResult(null);
+                  setRenameItems(await previewRenames());
+                },
+              })
             : browseSteps({
                 showScanResult: async () => setRoute({ kind: "scan" }),
                 showLibrary: async () => setRoute({ kind: "library" }),
@@ -230,7 +279,19 @@ export default function App() {
         />
       );
     }
-    return <LibraryView authors={authors} onOpenAuthor={openAuthor} onOpenDiscovery={openDiscovery} />;
+    if (route.kind === "rename") {
+      return (
+        <RenameView
+          items={renameItems}
+          result={renameResult}
+          onApply={doApplyRenames}
+          onUndo={doUndoRenames}
+          onReload={reloadRenamePreview}
+          onBack={() => setRoute({ kind: "library" })}
+        />
+      );
+    }
+    return <LibraryView authors={authors} onOpenAuthor={openAuthor} onOpenDiscovery={openDiscovery} onOpenRename={openRename} />;
   }
 
   return (
