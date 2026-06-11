@@ -82,6 +82,19 @@ Another Standalone Tale.wav   → standalone work (no chapter number)
 
 ---
 
+## Grouping Review (Milestone 5)
+
+The grouping heuristic is fuzzy, so it's **reviewable and correctable** right on the author view. Each chapter has an inline **Work title** and **Chapter #** field plus a **Reset** button:
+
+- **Merge** two works → type the same Work title on their chapters.
+- **Split** a chapter into its own work → give it a new, unique Work title.
+- **Reassign** a chapter's position → change its Chapter #.
+- **Reset** → drop the override and fall back to the heuristic.
+
+Corrections are stored in the `grouping_overrides` table and applied on top of the heuristic by a DB-only regroup — they are **re-applied on every scan and never written to disk**, so your audio files are untouched. (Known v1 limit: renaming an overridden file via the rename tool orphans its override, since overrides are keyed on the file path.)
+
+---
+
 ## Supported Audio Formats
 
 | Format | Extensions |
@@ -199,9 +212,12 @@ The `tools\verify.ps1` script provides an end-to-end smoke test:
 
 # Verify the rename tool (preview → apply → undo round-trip)
 .\tools\verify.ps1 -Walkthrough rename
+
+# Verify grouping review (merge a work via override → reset)
+.\tools\verify.ps1 -Walkthrough grouping
 ```
 
-Available walkthroughs: `browse` (scan result → library → author detail), `player` (author detail → now-playing bar), `discovery` (seed tags + play history → For-you → pick a tag), and `rename` (preview diff → apply all → undo, leaving the fixture pristine).
+Available walkthroughs: `browse` (scan result → library → author detail), `player` (author detail → now-playing bar), `discovery` (seed tags + play history → For-you → pick a tag), `rename` (preview diff → apply all → undo, leaving the fixture pristine), and `grouping` (merge a work via a per-chapter override → reset, leaving the grouping pristine).
 
 Screenshots are saved to `.shots\<walkthrough>\`. See [`tools/README.md`](tools/README.md) for full harness documentation.
 
@@ -215,10 +231,13 @@ Screenshots are saved to `.shots\<walkthrough>\`. See [`tools/README.md`](tools/
 | **M2 — Playback** | Shipped | Now-playing bar: play/pause, seek, skip ±15/30s, volume, sleep timer; auto-mark played on finish |
 | **M3 — Tags & Discovery** | Shipped | Author tags with autocomplete; Discover panel (For-you, pick-a-tag, more-from-author) |
 | **M4 — Rename tool** | Shipped | Opt-in, defensive, reversible batch rename to canonical filenames (preview diff + conflict-safe + crash-safe undo manifest) |
+| **M5 — Grouping Review** | Shipped | Inline per-chapter Work/Chapter# correction (merge/split/reassign/reset) via DB-only overrides, re-applied on scan, never written to disk |
+
+See [`ROADMAP.md`](ROADMAP.md) for the full roadmap (incl. M6 settings/library-root picker, M7 scale & search polish).
 
 Design spec: [`docs/superpowers/specs/2026-06-11-audioshelf-design.md`](docs/superpowers/specs/2026-06-11-audioshelf-design.md)
 
-Implementation plans: [M1 — Foundation](docs/superpowers/plans/2026-06-11-audioshelf-foundation.md) · [M2 — Playback](docs/superpowers/plans/2026-06-11-audioshelf-m2-playback.md) · [M3 — Tags & Discovery](docs/superpowers/plans/2026-06-11-audioshelf-m3-discovery.md) · [M4 — Rename Tool](docs/superpowers/plans/2026-06-11-audioshelf-m4-rename.md)
+Implementation plans: [M1 — Foundation](docs/superpowers/plans/2026-06-11-audioshelf-foundation.md) · [M2 — Playback](docs/superpowers/plans/2026-06-11-audioshelf-m2-playback.md) · [M3 — Tags & Discovery](docs/superpowers/plans/2026-06-11-audioshelf-m3-discovery.md) · [M4 — Rename Tool](docs/superpowers/plans/2026-06-11-audioshelf-m4-rename.md) · [M5 — Grouping Review](docs/superpowers/plans/2026-06-11-audioshelf-m5-grouping.md)
 
 ---
 
