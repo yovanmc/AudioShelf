@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import {
   getLaunchArgs, scanLibrary, getAuthors, getAuthorDetail,
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
-  type AuthorRow, type AuthorDetail, type ChapterRow, type ScanResult,
+  getAllTags, setAuthorTags, getDiscovery, getDiscoveryByTags,
+  type AuthorRow, type AuthorDetail, type ChapterRow, type ScanResult, type DiscoveryWork,
 } from "./lib/api";
 import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
+import { DiscoveryView } from "./views/DiscoveryView";
 import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
 import { clampSeek } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { browseSteps, playerSteps } from "./harness/walkthroughs";
+import { browseSteps, playerSteps, discoverySteps } from "./harness/walkthroughs";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -23,13 +25,17 @@ type Route =
   | { kind: "loading" }
   | { kind: "scan" }
   | { kind: "library" }
-  | { kind: "author" };
+  | { kind: "author" }
+  | { kind: "discovery" };
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ kind: "loading" });
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [authors, setAuthors] = useState<AuthorRow[]>([]);
   const [detail, setDetail] = useState<AuthorDetail | null>(null);
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [forYou, setForYou] = useState<DiscoveryWork[]>([]);
+  const [byTags, setByTags] = useState<DiscoveryWork[]>([]);
 
   // ---- player state ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -47,6 +53,26 @@ export default function App() {
 
   async function loadAuthors() {
     setAuthors(await getAuthors());
+  }
+
+  async function refreshTags() { setAllTags(await getAllTags()); }
+
+  async function setTags(tags: string[]) {
+    if (!detailRef.current) return;
+    await setAuthorTags(detailRef.current.id, tags);
+    setDetail(await getAuthorDetail(detailRef.current.id));
+    await refreshTags();
+  }
+
+  async function openDiscovery() {
+    setForYou(await getDiscovery());
+    await refreshTags();
+    setByTags([]);
+    setRoute({ kind: "discovery" });
+  }
+
+  async function pickTags(tags: string[]) {
+    setByTags(tags.length === 0 ? [] : await getDiscoveryByTags(tags));
   }
 
   async function openAuthor(id: number) {
@@ -127,6 +153,7 @@ export default function App() {
       } else {
         await loadAuthors();
       }
+      await refreshTags();
 
       if (args.autostart && args.walkthrough) {
         const openFirstAuthor = async () => {
@@ -135,17 +162,28 @@ export default function App() {
         };
         const steps =
           args.walkthrough === "player"
-            ? playerSteps({
-                openFirstAuthor,
-                playFirstChapter: async () => {
-                  // Self-contained: fetch directly rather than reading detailRef,
-                  // whose render from the prior step may not have committed yet.
+            ? playerSteps({ openFirstAuthor, playFirstChapter: async () => {
+                const list = await getAuthors();
+                if (list.length === 0) return;
+                const d = await getAuthorDetail(list[0].id);
+                const first = d.works[0]?.chapters[0];
+                if (first) playChapter(first);
+              } })
+            : args.walkthrough === "discovery"
+            ? discoverySteps({
+                // Seed tags + a play event so For-you and Pick-a-tag have data.
+                seed: async () => {
                   const list = await getAuthors();
-                  if (list.length === 0) return;
-                  const d = await getAuthorDetail(list[0].id);
-                  const first = d.works[0]?.chapters[0];
-                  if (first) playChapter(first);
+                  for (const a of list) await setAuthorTags(a.id, ["cozy"]);
+                  if (list.length > 0) {
+                    const d = await getAuthorDetail(list[0].id);
+                    const ch = d.works[0]?.chapters[0];
+                    if (ch) { await markChapterFinished(ch.id, Date.now()); }
+                  }
+                  await refreshTags();
                 },
+                openDiscovery,
+                pickFirstTag: async () => { await pickTags(["cozy"]); },
               })
             : browseSteps({
                 showScanResult: async () => setRoute({ kind: "scan" }),
@@ -170,13 +208,25 @@ export default function App() {
           detail={detail}
           onTogglePlayed={togglePlayed}
           onPlayChapter={playChapter}
-          onSetTags={() => {}}
-          allTags={[]}
+          onSetTags={setTags}
+          allTags={allTags}
           onBack={() => setRoute({ kind: "library" })}
         />
       );
     }
-    return <LibraryView authors={authors} onOpenAuthor={openAuthor} onOpenDiscovery={() => {}} />;
+    if (route.kind === "discovery") {
+      return (
+        <DiscoveryView
+          forYou={forYou}
+          allTags={allTags}
+          byTags={byTags}
+          onPickTags={pickTags}
+          onOpenAuthor={openAuthor}
+          onBack={() => setRoute({ kind: "library" })}
+        />
+      );
+    }
+    return <LibraryView authors={authors} onOpenAuthor={openAuthor} onOpenDiscovery={openDiscovery} />;
   }
 
   return (
