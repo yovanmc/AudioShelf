@@ -11,6 +11,17 @@ entire workflow done," chain milestones **continuously** — after merging one, 
 next (sync main, branch, plan, execute…) until all are merged, without stopping to check in. Never
 stall at the CI step waiting for a prompt (see §6).
 
+**Model-tiered two-phase execution (cost control):** the user prefers writing plans in **Opus** and
+executing them in **Sonnet** (Opus's value is planning/judgment; execution doesn't need it; a long
+Opus session also compounds cost). The cycle: **Phase A (Opus)** writes a fully self-contained plan,
+commits+pushes it, then **PINGs the user** (PushNotification) "plan ready — /clear + /model sonnet"
+and STOPS. **Phase B (Sonnet)** executes this runbook against that plan end-to-end, then **PINGs the
+user** "milestone merged & CI-green — /clear + /model opus for the next plan" and STOPS. **The session
+that finishes a phase sends the handoff ping** — this is how the user knows when to switch model/clear
+context without watching. (The assistant cannot run `/model` itself; the ping prompts the user's one
+manual switch.) If a single session is asked to do everything (no model switch), skip the pings and
+just chain per the Override above. See memory `workflow-two-phase-plan-execute` for the generic form.
+
 **Authoritative inputs:**
 - Design spec: `docs/superpowers/specs/2026-06-11-audioshelf-design.md`
 - Per-milestone plans: `docs/superpowers/plans/2026-06-11-audioshelf-*.md` (M1 exists; write M2–M4 with
