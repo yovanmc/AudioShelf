@@ -1,3 +1,4 @@
+mod db;
 mod natsort;
 mod grouping;
 
