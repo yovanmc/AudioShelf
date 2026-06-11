@@ -6,6 +6,7 @@ export function LibraryView(props: {
   authors: AuthorRow[];
   onOpenAuthor: (id: number) => void;
   onOpenDiscovery: () => void;
+  onOpenRename: () => void;
 }) {
   const [query, setQuery] = useState("");
   const shown = useMemo(
@@ -15,6 +16,7 @@ export function LibraryView(props: {
   return (
     <div className="library">
       <button onClick={props.onOpenDiscovery}>Discover</button>
+      <button onClick={props.onOpenRename}>Rename tool</button>
       <input placeholder="Search authors" value={query} onChange={(e) => setQuery(e.target.value)} />
       <ul>
         {shown.map((a) => (
