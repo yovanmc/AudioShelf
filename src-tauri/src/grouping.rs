@@ -11,9 +11,12 @@ pub struct Parsed {
     pub base: String,
     pub chapter_no: u32,
     pub had_number: bool,
+    /// Original filename stem as supplied by the caller.
+    pub original: String,
 }
 
 /// Parse one filename stem (without extension).
+/// The `original` field is left empty; callers that need it set it separately.
 pub fn parse_stem(stem: &str) -> Parsed {
     let tokens: Vec<&str> = stem.split_whitespace().collect();
     for (i, tok) in tokens.iter().enumerate() {
@@ -24,17 +27,20 @@ pub fn parse_stem(stem: &str) -> Parsed {
             if n >= 2 {
                 let base = tokens[..i].join(" ");
                 if !base.is_empty() {
-                    return Parsed { base, chapter_no: n, had_number: true };
+                    return Parsed { base, chapter_no: n, had_number: true, original: String::new() };
                 }
             }
         }
     }
-    Parsed { base: stem.trim().to_string(), chapter_no: 1, had_number: false }
+    Parsed { base: stem.trim().to_string(), chapter_no: 1, had_number: false, original: String::new() }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Chapter {
     pub stem: String,
+    /// The original filename stem (without extension) as it appears on disk.
+    /// Use this for file-path lookup; `stem` is the canonical display form.
+    pub original_stem: String,
     pub chapter_no: u32,
 }
 
@@ -59,6 +65,7 @@ pub fn group_author(stems: &[String]) -> Vec<Work> {
             base: p.base.clone(),
             chapter_no: p.chapter_no,
             had_number: p.had_number,
+            original: stem.clone(),
         });
     }
 
@@ -76,7 +83,7 @@ pub fn group_author(stems: &[String]) -> Vec<Work> {
                 };
                 works.push(Work {
                     base_title: full.clone(),
-                    chapters: vec![Chapter { stem: full, chapter_no: 1 }],
+                    chapters: vec![Chapter { stem: full, original_stem: p.original.clone(), chapter_no: 1 }],
                 });
             } else {
                 let stem = if p.had_number {
@@ -85,11 +92,11 @@ pub fn group_author(stems: &[String]) -> Vec<Work> {
                     p.base.clone()
                 };
                 if let Some(w) = works.iter_mut().find(|w| w.base_title == *base && multi) {
-                    w.chapters.push(Chapter { stem, chapter_no: p.chapter_no });
+                    w.chapters.push(Chapter { stem, original_stem: p.original.clone(), chapter_no: p.chapter_no });
                 } else {
                     works.push(Work {
                         base_title: base.clone(),
-                        chapters: vec![Chapter { stem, chapter_no: p.chapter_no }],
+                        chapters: vec![Chapter { stem, original_stem: p.original.clone(), chapter_no: p.chapter_no }],
                     });
                 }
             }
@@ -107,9 +114,9 @@ mod tests {
 
     #[test]
     fn parses_base_and_chapter() {
-        assert_eq!(parse_stem("Cool Story"), Parsed { base: "Cool Story".into(), chapter_no: 1, had_number: false });
-        assert_eq!(parse_stem("Cool Story 2 the sequel"), Parsed { base: "Cool Story".into(), chapter_no: 2, had_number: true });
-        assert_eq!(parse_stem("Cool Story 3 finale"), Parsed { base: "Cool Story".into(), chapter_no: 3, had_number: true });
+        assert_eq!(parse_stem("Cool Story"), Parsed { base: "Cool Story".into(), chapter_no: 1, had_number: false, original: String::new() });
+        assert_eq!(parse_stem("Cool Story 2 the sequel"), Parsed { base: "Cool Story".into(), chapter_no: 2, had_number: true, original: String::new() });
+        assert_eq!(parse_stem("Cool Story 3 finale"), Parsed { base: "Cool Story".into(), chapter_no: 3, had_number: true, original: String::new() });
     }
 
     #[test]
