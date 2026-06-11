@@ -44,6 +44,25 @@ Discovery is computed entirely from the existing `author_tags` and `play_events`
 
 ---
 
+## Opt-in Rename Tool (Milestone 4)
+
+A separate **Rename tool** screen (reached from the library, off by default — the app is fully usable without ever opening it) normalises messy filenames to a canonical form derived from the detected grouping:
+
+- `Cool Story 2 the sequel.mp3` → `Cool Story 2.mp3`
+- `Cool Story.mp3`, `Area 51.wav`, `Another Standalone Tale.wav` → unchanged ("already clean")
+
+It always shows a **preview diff** of current → proposed names first. Each row is classified:
+
+- **rename** — a real, safe change.
+- **already clean** — the name is already canonical; skipped.
+- **conflict** — the target name is already taken (another file on disk, or two files that would collide); **never** renamed, never overwritten.
+
+Nothing touches disk until you click **Rename N files**. Renames are performed **defensively and crash-safely**: every intended move is written to a JSONL undo manifest *before* the file is touched, the source/target are re-validated at the moment of rename, and each file is independent (one failure never corrupts the batch). An **Undo** button then rolls the whole batch back. Undo is *tolerant* — it only reverses a move when the new name exists and the original is free — so a crash at any point is fully recoverable, and undoing twice is harmless. The DB's `file_path`/`raw_filename` stay in sync with disk throughout.
+
+This is the **only** part of AudioShelf that ever modifies your audio files, and only when you explicitly confirm.
+
+---
+
 ## Filename Grouping Convention
 
 AudioShelf groups files under one author by detecting a trailing chapter number in the filename stem. The rule is:
@@ -177,9 +196,12 @@ The `tools\verify.ps1` script provides an end-to-end smoke test:
 
 # Verify the discovery panel (tags → For-you → pick-a-tag)
 .\tools\verify.ps1 -Walkthrough discovery
+
+# Verify the rename tool (preview → apply → undo round-trip)
+.\tools\verify.ps1 -Walkthrough rename
 ```
 
-Available walkthroughs: `browse` (scan result → library → author detail), `player` (author detail → now-playing bar), and `discovery` (seed tags + play history → For-you → pick a tag).
+Available walkthroughs: `browse` (scan result → library → author detail), `player` (author detail → now-playing bar), `discovery` (seed tags + play history → For-you → pick a tag), and `rename` (preview diff → apply all → undo, leaving the fixture pristine).
 
 Screenshots are saved to `.shots\<walkthrough>\`. See [`tools/README.md`](tools/README.md) for full harness documentation.
 
@@ -192,11 +214,11 @@ Screenshots are saved to `.shots\<walkthrough>\`. See [`tools/README.md`](tools/
 | **M1 — Foundation** | Shipped | Scan, group, browse, played markers |
 | **M2 — Playback** | Shipped | Now-playing bar: play/pause, seek, skip ±15/30s, volume, sleep timer; auto-mark played on finish |
 | **M3 — Tags & Discovery** | Shipped | Author tags with autocomplete; Discover panel (For-you, pick-a-tag, more-from-author) |
-| **M4 — Rename tool** | Planned | Opt-in batch rename to normalise filenames |
+| **M4 — Rename tool** | Shipped | Opt-in, defensive, reversible batch rename to canonical filenames (preview diff + conflict-safe + crash-safe undo manifest) |
 
 Design spec: [`docs/superpowers/specs/2026-06-11-audioshelf-design.md`](docs/superpowers/specs/2026-06-11-audioshelf-design.md)
 
-Implementation plans: [M1 — Foundation](docs/superpowers/plans/2026-06-11-audioshelf-foundation.md) · [M2 — Playback](docs/superpowers/plans/2026-06-11-audioshelf-m2-playback.md) · [M3 — Tags & Discovery](docs/superpowers/plans/2026-06-11-audioshelf-m3-discovery.md)
+Implementation plans: [M1 — Foundation](docs/superpowers/plans/2026-06-11-audioshelf-foundation.md) · [M2 — Playback](docs/superpowers/plans/2026-06-11-audioshelf-m2-playback.md) · [M3 — Tags & Discovery](docs/superpowers/plans/2026-06-11-audioshelf-m3-discovery.md) · [M4 — Rename Tool](docs/superpowers/plans/2026-06-11-audioshelf-m4-rename.md)
 
 ---
 

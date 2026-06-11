@@ -11,7 +11,7 @@ const authors: AuthorRow[] = [
 
 describe("LibraryView", () => {
   it("lists authors and filters by search", async () => {
-    render(<LibraryView authors={authors} onOpenAuthor={() => {}} onOpenDiscovery={() => {}} />);
+    render(<LibraryView authors={authors} onOpenAuthor={() => {}} onOpenDiscovery={() => {}} onOpenRename={() => {}} />);
     expect(screen.getByText("Alice")).toBeInTheDocument();
     expect(screen.getByText("Bob")).toBeInTheDocument();
 
@@ -22,15 +22,22 @@ describe("LibraryView", () => {
 
   it("invokes onOpenAuthor when a row is clicked", async () => {
     const onOpen = vi.fn();
-    render(<LibraryView authors={authors} onOpenAuthor={onOpen} onOpenDiscovery={() => {}} />);
+    render(<LibraryView authors={authors} onOpenAuthor={onOpen} onOpenDiscovery={() => {}} onOpenRename={() => {}} />);
     await userEvent.click(screen.getByText("Bob"));
     expect(onOpen).toHaveBeenCalledWith(2);
   });
 
   it("opens discovery", async () => {
     const onDisc = vi.fn();
-    render(<LibraryView authors={authors} onOpenAuthor={() => {}} onOpenDiscovery={onDisc} />);
+    render(<LibraryView authors={authors} onOpenAuthor={() => {}} onOpenDiscovery={onDisc} onOpenRename={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "Discover" }));
     expect(onDisc).toHaveBeenCalled();
+  });
+
+  it("opens the rename tool", async () => {
+    const onOpenRename = vi.fn();
+    render(<LibraryView authors={[]} onOpenAuthor={() => {}} onOpenDiscovery={() => {}} onOpenRename={onOpenRename} />);
+    await userEvent.click(screen.getByRole("button", { name: "Rename tool" }));
+    expect(onOpenRename).toHaveBeenCalled();
   });
 });
