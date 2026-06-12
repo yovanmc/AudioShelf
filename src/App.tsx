@@ -399,7 +399,16 @@ export default function App() {
                 },
                 showAuthorDetail: openFirstAuthor,
                 showDiscovery: openDiscovery,
-                showDiscoveryByTag: async () => { await pickTags(["cozy"]); },
+                showDiscoveryByTag: async () => {
+                  // Self-contained: reset play history so "For You" is empty
+                  // (discovery_for_you requires recent play events; with none it
+                  // returns []), then open Discovery fresh and apply a tag filter.
+                  // Without "For You" cards pushing it below the fold, the "Pick a
+                  // tag" chip + by-tag result set are visible in the viewport.
+                  await resetPlayHistory();
+                  await openDiscovery();
+                  await pickTags(["cozy"]);
+                },
                 showRename: openRename,
                 showSettings: async () => { setRoute({ kind: "settings", firstRun: false }); },
                 showPlayerCompact: async () => {
