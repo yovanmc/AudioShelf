@@ -69,3 +69,7 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); }
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table th, .data-table td { border-bottom: 1px solid var(--color-border); padding: 10px 12px; text-align: left; }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.chips--end { margin-inline-start: auto; justify-content: flex-end; }
+.dialog { position: relative; }
+.dialog__close { position: absolute; top: var(--space-3); right: var(--space-3); }

@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
+import { forwardRef, useEffect, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 
 export function Button({ variant = "secondary", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger" }) {
@@ -30,4 +30,56 @@ export function EmptyState({ title, children, action }: { title: string; childre
 
 export function Notice({ children, tone = "info", role }: { children: ReactNode; tone?: "info" | "success" | "error"; role?: string }) {
   return <Card className={`notice notice--${tone}`} role={role}>{children}</Card>;
+}
+
+export function PageHeader({ eyebrow, title, actions }: { eyebrow: string; title: ReactNode; actions?: ReactNode }) {
+  return (
+    <header className="view-section page-header">
+      <div className="page-header__copy">
+        <div className="eyebrow muted">{eyebrow}</div>
+        <h1>{title}</h1>
+      </div>
+      {actions ? <div className="page-header__actions">{actions}</div> : null}
+    </header>
+  );
+}
+
+export function SectionHeading({ eyebrow, title, actions }: { eyebrow?: string; title: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="section-heading">
+      <div>
+        {eyebrow ? <div className="eyebrow muted">{eyebrow}</div> : null}
+        <h2>{title}</h2>
+      </div>
+      {actions ?? null}
+    </div>
+  );
+}
+
+export function TagGroup({ tags, max, align }: { tags: string[]; max?: number; align?: "start" | "end" }) {
+  if (!tags.length) return null;
+  const shown = max ? tags.slice(0, max) : tags;
+  return (
+    <span className={`chips${align === "end" ? " chips--end" : ""}`}>
+      {shown.map((t) => <span className="chip" key={t}>{t}</span>)}
+    </span>
+  );
+}
+
+export function Dialog({ label, onClose, className, children }: { label: string; onClose: () => void; className?: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    ref.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="dialog-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={ref} className={`card dialog ${className ?? ""}`} role="dialog" aria-modal="true" aria-label={label}>
+        <IconButton className="dialog__close" icon="close" label={`Close ${label}`} onClick={onClose} {...{ "data-autofocus": true }} />
+        {children}
+      </div>
+    </div>
+  );
 }
