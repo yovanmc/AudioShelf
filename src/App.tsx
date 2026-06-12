@@ -476,6 +476,33 @@ export default function App() {
                   setPlayerExpanded(false);
                 },
                 showPlayerExpanded: async () => { setPlayerExpanded(true); },
+                showPlayerChapters: async () => {
+                  // Ensure the multi-chapter work (Jane Doe / "Cool Story", 3 ch)
+                  // is in playback context, expand the panel, then cycle the time
+                  // label once (elapsed → remaining) so the shot shows "-m:ss".
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works[0];
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  setDetail(creator);
+                  setRoute({ kind: "author" });
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((item) => item.played).length,
+                  });
+                  setPlayerExpanded(true);
+                  // Let the currentWorkChapters useEffect (keyed on workId/authorId)
+                  // resolve its getAuthorDetail fetch before the screenshot.
+                  await settle();
+                  cycleTimeLabel(); // elapsed → remaining
+                },
                 showContextMenu: async () => {
                   // showDiscoveryByTag (step 7) wiped play history; re-seed it
                   // so keepListening is non-null and the featured WorkCard renders
