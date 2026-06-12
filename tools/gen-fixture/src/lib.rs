@@ -4,6 +4,18 @@
 
 use std::path::Path;
 
+/// Write a solid-colour PNG cover image into `dir` (exercises the folder-image cover path).
+fn write_cover(dir: &Path, rgb: [u8; 3]) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    let mut img = image::RgbImage::new(160, 160);
+    for px in img.pixels_mut() {
+        *px = image::Rgb(rgb);
+    }
+    img.save(dir.join("cover.png"))
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    Ok(())
+}
+
 /// Write `secs` seconds of silence as a mono 8 kHz 16-bit WAV.
 fn write_silence(path: &Path, secs: u32) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
@@ -37,11 +49,13 @@ pub fn generate(root: &Path) -> std::io::Result<()> {
     write_silence(&jane.join("Cool Story 2 the sequel.wav"), 3)?;
     write_silence(&jane.join("Cool Story 3 finale.wav"), 4)?;
     write_silence(&jane.join("Another Standalone Tale.wav"), 5)?;
+    write_cover(&jane, [196, 64, 64])?; // warm red cover
 
     // Author with a single multi-chapter work.
     let sam = root.join("Sam Smith");
     write_silence(&sam.join("Night Walk.wav"), 6)?;
     write_silence(&sam.join("Night Walk 2.wav"), 7)?;
+    write_cover(&sam, [64, 120, 196])?; // cool blue cover
 
     // Trap: a lone numbered file that must NOT split into "Area" / chapter 51.
     let trap = root.join("Trap Author");

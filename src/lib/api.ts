@@ -50,6 +50,10 @@ export const getAuthorDetail = (authorId: number) =>
   invoke<AuthorDetail>("get_author_detail", { authorId });
 export const searchLibrary = (query: string) =>
   invoke<SearchResults>("search_library", { query });
+export const getWorkCover = (workId: number) =>
+  invoke<string | null>("get_work_cover", { workId });
+export const getAuthorCover = (authorId: number) =>
+  invoke<string | null>("get_author_cover", { authorId });
 export const setChapterPlayed = (chapterId: number, played: boolean) =>
   invoke("set_chapter_played", { chapterId, played });
 export const markChapterFinished = (chapterId: number, nowMs: number) =>

@@ -13,3 +13,4 @@ path = "src/main.rs"
 
 [dependencies]
 hound = "3"
+image = "0.25"

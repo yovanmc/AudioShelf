@@ -1,5 +1,6 @@
 mod capture;
 mod commands;
+mod covers;
 mod db;
 mod grouping;
 mod launch;
@@ -25,8 +26,17 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(args)
         .setup(|app| {
-            let conn = commands::init_db(&app.handle());
+            let handle = app.handle();
+            let conn = commands::init_db(&handle);
             app.manage(DbState(Mutex::new(conn)));
+            // Cover thumbnails are cached here and served via the asset protocol.
+            let covers_dir = handle
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::env::temp_dir())
+                .join("covers");
+            std::fs::create_dir_all(&covers_dir).ok();
+            let _ = handle.asset_protocol_scope().allow_directory(&covers_dir, true);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -51,7 +61,9 @@ pub fn run() {
             commands::undo_renames,
             commands::set_grouping_override,
             commands::clear_grouping_override,
-            commands::search_library
+            commands::search_library,
+            commands::get_work_cover,
+            commands::get_author_cover
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -60,6 +72,10 @@ pub fn run() {
 // Exposed for integration tests.
 pub mod testing {
     pub use crate::commands::{query_author_detail, query_authors};
+    pub use crate::covers::{
+        cover_cache_for_chapter, find_folder_image, make_thumbnail_png, read_embedded_picture,
+        CoverPriority,
+    };
     pub use crate::db::open_in_memory;
     pub use crate::regroup::regroup_author;
     pub use crate::rename::{build_plan, execute, undo, ItemStatus};

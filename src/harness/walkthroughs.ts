@@ -31,7 +31,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["browse", "player", "discovery", "rename", "grouping", "settings", "m7"] as const;
+export const walkthroughs = ["browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -103,5 +103,19 @@ export function m7Steps(nav: {
     { name: "library", run: nav.showLibrary },
     { name: "search-cool", run: () => nav.search("cool") },
     { name: "search-sam", run: () => nav.search("sam") },
+  ];
+}
+
+/**
+ * Build the "covers" walkthrough: the author list (showing real cover images for
+ * Jane Doe & Sam Smith) and then Jane Doe's author-detail (showing per-work covers).
+ */
+export function coversSteps(nav: {
+  showLibrary: () => Promise<void>;
+  openFirstAuthor: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "library", run: nav.showLibrary },
+    { name: "author-detail", run: nav.openFirstAuthor },
   ];
 }

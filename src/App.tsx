@@ -18,13 +18,29 @@ import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
 import { clampSeek } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps } from "./harness/walkthroughs";
+import { browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps } from "./harness/walkthroughs";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
   return new Promise((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 60))),
   );
+}
+
+// Wait for any <img> (e.g. cover art served via the asset protocol) to finish loading,
+// so a screenshot taken after settle() doesn't capture half-loaded covers.
+function imagesSettled(): Promise<void> {
+  const imgs = Array.from(document.images);
+  return Promise.all(
+    imgs.map((img) =>
+      img.complete
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            img.addEventListener("load", () => resolve(), { once: true });
+            img.addEventListener("error", () => resolve(), { once: true });
+          }),
+    ),
+  ).then(() => undefined);
 }
 
 type Route =
@@ -346,12 +362,22 @@ export default function App() {
             ? settingsSteps({
                 openSettings: async () => setRoute({ kind: "settings", firstRun: false }),
               })
+            : args.walkthrough === "covers"
+            ? coversSteps({
+                showLibrary: async () => setRoute({ kind: "library" }),
+                openFirstAuthor,
+              })
             : browseSteps({
                 showScanResult: async () => setRoute({ kind: "scan" }),
                 showLibrary: async () => setRoute({ kind: "library" }),
                 openFirstAuthor,
               });
-        await runSteps(steps, args.shots, async (p) => { await settle(); await captureWindow(p); });
+        await runSteps(steps, args.shots, async (p) => {
+          await settle();
+          await imagesSettled();
+          await settle(); // let the newly-painted covers commit a frame
+          await captureWindow(p);
+        });
         await finishWalkthrough(args.doneSignal, args.exitWhenDone);
       } else {
         setRoute({ kind: "library" });

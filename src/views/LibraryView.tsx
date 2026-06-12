@@ -1,35 +1,10 @@
 import { FixedSizeList as List, type ListChildComponentProps } from "react-window";
 import type { AuthorRow, SearchResults } from "../lib/api";
 import { summarizeAuthor } from "../lib/library";
-import { initials, colorFor } from "../lib/avatar";
+import { Cover } from "../components/Cover";
 
 const ROW_HEIGHT = 56;
 const LIST_HEIGHT = 600;
-
-/** Inline-styled colour+initials placeholder (the app ships no stylesheet). */
-function Swatch({ name }: { name: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 28,
-        height: 28,
-        borderRadius: 6,
-        marginRight: 8,
-        flex: "0 0 auto",
-        background: colorFor(name),
-        color: "#fff",
-        fontSize: 12,
-        fontWeight: 600,
-      }}
-    >
-      {initials(name)}
-    </span>
-  );
-}
 
 export function LibraryView(props: {
   authors: AuthorRow[];
@@ -53,7 +28,7 @@ export function LibraryView(props: {
           onClick={() => props.onOpenAuthor(a.id)}
           style={{ display: "flex", alignItems: "center", width: "100%", textAlign: "left" }}
         >
-          <Swatch name={a.name} />
+          <Cover kind="author" id={a.id} name={a.name} />
           <span>
             <span className="author-name">{a.name}</span>
             {" — "}
@@ -102,7 +77,7 @@ function SearchResultsPanel(props: {
             {r.authors.map((a) => (
               <li key={`a${a.authorId}`}>
                 <button onClick={() => props.onOpenAuthor(a.authorId)}>
-                  <Swatch name={a.authorName} />
+                  <Cover kind="author" id={a.authorId} name={a.authorName} />
                   {a.authorName}
                 </button>
               </li>

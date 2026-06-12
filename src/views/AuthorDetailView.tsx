@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { AuthorDetail, ChapterRow, WorkRow } from "../lib/api";
 import { TagEditor } from "./TagEditor";
+import { Cover } from "../components/Cover";
 
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -65,7 +66,10 @@ export function AuthorDetailView(props: {
       <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
       {detail.works.map((w) => (
         <section key={w.id} className="work">
-          <h2><span className="work-title">{w.baseTitle}{" "}({w.chapters.length})</span></h2>
+          <h2 style={{ display: "flex", alignItems: "center" }}>
+            <Cover kind="work" id={w.id} name={w.baseTitle} size={40} />
+            <span className="work-title">{w.baseTitle}{" "}({w.chapters.length})</span>
+          </h2>
           <ul>
             {w.chapters.map((c) => (
               <li key={c.id} data-played={c.played ? "true" : "false"}>
