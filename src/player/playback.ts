@@ -18,3 +18,25 @@ export function formatTime(secs: number): string {
   const s = Math.floor(v % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+/** Time remaining as "-m:ss" (e.g. "-1:30"); non-positive duration → "0:00". */
+export function formatTimeLeft(currentTime: number, duration: number): string {
+  if (!Number.isFinite(duration) || duration <= 0) return "0:00";
+  const left = Math.max(0, duration - currentTime);
+  return `-${formatTime(left)}`;
+}
+
+/** Whole-percent progress as "NN%"; non-positive duration → "0%". */
+export function formatPercent(currentTime: number, duration: number): string {
+  if (!Number.isFinite(duration) || duration <= 0) return "0%";
+  const pct = Math.min(100, Math.max(0, Math.round((currentTime / duration) * 100)));
+  return `${pct}%`;
+}
+
+export type TimeLabelMode = "elapsed" | "remaining" | "percent";
+
+export function timeLabel(mode: TimeLabelMode, currentTime: number, duration: number): string {
+  if (mode === "remaining") return formatTimeLeft(currentTime, duration);
+  if (mode === "percent") return formatPercent(currentTime, duration);
+  return formatTime(currentTime);
+}

@@ -8,6 +8,7 @@ import {
   getSetting, setSetting, pickFolder, searchLibrary, queryHome, resetPlayHistory,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
+  type ChapterRow,
 } from "./lib/api";
 import { HomeView } from "./views/HomeView";
 import { LibraryView } from "./views/LibraryView";
@@ -19,7 +20,7 @@ import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
 import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
-import { clampSeek } from "./player/playback";
+import { clampSeek, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
 import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps } from "./harness/walkthroughs";
 import {
@@ -117,11 +118,27 @@ export default function App() {
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(1);
   const [sleepMinutes, setSleepMinutes] = useState<number | null>(null);
+  const [timeLabelMode, setTimeLabelMode] = useState<TimeLabelMode>("elapsed");
+  const cycleTimeLabel = () =>
+    setTimeLabelMode((m) => (m === "elapsed" ? "remaining" : m === "remaining" ? "percent" : "elapsed"));
+  const [currentWorkChapters, setCurrentWorkChapters] = useState<ChapterRow[]>([]);
 
   const [home, setHome] = useState<HomeData | null>(null);
   const [homeNow, setHomeNow] = useState(0);
   const routeRef = useRef<Route>(route);
   routeRef.current = route;
+
+  useEffect(() => {
+    const ctx = current;
+    if (!ctx) { setCurrentWorkChapters([]); return; }
+    let cancelled = false;
+    void getAuthorDetail(ctx.authorId).then((d) => {
+      if (cancelled) return;
+      const work = d.works.find((w) => w.id === ctx.workId);
+      setCurrentWorkChapters(work?.chapters ?? []);
+    }).catch(() => { if (!cancelled) setCurrentWorkChapters([]); });
+    return () => { cancelled = true; };
+  }, [current?.workId, current?.authorId]);
 
   function setSidebarCollapsed(collapsed: boolean) {
     setSidebarCollapsedState(collapsed);
@@ -287,6 +304,18 @@ export default function App() {
       chapter: next, authorId: detail.id, authorName: detail.name,
       workId: work.id, workTitle: work.baseTitle,
       workTotalChapters: total, workPlayedChapters: played,
+    });
+  }
+
+  function jumpToChapter(chapter: ChapterRow) {
+    const ctx = currentRef.current;
+    if (!ctx) return;
+    const chapters = currentWorkChapters;
+    playChapter({
+      chapter, authorId: ctx.authorId, authorName: ctx.authorName,
+      workId: ctx.workId, workTitle: ctx.workTitle,
+      workTotalChapters: chapters.length || ctx.workTotalChapters,
+      workPlayedChapters: chapters.filter((c) => c.played).length,
     });
   }
 
@@ -771,6 +800,8 @@ export default function App() {
       onSetSleep={setSleep}
       onExpand={() => setPlayerExpanded(true)}
       onOpenAuthor={openAuthor}
+      timeLabelMode={timeLabelMode}
+      onCycleTimeLabel={cycleTimeLabel}
     />
   );
   const view = routedView();
@@ -820,6 +851,10 @@ export default function App() {
             setPlayerExpanded(false);
             void openAuthor(authorId);
           }}
+          timeLabelMode={timeLabelMode}
+          onCycleTimeLabel={cycleTimeLabel}
+          chapters={currentWorkChapters}
+          onJumpToChapter={jumpToChapter}
         />
       )}
     </div>

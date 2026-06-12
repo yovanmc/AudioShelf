@@ -37,6 +37,8 @@ function props(overrides = {}) {
     onSetSleep: vi.fn(),
     onExpand: vi.fn(),
     onOpenAuthor: vi.fn(),
+    timeLabelMode: "elapsed" as const,
+    onCycleTimeLabel: vi.fn(),
     ...overrides,
   };
 }
@@ -90,5 +92,22 @@ describe("PlayerBar", () => {
     render(<PlayerBar {...p} />);
     await userEvent.selectOptions(screen.getByLabelText("Sleep timer"), "30");
     expect(p.onSetSleep).toHaveBeenCalledWith(30);
+  });
+
+  it("clicking the time-label button calls onCycleTimeLabel", async () => {
+    const p = props();
+    render(<PlayerBar {...p} />);
+    await userEvent.click(screen.getByTitle("Toggle time display"));
+    expect(p.onCycleTimeLabel).toHaveBeenCalled();
+  });
+
+  it("shows remaining time when mode is remaining", () => {
+    render(<PlayerBar {...props({ timeLabelMode: "remaining", currentTime: 30, duration: 120 })} />);
+    expect(screen.getByTitle("Toggle time display")).toHaveTextContent("-1:30");
+  });
+
+  it("shows percent when mode is percent", () => {
+    render(<PlayerBar {...props({ timeLabelMode: "percent", currentTime: 30, duration: 120 })} />);
+    expect(screen.getByTitle("Toggle time display")).toHaveTextContent("25%");
   });
 });

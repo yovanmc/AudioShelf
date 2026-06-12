@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clampSeek, formatTime, SKIP_BACK_LARGE, SKIP_FWD_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL } from "./playback";
+import { clampSeek, formatTime, formatTimeLeft, formatPercent, timeLabel, SKIP_BACK_LARGE, SKIP_FWD_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL } from "./playback";
 
 describe("clampSeek", () => {
   it("adds the delta within bounds", () => {
@@ -32,5 +32,47 @@ describe("formatTime", () => {
 describe("skip constants", () => {
   it("are the expected ±15/±30 values", () => {
     expect([SKIP_BACK_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, SKIP_FWD_LARGE]).toEqual([-30, -15, 15, 30]);
+  });
+});
+
+describe("formatTimeLeft", () => {
+  it("returns remaining as -m:ss", () => {
+    expect(formatTimeLeft(30, 120)).toBe("-1:30");
+  });
+  it("returns full duration when currentTime is 0", () => {
+    expect(formatTimeLeft(0, 120)).toBe("-2:00");
+  });
+  it("returns -0:00 when at end", () => {
+    expect(formatTimeLeft(120, 120)).toBe("-0:00");
+  });
+  it("returns 0:00 for zero duration", () => {
+    expect(formatTimeLeft(10, 0)).toBe("0:00");
+  });
+});
+
+describe("formatPercent", () => {
+  it("returns 25% at quarter through", () => {
+    expect(formatPercent(30, 120)).toBe("25%");
+  });
+  it("returns 0% at start", () => {
+    expect(formatPercent(0, 120)).toBe("0%");
+  });
+  it("returns 100% at end", () => {
+    expect(formatPercent(120, 120)).toBe("100%");
+  });
+  it("returns 0% for zero duration", () => {
+    expect(formatPercent(10, 0)).toBe("0%");
+  });
+});
+
+describe("timeLabel", () => {
+  it("elapsed mode returns formatTime result", () => {
+    expect(timeLabel("elapsed", 30, 120)).toBe("0:30");
+  });
+  it("remaining mode returns formatTimeLeft result", () => {
+    expect(timeLabel("remaining", 30, 120)).toBe("-1:30");
+  });
+  it("percent mode returns formatPercent result", () => {
+    expect(timeLabel("percent", 30, 120)).toBe("25%");
   });
 });

@@ -2,7 +2,7 @@ import type { PlaybackContext } from "../lib/api";
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
 import { IconButton } from "../components/ui";
-import { formatTime, SKIP_BACK_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, SKIP_FWD_LARGE } from "./playback";
+import { formatTime, timeLabel, type TimeLabelMode, SKIP_BACK_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, SKIP_FWD_LARGE } from "./playback";
 
 export interface PlayerControls {
   isPlaying: boolean;
@@ -21,6 +21,8 @@ export interface PlayerBarProps extends PlayerControls {
   context: PlaybackContext | null;
   onExpand: () => void;
   onOpenAuthor: (authorId: number) => void;
+  timeLabelMode?: TimeLabelMode;
+  onCycleTimeLabel?: () => void;
 }
 
 export function PlaybackButtons(props: Pick<PlayerControls, "isPlaying" | "onToggle" | "onSkip">) {
@@ -51,7 +53,9 @@ export function PlayerBar(props: PlayerBarProps) {
       <div>
         <PlaybackButtons {...props} />
         <div className="player-bar__seek">
-          <span>{formatTime(props.currentTime)}</span>
+          <button type="button" className="time-label" title="Toggle time display" onClick={props.onCycleTimeLabel}>
+            {timeLabel(props.timeLabelMode ?? "elapsed", props.currentTime, props.duration)}
+          </button>
           <input type="range" aria-label="Seek" min={0} max={props.duration > 0 ? props.duration : 0} value={Math.min(props.currentTime, props.duration)} onChange={(event) => props.onSeek(Number(event.target.value))} />
           <span>{formatTime(props.duration)}</span>
         </div>
