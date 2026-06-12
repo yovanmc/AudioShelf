@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HomeView } from "./HomeView";
 import type { ChapterRow, HomeData } from "../lib/api";
+import type { HomeShelf, ShelfItem } from "../lib/shelves";
 
 const nextChapter: ChapterRow = {
   id: 7,
@@ -112,5 +113,27 @@ describe("HomeView", () => {
   it("shows a loading state when home is null", () => {
     render(<HomeView {...baseProps({ home: null })} />);
     expect(screen.getByText("Loading your shelf...")).toBeInTheDocument();
+  });
+
+  it("renders a shelf section with cards when shelves and shelfItems are provided", () => {
+    const shelf: HomeShelf = { id: "s1_0", title: "Cozy Reads", kind: "tag", tag: "cozy" };
+    const items: ShelfItem[] = [
+      { kind: "work", workId: 101, title: "A Cozy Tale", authorId: 201, authorName: "Bob", unplayedCount: 2, tags: ["cozy"] },
+      { kind: "work", workId: 102, title: "Another Cozy", authorId: 202, authorName: "Carol", unplayedCount: 0, tags: ["cozy"] },
+    ];
+    render(<HomeView {...baseProps({ shelves: [shelf], shelfItems: { "s1_0": items } })} />);
+    expect(screen.getByText("Cozy Reads")).toBeInTheDocument();
+    expect(screen.getByText("A Cozy Tale")).toBeInTheDocument();
+    expect(screen.getByText("Another Cozy")).toBeInTheDocument();
+  });
+
+  it("renders no shelf sections when shelves is empty", () => {
+    const { container } = render(<HomeView {...baseProps({ shelves: [], shelfItems: {} })} />);
+    expect(container.querySelector(".shelf")).toBeNull();
+  });
+
+  it("renders no shelf sections when shelves prop is omitted", () => {
+    const { container } = render(<HomeView {...baseProps()} />);
+    expect(container.querySelector(".shelf")).toBeNull();
   });
 });

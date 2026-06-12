@@ -30,6 +30,13 @@ import {
   type PlayedStatus,
   type WorkSort,
 } from "./lib/browse";
+import {
+  parseHomeShelves,
+  serializeHomeShelves,
+  loadShelfItems,
+  type HomeShelf,
+  type ShelfItem,
+} from "./lib/shelves";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -98,6 +105,11 @@ export default function App() {
     filterStatus: "all",
     workSort: "az",
   });
+
+  // ---- home shelves (configurable rows) ----
+  const [homeShelves, setHomeShelves] = useState<HomeShelf[]>([]);
+  const [shelfItems, setShelfItems] = useState<Record<string, ShelfItem[]>>({});
+  const shelfIdRef = useRef(0);
 
   // ---- rename state ----
   const [renameItems, setRenameItems] = useState<RenameItem[]>([]);
@@ -225,6 +237,30 @@ export default function App() {
       return next;
     });
   };
+
+  // ---- home shelves persistence ----
+  const persistShelves = (update: (prev: HomeShelf[]) => HomeShelf[]) => {
+    setHomeShelves((prev) => {
+      const next = update(prev);
+      void setSetting("home_shelves", serializeHomeShelves({ shelves: next }));
+      return next;
+    });
+  };
+
+  const onAddShelf = (s: Omit<HomeShelf, "id">) =>
+    persistShelves((prev) => [...prev, { ...s, id: `s${(shelfIdRef.current += 1)}_${prev.length}` }]);
+  const onRemoveShelf = (id: string) => persistShelves((prev) => prev.filter((s) => s.id !== id));
+  const onRenameShelf = (id: string, title: string) =>
+    persistShelves((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
+  const onMoveShelf = (id: string, dir: -1 | 1) =>
+    persistShelves((prev) => {
+      const i = prev.findIndex((s) => s.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
   const setAuthorSort = (s: AuthorSort) => persistPrefs((p) => ({ ...p, authorSort: s }));
   const setFilterTag = (t: string | null) => persistPrefs((p) => ({ ...p, filterTag: t }));
   const setFilterStatus = (s: PlayedStatus) => persistPrefs((p) => ({ ...p, filterStatus: s }));
@@ -403,6 +439,7 @@ export default function App() {
 
       setBrowsePrefs(parseBrowsePrefs(await getSetting("browse_prefs")));
       setSidebarCollapsedState((await getSetting("sidebar_collapsed")) === "true");
+      setHomeShelves(parseHomeShelves(await getSetting("home_shelves")).shelves);
 
       if (args.autostart && args.walkthrough) {
         const openFirstAuthor = async () => {
@@ -709,6 +746,19 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Fetch shelf items whenever the shelf config changes.
+  useEffect(() => {
+    if (homeShelves.length === 0) { setShelfItems({}); return; }
+    let cancelled = false;
+    void (async () => {
+      const entries = await Promise.all(
+        homeShelves.map(async (s) => [s.id, await loadShelfItems(s).catch(() => [])] as const),
+      );
+      if (!cancelled) setShelfItems(Object.fromEntries(entries));
+    })();
+    return () => { cancelled = true; };
+  }, [homeShelves]);
+
   // Debounced backend search. Empty query clears results (list shows instead).
   useEffect(() => {
     const q = query.trim();
@@ -741,6 +791,8 @@ export default function App() {
           onOpenSettings={openSettings}
           onPlayNextOfWork={playNextChapterOfWork}
           featureMenuOpen={harnessMenuOpen}
+          shelves={homeShelves}
+          shelfItems={shelfItems}
         />
       );
     }
@@ -796,6 +848,13 @@ export default function App() {
           firstRun={route.firstRun}
           onChooseFolder={chooseFolder}
           onRescan={rescan}
+          shelves={homeShelves}
+          allTags={allTags}
+          authors={authors.map((a) => ({ id: a.id, name: a.name }))}
+          onAddShelf={onAddShelf}
+          onRemoveShelf={onRemoveShelf}
+          onMoveShelf={onMoveShelf}
+          onRenameShelf={onRenameShelf}
         />
       );
     }
