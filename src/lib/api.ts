@@ -27,6 +27,33 @@ export interface DiscoveryWork {
 }
 export interface MoreWork { workId: number; baseTitle: string; unplayedCount: number; }
 
+export interface ContinueItem {
+  authorId: number;
+  authorName: string;
+  workId: number;
+  workTitle: string;
+  nextChapter: ChapterRow;
+  remainingUnplayed: number;
+  lastPlayedAt: number;
+}
+export interface RecentItem {
+  chapterId: number;
+  chapterTitle: string;
+  workTitle: string;
+  authorName: string;
+  playedAt: number;
+}
+export interface ListeningStats {
+  totalSecs: number;
+  chaptersFinished: number;
+  streakDays: number;
+  recent: RecentItem[];
+}
+export interface HomeData {
+  continueListening: ContinueItem[];
+  stats: ListeningStats;
+}
+
 export interface RenameItem {
   chapterId: number; authorName: string; baseTitle: string;
   fromName: string; toName: string;
@@ -74,6 +101,8 @@ export const getDiscoveryByTags = (tags: string[]) =>
   invoke<DiscoveryWork[]>("get_discovery_by_tags", { tags });
 export const getMoreFromAuthor = (authorId: number) =>
   invoke<MoreWork[]>("get_more_from_author", { authorId });
+export const queryHome = (nowMs: number, tzOffsetMinutes: number) =>
+  invoke<HomeData>("query_home", { nowMs, tzOffsetMinutes });
 
 export const previewRenames = () => invoke<RenameItem[]>("preview_renames");
 export const applyRenames = (chapterIds: number[], nowMs: number) =>
