@@ -98,3 +98,6 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
   outline: none;
   box-shadow: var(--focus-ring);
 }
+.card-row { display: flex; gap: var(--space-4); overflow-x: auto; padding-bottom: var(--space-2); scroll-snap-type: x proximity; }
+.card-row > * { flex: 0 0 220px; scroll-snap-align: start; }
+.shelf-creator { display: flex; align-items: center; padding: var(--space-3); }
