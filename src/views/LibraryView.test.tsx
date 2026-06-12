@@ -5,8 +5,8 @@ import { LibraryView } from "./LibraryView";
 import type { AuthorRow, SearchResults } from "../lib/api";
 
 const authors: AuthorRow[] = [
-  { id: 1, name: "Alice", workCount: 1, chapterCount: 2, unplayedCount: 1 },
-  { id: 2, name: "Bob", workCount: 2, chapterCount: 4, unplayedCount: 0 },
+  { id: 1, name: "Alice", workCount: 1, chapterCount: 2, unplayedCount: 1, totalSecs: 0, tags: [] },
+  { id: 2, name: "Bob", workCount: 2, chapterCount: 4, unplayedCount: 0, totalSecs: 0, tags: [] },
 ];
 
 const emptyResults: SearchResults = { authors: [], works: [], chapters: [] };
@@ -16,6 +16,13 @@ function baseProps(over: Partial<React.ComponentProps<typeof LibraryView>> = {})
     authors,
     query: "",
     results: null as SearchResults | null,
+    sort: "az" as const,
+    onSortChange: vi.fn(),
+    filterTag: null,
+    onFilterTagChange: vi.fn(),
+    filterStatus: "all" as const,
+    onFilterStatusChange: vi.fn(),
+    allTags: [],
     onQueryChange: vi.fn(),
     onOpenAuthor: vi.fn(),
     onOpenDiscovery: vi.fn(),
@@ -56,6 +63,8 @@ describe("LibraryView", () => {
       workCount: 1,
       chapterCount: 1,
       unplayedCount: 0,
+      totalSecs: 0,
+      tags: [],
     }));
     render(<LibraryView {...baseProps({ authors: many })} />);
     // 3 toolbar buttons + at most a windowful of author rows — never 1000.
@@ -107,5 +116,46 @@ describe("LibraryView", () => {
     expect(onOpenDiscovery).toHaveBeenCalled();
     expect(onOpenRename).toHaveBeenCalled();
     expect(onOpenSettings).toHaveBeenCalled();
+  });
+
+  it("sort 'length' reorders rows by totalSecs descending", () => {
+    const authorsForSort: AuthorRow[] = [
+      { id: 10, name: "Short", workCount: 1, chapterCount: 1, unplayedCount: 0, totalSecs: 100, tags: [] },
+      { id: 11, name: "Long", workCount: 1, chapterCount: 1, unplayedCount: 0, totalSecs: 9999, tags: [] },
+    ];
+    render(<LibraryView {...baseProps({ authors: authorsForSort, sort: "length" })} />);
+    // Check that "Long" appears before "Short" in the DOM.
+    const buttons = screen.getAllByRole("button");
+    const longIdx = buttons.findIndex((b) => b.textContent?.includes("Long"));
+    const shortIdx = buttons.findIndex((b) => b.textContent?.includes("Short"));
+    expect(longIdx).toBeLessThan(shortIdx);
+  });
+
+  it("tag filter shows only authors with the matching tag", () => {
+    const tagged: AuthorRow[] = [
+      { id: 20, name: "Tagged", workCount: 1, chapterCount: 1, unplayedCount: 0, totalSecs: 0, tags: ["x"] },
+      { id: 21, name: "Untagged", workCount: 1, chapterCount: 1, unplayedCount: 0, totalSecs: 0, tags: [] },
+    ];
+    render(<LibraryView {...baseProps({ authors: tagged, filterTag: "x", allTags: ["x"] })} />);
+    expect(screen.getByText("Tagged")).toBeInTheDocument();
+    expect(screen.queryByText("Untagged")).not.toBeInTheDocument();
+  });
+
+  it("status filter 'done' hides authors with unplayedCount > 0", () => {
+    const mixed: AuthorRow[] = [
+      { id: 30, name: "Finished", workCount: 1, chapterCount: 2, unplayedCount: 0, totalSecs: 0, tags: [] },
+      { id: 31, name: "Pending", workCount: 1, chapterCount: 2, unplayedCount: 1, totalSecs: 0, tags: [] },
+    ];
+    render(<LibraryView {...baseProps({ authors: mixed, filterStatus: "done" })} />);
+    expect(screen.getByText("Finished")).toBeInTheDocument();
+    expect(screen.queryByText("Pending")).not.toBeInTheDocument();
+  });
+
+  it("shows empty-filter message when no authors match", () => {
+    const noMatch: AuthorRow[] = [
+      { id: 40, name: "Someone", workCount: 1, chapterCount: 1, unplayedCount: 1, totalSecs: 0, tags: [] },
+    ];
+    render(<LibraryView {...baseProps({ authors: noMatch, filterStatus: "done" })} />);
+    expect(screen.getByText("No authors match the current filter.")).toBeInTheDocument();
   });
 });

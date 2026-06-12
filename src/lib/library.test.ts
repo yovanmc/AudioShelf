@@ -4,6 +4,7 @@ import type { AuthorRow } from "./api";
 
 const author: AuthorRow = {
   id: 1, name: "Jane Doe", workCount: 3, chapterCount: 7, unplayedCount: 2,
+  totalSecs: 0, tags: [],
 };
 
 describe("matchesSearch", () => {
@@ -19,6 +20,6 @@ describe("matchesSearch", () => {
 
 describe("summarizeAuthor", () => {
   it("summarizes works/chapters and unplayed", () => {
-    expect(summarizeAuthor(author)).toBe("3 works · 7 chapters · 2 unplayed");
+    expect(summarizeAuthor(author)).toBe("3 works · 7 chapters · 2 unplayed · 71% played · 0:00");
   });
 });

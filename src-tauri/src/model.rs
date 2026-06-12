@@ -18,6 +18,8 @@ pub struct AuthorRow {
     pub work_count: i64,
     pub chapter_count: i64,
     pub unplayed_count: i64,
+    pub total_secs: i64,     // SUM(duration_secs) over active chapters — for Length sort
+    pub tags: Vec<String>,   // author_tags ∪ work_tags for this author — for tag filter
 }
 
 #[derive(Serialize, Debug, PartialEq)]

@@ -2,6 +2,8 @@ import { FixedSizeList as List, type ListChildComponentProps } from "react-windo
 import type { AuthorRow, SearchResults } from "../lib/api";
 import { summarizeAuthor } from "../lib/library";
 import { Cover } from "../components/Cover";
+import { SortFilterBar } from "./SortFilterBar";
+import { filterAuthors, sortAuthors, type AuthorSort, type PlayedStatus } from "../lib/browse";
 
 const ROW_HEIGHT = 56;
 const LIST_HEIGHT = 600;
@@ -10,6 +12,13 @@ export function LibraryView(props: {
   authors: AuthorRow[];
   query: string;
   results: SearchResults | null;
+  sort: AuthorSort;
+  onSortChange: (s: AuthorSort) => void;
+  filterTag: string | null;
+  onFilterTagChange: (t: string | null) => void;
+  filterStatus: PlayedStatus;
+  onFilterStatusChange: (s: PlayedStatus) => void;
+  allTags: string[];
   onQueryChange: (q: string) => void;
   onOpenAuthor: (id: number) => void;
   onOpenDiscovery: () => void;
@@ -18,10 +27,16 @@ export function LibraryView(props: {
 }) {
   const searching = props.query.trim() !== "";
 
+  // Sort then filter the in-memory author list (M7 fetched all authors up front).
+  const visible = filterAuthors(sortAuthors(props.authors, props.sort), {
+    tag: props.filterTag,
+    status: props.filterStatus,
+  });
+
   // One virtualized author row. react-window supplies `style` for positioning;
   // it MUST be applied to the outer element.
   const Row = ({ index, style }: ListChildComponentProps) => {
-    const a = props.authors[index];
+    const a = visible[index];
     return (
       <div style={style}>
         <button
@@ -52,9 +67,24 @@ export function LibraryView(props: {
       {searching ? (
         <SearchResultsPanel results={props.results} onOpenAuthor={props.onOpenAuthor} />
       ) : (
-        <List height={LIST_HEIGHT} width="100%" itemCount={props.authors.length} itemSize={ROW_HEIGHT}>
-          {Row}
-        </List>
+        <>
+          <SortFilterBar
+            sort={props.sort}
+            onSortChange={props.onSortChange}
+            filterTag={props.filterTag}
+            onFilterTagChange={props.onFilterTagChange}
+            filterStatus={props.filterStatus}
+            onFilterStatusChange={props.onFilterStatusChange}
+            allTags={props.allTags}
+          />
+          {visible.length === 0 ? (
+            <p className="empty-filter">No authors match the current filter.</p>
+          ) : (
+            <List height={LIST_HEIGHT} width="100%" itemCount={visible.length} itemSize={ROW_HEIGHT}>
+              {Row}
+            </List>
+          )}
+        </>
       )}
     </div>
   );
