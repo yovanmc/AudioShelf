@@ -158,6 +158,7 @@ export function tagsSteps(nav: {
 export function m12Steps(nav: {
   showEmptyHome: () => Promise<void>;
   showHome: () => Promise<void>;
+  showHomeShelves: () => Promise<void>;
   collapseSidebar: () => Promise<void>;
   showLibrary: () => Promise<void>;
   showSearch: () => Promise<void>;
@@ -174,6 +175,7 @@ export function m12Steps(nav: {
   return [
     { name: "home-empty", run: nav.showEmptyHome },
     { name: "home", run: nav.showHome },
+    { name: "home-shelves", run: nav.showHomeShelves },
     { name: "home-sidebar-collapsed", run: nav.collapseSidebar },
     { name: "library", run: nav.showLibrary },
     { name: "search", run: nav.showSearch },

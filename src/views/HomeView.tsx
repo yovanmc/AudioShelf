@@ -2,8 +2,10 @@ import type { HomeData, PlaybackContext } from "../lib/api";
 import { WorkCard } from "../components/WorkCard";
 import { Button, EmptyState, PageHeader, SectionHeading, StatCard } from "../components/ui";
 import { CreatorIdentity } from "../components/CreatorIdentity";
+import { Shelf } from "../components/Shelf";
 import { keepListeningPercent, recommendationPercent } from "../lib/home";
 import { formatLong, formatRelative } from "../lib/time";
+import type { HomeShelf, ShelfItem } from "../lib/shelves";
 
 export function HomeView(props: {
   home: HomeData | null;
@@ -14,6 +16,8 @@ export function HomeView(props: {
   onOpenSettings?: () => void;
   onPlayNextOfWork?: (workId: number, authorId: number) => void;
   featureMenuOpen?: boolean;
+  shelves?: HomeShelf[];
+  shelfItems?: Record<string, ShelfItem[]>;
 }) {
   if (!props.home) {
     return <div className="view"><div className="card empty-state">Loading your shelf...</div></div>;
@@ -67,6 +71,15 @@ export function HomeView(props: {
           />
         </section>
       )}
+      {(props.shelves ?? []).map((shelf) => (
+        <Shelf
+          key={shelf.id}
+          shelf={shelf}
+          items={props.shelfItems?.[shelf.id] ?? []}
+          onOpenAuthor={props.onOpenAuthor}
+          onPlayNextOfWork={props.onPlayNextOfWork}
+        />
+      ))}
       {!noHistory && recommendations.length > 0 && (
         <section className="view-section">
           <SectionHeading eyebrow={keepListening ? "Based on your library and listening" : "From your library"} title="You May Like" />

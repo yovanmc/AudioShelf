@@ -1,12 +1,10 @@
-import type { AuthorSort, PlayedStatus } from "../lib/browse";
+import type { AuthorSort } from "../lib/browse";
 
 export function SortFilterBar(props: {
   sort: AuthorSort;
   onSortChange: (s: AuthorSort) => void;
   filterTag: string | null;
   onFilterTagChange: (t: string | null) => void;
-  filterStatus: PlayedStatus;
-  onFilterStatusChange: (s: PlayedStatus) => void;
   allTags: string[];
 }) {
   return (
@@ -36,19 +34,6 @@ export function SortFilterBar(props: {
               {t}
             </option>
           ))}
-        </select>
-      </label>
-      <label>
-        Status:{" "}
-        <select
-          aria-label="Filter by status"
-          value={props.filterStatus}
-          onChange={(e) => props.onFilterStatusChange(e.target.value as PlayedStatus)}
-        >
-          <option value="all">All</option>
-          <option value="unplayed">Has unlistened chapters</option>
-          <option value="done">Fully played</option>
-          <option value="unstarted">Not started</option>
         </select>
       </label>
     </div>

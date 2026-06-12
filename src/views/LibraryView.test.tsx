@@ -154,4 +154,43 @@ describe("LibraryView", () => {
     render(<LibraryView {...baseProps({ authors: noMatch, filterStatus: "done" })} />);
     expect(screen.getByText("No authors match the current filters.")).toBeInTheDocument();
   });
+
+  it("renders all four played-status tabs when not searching", () => {
+    render(<LibraryView {...baseProps()} />);
+    expect(screen.getByRole("tab", { name: "All" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Has unplayed" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Fully played" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Not started" })).toBeInTheDocument();
+  });
+
+  it("the active tab has aria-selected=true and others have aria-selected=false", () => {
+    render(<LibraryView {...baseProps({ filterStatus: "done" })} />);
+    expect(screen.getByRole("tab", { name: "Fully played" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("tab", { name: "Has unplayed" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("tab", { name: "Not started" })).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("clicking a tab calls onFilterStatusChange with the correct value", async () => {
+    const onFilterStatusChange = vi.fn();
+    render(<LibraryView {...baseProps({ onFilterStatusChange })} />);
+    await userEvent.click(screen.getByRole("tab", { name: "Has unplayed" }));
+    expect(onFilterStatusChange).toHaveBeenCalledWith("unplayed");
+    await userEvent.click(screen.getByRole("tab", { name: "Fully played" }));
+    expect(onFilterStatusChange).toHaveBeenCalledWith("done");
+    await userEvent.click(screen.getByRole("tab", { name: "Not started" }));
+    expect(onFilterStatusChange).toHaveBeenCalledWith("unstarted");
+    await userEvent.click(screen.getByRole("tab", { name: "All" }));
+    expect(onFilterStatusChange).toHaveBeenCalledWith("all");
+  });
+
+  it("tab bar is NOT shown when searching", () => {
+    render(<LibraryView {...baseProps({ query: "alice", results: null })} />);
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
+
+  it("Status select is not present in the sort/filter bar (moved to tab bar)", () => {
+    render(<LibraryView {...baseProps()} />);
+    expect(screen.queryByRole("combobox", { name: "Filter by status" })).not.toBeInTheDocument();
+  });
 });

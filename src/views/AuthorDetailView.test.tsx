@@ -405,6 +405,54 @@ describe("AuthorDetailView", () => {
     expect(screen.getByText(`Works (${detail.works.length})`)).toBeInTheDocument();
   });
 
+  it("shows hours-formatted total in the author header for a multi-hour author", () => {
+    const multiHourDetail: AuthorDetail = {
+      id: 2,
+      name: "Long Author",
+      tags: [],
+      works: [
+        {
+          id: 30,
+          baseTitle: "Epic Series",
+          tags: [],
+          chapters: [
+            // 2h 5m = 7500s
+            { id: 300, title: "Part 1", chapterNo: 1, format: "mp3", durationSecs: 3600, filePath: "x/1.mp3", played: false, tags: [] },
+            { id: 301, title: "Part 2", chapterNo: 2, format: "mp3", durationSecs: 3900, filePath: "x/2.mp3", played: false, tags: [] },
+          ],
+        },
+      ],
+    };
+    render(<AuthorDetailView detail={multiHourDetail} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
+    // formatLong(7500) = "2h 5m" — header should contain "h "
+    const header = screen.getByText(/works.*chapters.*h /);
+    expect(header).toBeInTheDocument();
+    expect(header.textContent).toContain("2h 5m");
+  });
+
+  it("shows per-work hours label in the work meta line", () => {
+    const multiHourDetail: AuthorDetail = {
+      id: 2,
+      name: "Long Author",
+      tags: [],
+      works: [
+        {
+          id: 30,
+          baseTitle: "Epic Series",
+          tags: [],
+          chapters: [
+            { id: 300, title: "Part 1", chapterNo: 1, format: "mp3", durationSecs: 3600, filePath: "x/1.mp3", played: false, tags: [] },
+            { id: 301, title: "Part 2", chapterNo: 2, format: "mp3", durationSecs: 3900, filePath: "x/2.mp3", played: false, tags: [] },
+          ],
+        },
+      ],
+    };
+    render(<AuthorDetailView detail={multiHourDetail} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
+    // Per-work meta line: "2 chapters · 2 unplayed · 2h 5m"
+    const workMeta = screen.getByText(/chapters.*unplayed.*2h 5m/);
+    expect(workMeta).toBeInTheDocument();
+  });
+
   it("closing the Edit grouping dialog via Escape dismisses it", async () => {
     render(
       <AuthorDetailView

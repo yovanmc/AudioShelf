@@ -5,7 +5,7 @@ import { CreatorAvatar, WorkArtwork } from "../components/Cover";
 import { Button, Dialog, ProgressBar, TagGroup } from "../components/ui";
 import { Menu } from "../components/Menu";
 import { Icon } from "../components/Icon";
-import { formatDuration } from "../lib/time";
+import { formatDuration, formatLong } from "../lib/time";
 import { sortWorks, type WorkSort } from "../lib/browse";
 
 function ChapterGroupingForm(props: {
@@ -104,7 +104,7 @@ export function AuthorDetailView(props: {
         <div style={{ flex: 1 }}>
           <div className="muted">Creator</div>
           <h1>{detail.name}</h1>
-          <p className="muted">{works.length} works · {chapters.length} chapters · {formatDuration(totalSecs)} · {progress}% played</p>
+          <p className="muted">{works.length} works · {chapters.length} chapters · {formatLong(totalSecs)} · {progress}% played</p>
           <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
           {firstUnplayed && <Button variant="primary" onClick={() => props.onPlayChapter({
             chapter: firstUnplayed.chapter,
@@ -148,7 +148,7 @@ export function AuthorDetailView(props: {
             <WorkArtwork workId={w.id} title={w.baseTitle} size={72} />
             <div style={{ flex: 1 }}>
               <h2 className="work-title">{w.baseTitle} ({w.chapters.length})</h2>
-              <div className="muted">{w.chapters.length} chapters · {w.chapters.filter((chapter) => !chapter.played).length} unplayed</div>
+              <div className="muted">{w.chapters.length} chapters · {w.chapters.filter((chapter) => !chapter.played).length} unplayed · {formatLong(w.chapters.reduce((s, c) => s + c.durationSecs, 0))}</div>
               <ProgressBar value={w.chapters.length ? Math.round((w.chapters.filter((chapter) => chapter.played).length / w.chapters.length) * 100) : 0} label={`${w.baseTitle} progress`} />
             </div>
           </div>
