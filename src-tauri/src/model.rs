@@ -94,3 +94,38 @@ pub struct UndoResult {
     pub reverted_count: usize,
     pub failures: Vec<String>,
 }
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorHit {
+    pub author_id: i64,
+    pub author_name: String,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkHit {
+    pub work_id: i64,
+    pub base_title: String,
+    pub author_id: i64,
+    pub author_name: String,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChapterHit {
+    pub chapter_id: i64,
+    pub title: String,
+    pub work_id: i64,
+    pub base_title: String,
+    pub author_id: i64,
+    pub author_name: String,
+}
+
+#[derive(Serialize, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResults {
+    pub authors: Vec<AuthorHit>,
+    pub works: Vec<WorkHit>,
+    pub chapters: Vec<ChapterHit>,
+}

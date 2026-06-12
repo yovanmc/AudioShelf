@@ -12,6 +12,14 @@ export interface ChapterRow {
 export interface WorkRow { id: number; baseTitle: string; chapters: ChapterRow[]; }
 export interface AuthorDetail { id: number; name: string; tags: string[]; works: WorkRow[]; }
 
+export interface AuthorHit { authorId: number; authorName: string; }
+export interface WorkHit { workId: number; baseTitle: string; authorId: number; authorName: string; }
+export interface ChapterHit {
+  chapterId: number; title: string; workId: number; baseTitle: string;
+  authorId: number; authorName: string;
+}
+export interface SearchResults { authors: AuthorHit[]; works: WorkHit[]; chapters: ChapterHit[]; }
+
 export interface DiscoveryWork {
   workId: number; baseTitle: string; authorId: number; authorName: string;
   unplayedCount: number; sharedTags: string[];
@@ -40,6 +48,8 @@ export const scanLibrary = (root: string) => invoke<ScanResult>("scan_library", 
 export const getAuthors = () => invoke<AuthorRow[]>("get_authors");
 export const getAuthorDetail = (authorId: number) =>
   invoke<AuthorDetail>("get_author_detail", { authorId });
+export const searchLibrary = (query: string) =>
+  invoke<SearchResults>("search_library", { query });
 export const setChapterPlayed = (chapterId: number, played: boolean) =>
   invoke("set_chapter_played", { chapterId, played });
 export const markChapterFinished = (chapterId: number, nowMs: number) =>
