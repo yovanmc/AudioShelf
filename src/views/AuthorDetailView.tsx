@@ -3,6 +3,7 @@ import type { AuthorDetail, ChapterRow, WorkRow } from "../lib/api";
 import { TagEditor } from "./TagEditor";
 import { Cover } from "../components/Cover";
 import { formatDuration } from "../lib/time";
+import { sortWorks, type WorkSort } from "../lib/browse";
 
 function ChapterGroupingForm(props: {
   work: WorkRow;
@@ -80,16 +81,54 @@ export function AuthorDetailView(props: {
   onSetChapterTags: (chapterId: number, tags: string[]) => void;
   allTags: string[];
   onBack: () => void;
+  workSort: WorkSort;
+  onWorkSortChange: (s: WorkSort) => void;
 }) {
   const { detail } = props;
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const works = sortWorks(detail.works, props.workSort);
+  const allCollapsed = works.length > 0 && works.every((w) => collapsed.has(w.id));
+  const toggleWork = (id: number) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const expandAll = () => setCollapsed(new Set());
+  const collapseAll = () => setCollapsed(new Set(works.map((w) => w.id)));
   return (
     <div className="author-detail">
       <button onClick={props.onBack}>← Library</button>
       <h1>{detail.name}</h1>
       <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
-      {detail.works.map((w) => (
+      <div className="work-controls" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <label>
+          Sort works:{" "}
+          <select
+            aria-label="Sort works"
+            value={props.workSort}
+            onChange={(e) => props.onWorkSortChange(e.target.value as WorkSort)}
+          >
+            <option value="az">A–Z</option>
+            <option value="length">Length (longest)</option>
+            <option value="played">Played %</option>
+          </select>
+        </label>
+        <button onClick={allCollapsed ? expandAll : collapseAll}>
+          {allCollapsed ? "Expand all" : "Collapse all"}
+        </button>
+      </div>
+      {works.map((w) => (
         <section key={w.id} className="work">
           <h2 style={{ display: "flex", alignItems: "center" }}>
+            <button
+              aria-label={`${collapsed.has(w.id) ? "Expand" : "Collapse"} '${w.baseTitle}'`}
+              onClick={() => toggleWork(w.id)}
+              style={{ marginRight: 4 }}
+            >
+              {collapsed.has(w.id) ? "▸" : "▾"}
+            </button>
             <Cover kind="work" id={w.id} name={w.baseTitle} size={40} />
             <span className="work-title">{w.baseTitle}{" "}({w.chapters.length})</span>
           </h2>
@@ -101,6 +140,7 @@ export function AuthorDetailView(props: {
               onChange={(t) => props.onSetWorkTags(w.id, t)}
             />
           </div>
+          {!collapsed.has(w.id) && (
           <ul>
             {w.chapters.map((c) => (
               <li key={c.id} data-played={c.played ? "true" : "false"}>
@@ -128,6 +168,7 @@ export function AuthorDetailView(props: {
               </li>
             ))}
           </ul>
+          )}
         </section>
       ))}
     </div>

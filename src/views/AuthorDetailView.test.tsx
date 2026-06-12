@@ -25,7 +25,7 @@ const noop = () => {};
 
 describe("AuthorDetailView", () => {
   it("renders works, chapters, and a played marker", () => {
-    render(<AuthorDetailView detail={detail} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} />);
+    render(<AuthorDetailView detail={detail} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
     expect(screen.getByText("Jane Doe")).toBeInTheDocument();
     expect(screen.getByText("Cool Story")).toBeInTheDocument();
     const ch2 = screen.getByText("Cool Story 2 the sequel").closest("li")!;
@@ -34,14 +34,14 @@ describe("AuthorDetailView", () => {
 
   it("toggles played when the checkbox is clicked", async () => {
     const onToggle = vi.fn();
-    render(<AuthorDetailView detail={detail} onTogglePlayed={onToggle} onPlayChapter={noop} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} />);
+    render(<AuthorDetailView detail={detail} onTogglePlayed={onToggle} onPlayChapter={noop} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
     await userEvent.click(screen.getByLabelText("Mark 'Cool Story' played"));
     expect(onToggle).toHaveBeenCalledWith(100, true);
   });
 
   it("plays a chapter when its play button is clicked", async () => {
     const onPlay = vi.fn();
-    render(<AuthorDetailView detail={detail} onTogglePlayed={noop} onPlayChapter={onPlay} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} />);
+    render(<AuthorDetailView detail={detail} onTogglePlayed={noop} onPlayChapter={onPlay} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "Play 'Cool Story'" }));
     expect(onPlay).toHaveBeenCalledWith(detail.works[0].chapters[0]);
   });
@@ -49,7 +49,7 @@ describe("AuthorDetailView", () => {
   it("renders the tag editor and reports tag changes", async () => {
     const onSetTags = vi.fn();
     const withTags = { ...detail, tags: ["cozy"] };
-    render(<AuthorDetailView detail={withTags} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={onSetTags} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={["cozy", "calm"]} onBack={noop} />);
+    render(<AuthorDetailView detail={withTags} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={onSetTags} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={["cozy", "calm"]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
     expect(screen.getByText("cozy")).toBeInTheDocument();
     await userEvent.click(screen.getByLabelText("Remove tag cozy"));
     expect(onSetTags).toHaveBeenCalledWith([]);
@@ -69,6 +69,8 @@ describe("AuthorDetailView", () => {
         onSetChapterTags={noop}
         allTags={[]}
         onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
       />,
     );
     const firstChapter = detail.works[0].chapters[0];
@@ -93,6 +95,8 @@ describe("AuthorDetailView", () => {
         onSetChapterTags={noop}
         allTags={[]}
         onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
       />,
     );
     const firstChapter = detail.works[0].chapters[0];
@@ -122,6 +126,8 @@ describe("AuthorDetailView", () => {
         onSetChapterTags={noop}
         allTags={["mystery", "epic"]}
         onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
       />,
     );
     // "mystery" appears as a work tag chip.
@@ -156,6 +162,8 @@ describe("AuthorDetailView", () => {
         onSetChapterTags={noop}
         allTags={["intro"]}
         onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
       />,
     );
     // Toggle button for the tagged chapter.
@@ -188,6 +196,8 @@ describe("AuthorDetailView", () => {
         onSetChapterTags={noop}
         allTags={["intro"]}
         onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
       />,
     );
     const toggleBtn = screen.getByLabelText("Toggle tags for 'Cool Story'");
@@ -223,10 +233,173 @@ describe("AuthorDetailView", () => {
         onSetChapterTags={onSetChapterTags}
         allTags={["intro"]}
         onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
       />,
     );
     // The chapter editor is open (chapter has "intro" tag), remove it.
     await userEvent.click(screen.getByLabelText("Remove tag intro"));
     expect(onSetChapterTags).toHaveBeenCalledWith(100, []);
+  });
+
+  it("Collapse all hides chapter items and button changes to Expand all; Expand all restores them", async () => {
+    render(
+      <AuthorDetailView
+        detail={detail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+      />,
+    );
+    // Initially chapters are visible.
+    expect(screen.getByText("Cool Story 2 the sequel")).toBeInTheDocument();
+    // Click "Collapse all".
+    await userEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    // Chapter items are now hidden.
+    expect(screen.queryByText("Cool Story 2 the sequel")).not.toBeInTheDocument();
+    // Button now reads "Expand all".
+    expect(screen.getByRole("button", { name: "Expand all" })).toBeInTheDocument();
+    // Click "Expand all" to restore.
+    await userEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(screen.getByText("Cool Story 2 the sequel")).toBeInTheDocument();
+  });
+
+  it("per-work collapse toggle hides only that work's chapters", async () => {
+    const twoWorkDetail: AuthorDetail = {
+      id: 1,
+      name: "Jane Doe",
+      tags: [],
+      works: [
+        {
+          id: 10,
+          baseTitle: "Cool Story",
+          tags: [],
+          chapters: [
+            { id: 100, title: "Cool Chapter A", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/a.mp3", played: false, tags: [] },
+          ],
+        },
+        {
+          id: 20,
+          baseTitle: "Other Story",
+          tags: [],
+          chapters: [
+            { id: 200, title: "Other Chapter B", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/b.mp3", played: false, tags: [] },
+          ],
+        },
+      ],
+    };
+    render(
+      <AuthorDetailView
+        detail={twoWorkDetail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+      />,
+    );
+    // Both chapters visible initially.
+    expect(screen.getByText("Cool Chapter A")).toBeInTheDocument();
+    expect(screen.getByText("Other Chapter B")).toBeInTheDocument();
+    // Collapse only "Cool Story".
+    await userEvent.click(screen.getByLabelText("Collapse 'Cool Story'"));
+    // Cool Story chapters hidden, Other Story chapters still visible.
+    expect(screen.queryByText("Cool Chapter A")).not.toBeInTheDocument();
+    expect(screen.getByText("Other Chapter B")).toBeInTheDocument();
+  });
+
+  it("changing Sort works to 'Length (longest)' reorders work sections", async () => {
+    const onWorkSortChange = vi.fn();
+    // Two works: "Bravo" has 300s total, "Alpha" has 60s total.
+    // A–Z order: Alpha first. Length order: Bravo first.
+    const twoWorkDetail: AuthorDetail = {
+      id: 1,
+      name: "Jane Doe",
+      tags: [],
+      works: [
+        {
+          id: 10,
+          baseTitle: "Alpha",
+          tags: [],
+          chapters: [
+            { id: 100, title: "Alpha Ch1", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/a.mp3", played: false, tags: [] },
+          ],
+        },
+        {
+          id: 20,
+          baseTitle: "Bravo",
+          tags: [],
+          chapters: [
+            { id: 200, title: "Bravo Ch1", chapterNo: 1, format: "mp3", durationSecs: 300, filePath: "x/b.mp3", played: false, tags: [] },
+          ],
+        },
+      ],
+    };
+    const { rerender, container } = render(
+      <AuthorDetailView
+        detail={twoWorkDetail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={onWorkSortChange}
+      />,
+    );
+
+    // A–Z: Alpha before Bravo — read work-title spans (text is "Alpha (1)", strip the count).
+    const titlesBefore = Array.from(container.querySelectorAll(".work-title")).map((el) =>
+      (el.textContent ?? "").replace(/\s*\(\d+\)\s*$/, "").trim(),
+    );
+    expect(titlesBefore[0]).toBe("Alpha");
+    expect(titlesBefore[1]).toBe("Bravo");
+
+    // Select "Length (longest)" — fires onWorkSortChange.
+    await userEvent.selectOptions(screen.getByLabelText("Sort works"), "length");
+    expect(onWorkSortChange).toHaveBeenCalledWith("length");
+
+    // Rerender with new sort to simulate parent updating the prop.
+    rerender(
+      <AuthorDetailView
+        detail={twoWorkDetail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="length"
+        onWorkSortChange={onWorkSortChange}
+      />,
+    );
+
+    // Length: Bravo (300s) before Alpha (60s).
+    const titlesAfter = Array.from(container.querySelectorAll(".work-title")).map((el) =>
+      (el.textContent ?? "").replace(/\s*\(\d+\)\s*$/, "").trim(),
+    );
+    expect(titlesAfter[0]).toBe("Bravo");
+    expect(titlesAfter[1]).toBe("Alpha");
   });
 });
