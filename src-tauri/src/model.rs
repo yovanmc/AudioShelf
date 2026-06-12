@@ -143,7 +143,23 @@ pub struct ContinueItem {
     pub work_title: String,
     pub next_chapter: ChapterRow,
     pub remaining_unplayed: i64,
+    pub total_chapters: i64,
+    pub played_chapters: i64,
     pub last_played_at: i64,
+}
+
+#[derive(Clone, Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendationWork {
+    pub work_id: i64,
+    pub base_title: String,
+    pub author_id: i64,
+    pub author_name: String,
+    pub total_chapters: i64,
+    pub unplayed_count: i64,
+    pub tags: Vec<String>,
+    pub matched_tags: Vec<String>,
+    pub reason: String,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -151,7 +167,9 @@ pub struct ContinueItem {
 pub struct RecentItem {
     pub chapter_id: i64,
     pub chapter_title: String,
+    pub work_id: i64,
     pub work_title: String,
+    pub author_id: i64,
     pub author_name: String,
     pub played_at: i64,
 }
@@ -168,6 +186,7 @@ pub struct ListeningStats {
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct HomeData {
-    pub continue_listening: Vec<ContinueItem>,
+    pub keep_listening: Option<ContinueItem>,
+    pub recommendations: Vec<RecommendationWork>,
     pub stats: ListeningStats,
 }

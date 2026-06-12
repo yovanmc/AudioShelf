@@ -1,7 +1,7 @@
 //! Tauri commands and the shared DB state.
 
 use crate::db;
-use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterHit, ChapterRow, ContinueItem, DiscoveryWork, HomeData, ListeningStats, MoreWork, RecentItem, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
+use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterHit, ChapterRow, ContinueItem, DiscoveryWork, HomeData, ListeningStats, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
 use crate::natsort::natural_cmp;
 use crate::regroup;
 use crate::rename;
@@ -532,17 +532,12 @@ fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::R
     Ok(row)
 }
 
-/// "Jump back in": for each recently-played author (most-recent first), the next unplayed
-/// chapter to resume. Prefers the author's most-recently-played work, else their first
-/// active work with an unplayed chapter. Authors with nothing unplayed are omitted.
-pub(crate) fn home_continue(conn: &rusqlite::Connection, limit: usize) -> rusqlite::Result<Vec<ContinueItem>> {
-    // Over-fetch: some recent authors may be fully played and get skipped.
-    let authors = recent_authors(conn, limit.saturating_mul(2).max(limit))?;
-    let mut out: Vec<ContinueItem> = Vec::new();
+/// Latest recently-played creator with an unplayed chapter to resume.
+pub(crate) fn home_keep_listening(
+    conn: &rusqlite::Connection,
+) -> rusqlite::Result<Option<ContinueItem>> {
+    let authors = recent_authors(conn, 20)?;
     for author_id in authors {
-        if out.len() >= limit {
-            break;
-        }
         let author_name: String = conn.query_row(
             "SELECT COALESCE(display_name, folder_name) FROM authors WHERE id=?1",
             params![author_id],
@@ -604,24 +599,185 @@ pub(crate) fn home_continue(conn: &rusqlite::Connection, limit: usize) -> rusqli
 
         let work_title: String =
             conn.query_row("SELECT base_title FROM works WHERE id=?1", params![work_id], |r| r.get(0))?;
-        let remaining_unplayed: i64 = conn.query_row(
-            "SELECT count(*) FROM chapters WHERE work_id=?1 AND status='active' AND played=0",
+        let (total_chapters, played_chapters, remaining_unplayed): (i64, i64, i64) = conn.query_row(
+            "SELECT count(*),
+                    sum(CASE WHEN played=1 THEN 1 ELSE 0 END),
+                    sum(CASE WHEN played=0 THEN 1 ELSE 0 END)
+             FROM chapters WHERE work_id=?1 AND status='active'",
             params![work_id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
         let next_chapter = load_chapter_row(conn, chapter_id)?;
 
-        out.push(ContinueItem {
+        return Ok(Some(ContinueItem {
             author_id,
             author_name,
             work_id,
             work_title,
             next_chapter,
             remaining_unplayed,
+            total_chapters,
+            played_chapters,
             last_played_at,
+        }));
+    }
+    Ok(None)
+}
+
+struct HomeCandidate {
+    item: RecommendationWork,
+    shared_count: usize,
+    recent_author_rank: Option<usize>,
+    sort_key: String,
+}
+
+fn tags_for_author_and_work(
+    conn: &rusqlite::Connection,
+    author_id: i64,
+    work_id: i64,
+) -> rusqlite::Result<std::collections::BTreeSet<String>> {
+    let mut tags = std::collections::BTreeSet::new();
+    let mut author = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1")?;
+    for tag in author.query_map(params![author_id], |r| r.get::<_, String>(0))? {
+        tags.insert(tag?);
+    }
+    let mut work = conn.prepare("SELECT tag FROM work_tags WHERE work_id=?1")?;
+    for tag in work.query_map(params![work_id], |r| r.get::<_, String>(0))? {
+        tags.insert(tag?);
+    }
+    Ok(tags)
+}
+
+fn recommendation_reason(matched_tags: &[String], recent_author: bool) -> String {
+    match matched_tags {
+        [one] => format!("Shares {one}"),
+        [first, second, ..] => format!("Shares {first} and {second}"),
+        [] if recent_author => "More from a creator you listened to".to_string(),
+        [] => "Mostly unplayed".to_string(),
+    }
+}
+
+pub(crate) fn home_recommendations(
+    conn: &rusqlite::Connection,
+    exclude_work_id: Option<i64>,
+    cap: usize,
+) -> rusqlite::Result<Vec<RecommendationWork>> {
+    let recent = recent_authors(conn, 20)?;
+    let recent_rank: std::collections::HashMap<i64, usize> =
+        recent.iter().enumerate().map(|(rank, id)| (*id, rank)).collect();
+    let mut recent_tags = std::collections::BTreeSet::new();
+    for author_id in &recent {
+        let mut author = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1")?;
+        for tag in author.query_map(params![author_id], |r| r.get::<_, String>(0))? {
+            recent_tags.insert(tag?);
+        }
+        let mut works = conn.prepare(
+            "SELECT wt.tag FROM work_tags wt JOIN works w ON wt.work_id=w.id WHERE w.author_id=?1",
+        )?;
+        for tag in works.query_map(params![author_id], |r| r.get::<_, String>(0))? {
+            recent_tags.insert(tag?);
+        }
+    }
+
+    let mut statement = conn.prepare(
+        "SELECT w.id, w.base_title, w.sort_key, a.id,
+                COALESCE(a.display_name, a.folder_name), count(c.id),
+                sum(CASE WHEN c.played=0 THEN 1 ELSE 0 END)
+         FROM works w
+         JOIN authors a ON a.id=w.author_id
+         JOIN chapters c ON c.work_id=w.id
+         WHERE w.status='active' AND a.status='active' AND c.status='active'
+         GROUP BY w.id, w.base_title, w.sort_key, a.id, a.folder_name, a.display_name
+         HAVING sum(CASE WHEN c.played=0 THEN 1 ELSE 0 END) > 0",
+    )?;
+    let rows = statement
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, i64>(5)?,
+                r.get::<_, i64>(6)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let mut candidates = Vec::new();
+    for (work_id, base_title, sort_key, author_id, author_name, total, unplayed) in rows {
+        if exclude_work_id == Some(work_id) {
+            continue;
+        }
+        let owned = tags_for_author_and_work(conn, author_id, work_id)?;
+        let tags: Vec<String> = owned.iter().cloned().collect();
+        let matched_tags: Vec<String> =
+            owned.intersection(&recent_tags).cloned().collect();
+        let rank = recent_rank.get(&author_id).copied();
+        let reason = recommendation_reason(&matched_tags, rank.is_some());
+        candidates.push(HomeCandidate {
+            shared_count: matched_tags.len(),
+            recent_author_rank: rank,
+            sort_key,
+            item: RecommendationWork {
+                work_id,
+                base_title,
+                author_id,
+                author_name,
+                total_chapters: total,
+                unplayed_count: unplayed,
+                tags,
+                matched_tags,
+                reason,
+            },
         });
     }
-    Ok(out)
+
+    candidates.sort_by(|a, b| {
+        b.shared_count
+            .cmp(&a.shared_count)
+            .then_with(|| b.recent_author_rank.is_some().cmp(&a.recent_author_rank.is_some()))
+            .then_with(|| match (a.recent_author_rank, b.recent_author_rank) {
+                (Some(left), Some(right)) => left.cmp(&right),
+                _ => std::cmp::Ordering::Equal,
+            })
+            .then_with(|| {
+                let left = a.item.unplayed_count * b.item.total_chapters;
+                let right = b.item.unplayed_count * a.item.total_chapters;
+                right.cmp(&left)
+            })
+            .then_with(|| b.item.unplayed_count.cmp(&a.item.unplayed_count))
+            .then_with(|| {
+                a.item
+                    .author_name
+                    .to_lowercase()
+                    .cmp(&b.item.author_name.to_lowercase())
+            })
+            .then_with(|| a.sort_key.cmp(&b.sort_key))
+            .then_with(|| a.item.work_id.cmp(&b.item.work_id))
+    });
+
+    let mut selected_authors = std::collections::BTreeSet::new();
+    let mut selected_works = std::collections::BTreeSet::new();
+    let mut selected = Vec::new();
+    for candidate in &candidates {
+        if selected.len() >= cap {
+            break;
+        }
+        if selected_authors.insert(candidate.item.author_id) {
+            selected_works.insert(candidate.item.work_id);
+            selected.push(candidate.item.clone());
+        }
+    }
+    for candidate in candidates {
+        if selected.len() >= cap {
+            break;
+        }
+        if selected_works.insert(candidate.item.work_id) {
+            selected.push(candidate.item);
+        }
+    }
+    Ok(selected)
 }
 
 /// Length of the current streak: consecutive local-day indices ending at the most recent
@@ -676,7 +832,8 @@ pub(crate) fn home_stats(
     let streak_days = streak_len(&days, day(now_ms));
 
     let mut rstmt = conn.prepare(
-        "SELECT c.id, c.raw_filename, w.base_title, COALESCE(a.display_name, a.folder_name), pe.played_at
+        "SELECT c.id, c.raw_filename, w.id, w.base_title, a.id,
+                COALESCE(a.display_name, a.folder_name), pe.played_at
          FROM play_events pe
          JOIN chapters c ON pe.chapter_id=c.id
          JOIN works w ON c.work_id=w.id
@@ -693,9 +850,11 @@ pub(crate) fn home_stats(
             Ok(RecentItem {
                 chapter_id: r.get(0)?,
                 chapter_title,
-                work_title: r.get(2)?,
-                author_name: r.get(3)?,
-                played_at: r.get(4)?,
+                work_id: r.get(2)?,
+                work_title: r.get(3)?,
+                author_id: r.get(4)?,
+                author_name: r.get(5)?,
+                played_at: r.get(6)?,
             })
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -706,9 +865,12 @@ pub(crate) fn home_stats(
 #[tauri::command]
 pub fn query_home(state: tauri::State<DbState>, now_ms: i64, tz_offset_minutes: i64) -> Result<HomeData, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let continue_listening = home_continue(&conn, 8).map_err(|e| e.to_string())?;
+    let keep_listening = home_keep_listening(&conn).map_err(|e| e.to_string())?;
+    let recommendations =
+        home_recommendations(&conn, keep_listening.as_ref().map(|item| item.work_id), 6)
+            .map_err(|e| e.to_string())?;
     let stats = home_stats(&conn, now_ms, tz_offset_minutes, 10).map_err(|e| e.to_string())?;
-    Ok(HomeData { continue_listening, stats })
+    Ok(HomeData { keep_listening, recommendations, stats })
 }
 
 #[tauri::command]
@@ -1221,10 +1383,9 @@ mod tests {
     }
 
     #[test]
-    fn home_continue_resumes_next_unplayed_and_omits_finished_authors() {
+    fn home_keep_listening_uses_latest_creator_with_unplayed_audio() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        // Alice: one 2-chapter work ("Tale", "Tale 2"); Bob: one single-chapter work.
         touch(&root.join("Alice").join("Tale.mp3"));
         touch(&root.join("Alice").join("Tale 2.mp3"));
         touch(&root.join("Bob").join("Saga.mp3"));
@@ -1233,23 +1394,64 @@ mod tests {
 
         let ids: std::collections::HashMap<String, i64> =
             query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
-        let alice_detail = query_author_detail(&conn, ids["Alice"]).unwrap();
-        let ch1 = alice_detail.works[0].chapters[0].id; // "Tale" (chapter_no 1)
-        let bob_detail = query_author_detail(&conn, ids["Bob"]).unwrap();
-        let saga = bob_detail.works[0].chapters[0].id;
+        let alice = query_author_detail(&conn, ids["Alice"]).unwrap();
+        let bob = query_author_detail(&conn, ids["Bob"]).unwrap();
+        mark_finished(&conn, alice.works[0].chapters[0].id, 2_000).unwrap();
+        mark_finished(&conn, bob.works[0].chapters[0].id, 3_000).unwrap();
 
-        // Alice finishes ch1 (more recently); Bob finishes his only chapter (older).
-        mark_finished(&conn, saga, 1_000).unwrap();
-        mark_finished(&conn, ch1, 2_000).unwrap();
+        let item = home_keep_listening(&conn).unwrap().expect("Alice remains resumable");
+        assert_eq!(item.author_name, "Alice");
+        assert_eq!(item.next_chapter.chapter_no, 2);
+        assert_eq!(item.total_chapters, 2);
+        assert_eq!(item.played_chapters, 1);
+    }
 
-        let items = home_continue(&conn, 8).unwrap();
-        // Bob is fully played → omitted. Only Alice remains, most-recent first.
-        assert_eq!(items.len(), 1, "fully-played author omitted");
-        let a = &items[0];
-        assert_eq!(a.author_name, "Alice");
-        assert_eq!(a.next_chapter.chapter_no, 2, "resume at the next unplayed chapter");
-        assert_eq!(a.remaining_unplayed, 1);
-        assert_eq!(a.last_played_at, 2_000);
+    #[test]
+    fn home_recommendations_rank_matches_exclude_feature_and_diversify() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Alice").join("Tale.mp3"));
+        touch(&root.join("Alice").join("Tale 2.mp3"));
+        touch(&root.join("Bob").join("Blue.mp3"));
+        touch(&root.join("Carol").join("Calm.mp3"));
+        touch(&root.join("Dave").join("Other.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+        set_tags(&conn, ids["Alice"], &["cozy".into(), "mystery".into()]).unwrap();
+        set_tags(&conn, ids["Bob"], &["cozy".into(), "mystery".into()]).unwrap();
+        set_tags(&conn, ids["Carol"], &["cozy".into()]).unwrap();
+        let alice = query_author_detail(&conn, ids["Alice"]).unwrap();
+        mark_finished(&conn, alice.works[0].chapters[0].id, 5_000).unwrap();
+
+        let featured = home_keep_listening(&conn).unwrap().unwrap();
+        let recs = home_recommendations(&conn, Some(featured.work_id), 6).unwrap();
+        assert!(recs.iter().all(|r| r.work_id != featured.work_id));
+        assert_eq!(recs[0].author_name, "Bob");
+        assert_eq!(recs[0].matched_tags, vec!["cozy", "mystery"]);
+        assert_eq!(recs[0].reason, "Shares cozy and mystery");
+        assert!(recs.iter().all(|r| r.unplayed_count > 0));
+        let first_three: std::collections::BTreeSet<_> =
+            recs.iter().take(3).map(|r| r.author_id).collect();
+        assert_eq!(first_three.len(), recs.len().min(3));
+    }
+
+    #[test]
+    fn home_recommendations_have_deterministic_sparse_history_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Beta").join("Short.mp3"));
+        touch(&root.join("Alpha").join("Long.mp3"));
+        touch(&root.join("Alpha").join("Long 2.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+
+        let recs = home_recommendations(&conn, None, 6).unwrap();
+        assert_eq!(recs[0].author_name, "Alpha");
+        assert_eq!(recs[0].reason, "Mostly unplayed");
+        assert_eq!(recs[1].author_name, "Beta");
     }
 
     #[test]

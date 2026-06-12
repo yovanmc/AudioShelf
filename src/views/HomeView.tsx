@@ -31,7 +31,8 @@ export function HomeView(props: {
     );
   }
 
-  const { continueListening, stats } = home;
+  const continueListening = home.keepListening ? [home.keepListening] : [];
+  const { stats } = home;
   const isEmpty =
     continueListening.length === 0 && stats.chaptersFinished === 0 && stats.recent.length === 0;
 

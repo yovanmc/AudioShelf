@@ -16,23 +16,32 @@ const nextChapter: ChapterRow = {
 };
 
 const home: HomeData = {
-  continueListening: [
-    {
-      authorId: 1,
-      authorName: "Alice",
-      workId: 3,
-      workTitle: "Tale",
-      nextChapter,
-      remainingUnplayed: 1,
-      lastPlayedAt: 1_000,
-    },
-  ],
+  keepListening: {
+    authorId: 1,
+    authorName: "Alice",
+    workId: 3,
+    workTitle: "Tale",
+    nextChapter,
+    remainingUnplayed: 1,
+    totalChapters: 2,
+    playedChapters: 1,
+    lastPlayedAt: 1_000,
+  },
+  recommendations: [],
   stats: {
     totalSecs: 600,
     chaptersFinished: 2,
     streakDays: 2,
     recent: [
-      { chapterId: 7, chapterTitle: "Tale 2", workTitle: "Tale", authorName: "Alice", playedAt: 2_000 },
+      {
+        chapterId: 7,
+        chapterTitle: "Tale 2",
+        workId: 3,
+        workTitle: "Tale",
+        authorId: 1,
+        authorName: "Alice",
+        playedAt: 2_000,
+      },
     ],
   },
 };
@@ -70,7 +79,8 @@ describe("HomeView", () => {
 
   it("shows an empty state when nothing has been played", () => {
     const empty: HomeData = {
-      continueListening: [],
+      keepListening: null,
+      recommendations: [],
       stats: { totalSecs: 0, chaptersFinished: 0, streakDays: 0, recent: [] },
     };
     render(<HomeView {...baseProps({ home: empty })} />);
