@@ -1,150 +1,78 @@
 import { FixedSizeList as List, type ListChildComponentProps } from "react-window";
 import type { AuthorRow, SearchResults } from "../lib/api";
 import { summarizeAuthor } from "../lib/library";
-import { Cover } from "../components/Cover";
+import { CreatorAvatar, WorkArtwork } from "../components/Cover";
+import { CreatorIdentity } from "../components/CreatorIdentity";
+import { EmptyState } from "../components/ui";
+import { Icon } from "../components/Icon";
 import { SortFilterBar } from "./SortFilterBar";
 import { filterAuthors, sortAuthors, type AuthorSort, type PlayedStatus } from "../lib/browse";
 
-const ROW_HEIGHT = 56;
+const ROW_HEIGHT = 72;
 const LIST_HEIGHT = 600;
 
 export function LibraryView(props: {
-  authors: AuthorRow[];
-  query: string;
-  results: SearchResults | null;
-  sort: AuthorSort;
-  onSortChange: (s: AuthorSort) => void;
-  filterTag: string | null;
-  onFilterTagChange: (t: string | null) => void;
-  filterStatus: PlayedStatus;
-  onFilterStatusChange: (s: PlayedStatus) => void;
-  allTags: string[];
-  onQueryChange: (q: string) => void;
-  onOpenAuthor: (id: number) => void;
-  onOpenHome: () => void;
-  onOpenDiscovery: () => void;
-  onOpenRename: () => void;
-  onOpenSettings: () => void;
+  authors: AuthorRow[]; query: string; results: SearchResults | null; sort: AuthorSort;
+  onSortChange: (sort: AuthorSort) => void; filterTag: string | null;
+  onFilterTagChange: (tag: string | null) => void; filterStatus: PlayedStatus;
+  onFilterStatusChange: (status: PlayedStatus) => void; allTags: string[];
+  onQueryChange: (query: string) => void; onOpenAuthor: (id: number) => void;
+  onOpenHome?: () => void; onOpenDiscovery?: () => void; onOpenRename?: () => void; onOpenSettings?: () => void;
 }) {
   const searching = props.query.trim() !== "";
-
-  // Sort then filter the in-memory author list (M7 fetched all authors up front).
-  const visible = filterAuthors(sortAuthors(props.authors, props.sort), {
-    tag: props.filterTag,
-    status: props.filterStatus,
-  });
-
-  // One virtualized author row. react-window supplies `style` for positioning;
-  // it MUST be applied to the outer element.
+  const visible = filterAuthors(sortAuthors(props.authors, props.sort), { tag: props.filterTag, status: props.filterStatus });
   const Row = ({ index, style }: ListChildComponentProps) => {
-    const a = visible[index];
+    const author = visible[index];
     return (
       <div style={style}>
-        <button
-          onClick={() => props.onOpenAuthor(a.id)}
-          style={{ display: "flex", alignItems: "center", width: "100%", textAlign: "left" }}
-        >
-          <Cover kind="author" id={a.id} name={a.name} />
-          <span>
-            <span className="author-name">{a.name}</span>
-            {" — "}
-            <span className="author-summary">{summarizeAuthor(a)}</span>
+        <button className="list-row card" style={{ width: "100%", height: ROW_HEIGHT - 6, textAlign: "left" }} onClick={() => props.onOpenAuthor(author.id)}>
+          <CreatorAvatar authorId={author.id} name={author.name} size={44} />
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <strong className="author-name">{author.name}</strong>
+            <span className="author-summary muted" style={{ display: "block" }}>{summarizeAuthor(author)}</span>
           </span>
+          <span className="chips">{author.tags.slice(0, 2).map((tag) => <span className="chip" key={tag}>{tag}</span>)}</span>
+          <Icon name="chevronRight" />
         </button>
       </div>
     );
   };
-
   return (
-    <div className="library">
-      <button onClick={props.onOpenHome}>🏠 Home</button>
-      <button onClick={props.onOpenDiscovery}>Discover</button>
-      <button onClick={props.onOpenRename}>Rename tool</button>
-      <button onClick={props.onOpenSettings}>Settings</button>
-      <input
-        placeholder="Search authors, works, chapters"
-        value={props.query}
-        onChange={(e) => props.onQueryChange(e.target.value)}
-      />
-      {searching ? (
-        <SearchResultsPanel results={props.results} onOpenAuthor={props.onOpenAuthor} />
-      ) : (
+    <main className="view library">
+      <header className="view-section"><div className="muted">All creators and audio</div><h1>Library</h1></header>
+      <div className="toolbar">
+        <label style={{ display: "flex", flex: 1, alignItems: "center", gap: 8 }}>
+          <Icon name="search" />
+          <span className="visually-hidden">Search library</span>
+          <input style={{ width: "100%" }} aria-label="Search library" placeholder="Search authors, works, chapters" value={props.query} onChange={(event) => props.onQueryChange(event.target.value)} />
+        </label>
+      </div>
+      {searching ? <SearchResultsPanel results={props.results} onOpenAuthor={props.onOpenAuthor} /> : (
         <>
-          <SortFilterBar
-            sort={props.sort}
-            onSortChange={props.onSortChange}
-            filterTag={props.filterTag}
-            onFilterTagChange={props.onFilterTagChange}
-            filterStatus={props.filterStatus}
-            onFilterStatusChange={props.onFilterStatusChange}
-            allTags={props.allTags}
-          />
-          {visible.length === 0 ? (
-            <p className="empty-filter">No authors match the current filter.</p>
-          ) : (
-            <List height={LIST_HEIGHT} width="100%" itemCount={visible.length} itemSize={ROW_HEIGHT}>
-              {Row}
-            </List>
-          )}
+          <SortFilterBar sort={props.sort} onSortChange={props.onSortChange} filterTag={props.filterTag} onFilterTagChange={props.onFilterTagChange} filterStatus={props.filterStatus} onFilterStatusChange={props.onFilterStatusChange} allTags={props.allTags} />
+          {visible.length === 0
+            ? <EmptyState title="No creators found">No authors match the current filters.</EmptyState>
+            : <List height={LIST_HEIGHT} width="100%" itemCount={visible.length} itemSize={ROW_HEIGHT}>{Row}</List>}
         </>
       )}
-    </div>
+    </main>
   );
 }
 
-function SearchResultsPanel(props: {
-  results: SearchResults | null;
-  onOpenAuthor: (id: number) => void;
-}) {
-  const r = props.results;
-  if (!r) return <p>Searching…</p>;
-  const empty = r.authors.length === 0 && r.works.length === 0 && r.chapters.length === 0;
-  if (empty) return <p>No matches.</p>;
+function SearchResultsPanel({ results, onOpenAuthor }: { results: SearchResults | null; onOpenAuthor: (id: number) => void }) {
+  if (!results) return <div className="card empty-state">Searching...</div>;
+  if (!results.authors.length && !results.works.length && !results.chapters.length) return <EmptyState title="No matches.">Try another creator, title, chapter, or tag.</EmptyState>;
   return (
     <div className="search-results">
-      {r.authors.length > 0 && (
-        <section>
-          <h3>Authors</h3>
-          <ul>
-            {r.authors.map((a) => (
-              <li key={`a${a.authorId}`}>
-                <button onClick={() => props.onOpenAuthor(a.authorId)}>
-                  <Cover kind="author" id={a.authorId} name={a.authorName} />
-                  {a.authorName}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {r.works.length > 0 && (
-        <section>
-          <h3>Works</h3>
-          <ul>
-            {r.works.map((w) => (
-              <li key={`w${w.workId}`}>
-                <button onClick={() => props.onOpenAuthor(w.authorId)}>
-                  {w.baseTitle} <span className="muted">— {w.authorName}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {r.chapters.length > 0 && (
-        <section>
-          <h3>Chapters</h3>
-          <ul>
-            {r.chapters.map((c) => (
-              <li key={`c${c.chapterId}`}>
-                <button onClick={() => props.onOpenAuthor(c.authorId)}>
-                  {c.title} <span className="muted">— {c.baseTitle} · {c.authorName}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {results.authors.length > 0 && <section className="view-section"><h2>Authors</h2><div className="card">
+        {results.authors.map((author) => <button className="list-row" style={{ width: "100%", background: "none", border: 0 }} key={author.authorId} onClick={() => onOpenAuthor(author.authorId)}><CreatorAvatar authorId={author.authorId} name={author.authorName} size={40} /><strong>{author.authorName}</strong></button>)}
+      </div></section>}
+      {results.works.length > 0 && <section className="view-section"><h2>Works</h2><div className="card-grid">
+        {results.works.map((work) => <button className="card work-card" style={{ textAlign: "left" }} key={work.workId} onClick={() => onOpenAuthor(work.authorId)}><WorkArtwork workId={work.workId} title={work.baseTitle} size={88} /><strong>{work.baseTitle}</strong><CreatorIdentity authorId={work.authorId} authorName={work.authorName} /></button>)}
+      </div></section>}
+      {results.chapters.length > 0 && <section className="view-section"><h2>Chapters</h2><div className="card">
+        {results.chapters.map((chapter) => <button className="list-row" style={{ width: "100%", background: "none", border: 0, textAlign: "left" }} key={chapter.chapterId} onClick={() => onOpenAuthor(chapter.authorId)}><WorkArtwork workId={chapter.workId} title={chapter.baseTitle} size={48} /><span><strong>{chapter.title}</strong><span className="muted" style={{ display: "block" }}>{chapter.baseTitle} · {chapter.authorName}</span></span></button>)}
+      </div></section>}
     </div>
   );
 }

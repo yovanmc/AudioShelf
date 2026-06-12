@@ -6,8 +6,8 @@ import {
   previewRenames, applyRenames, undoRenames,
   setGroupingOverride, clearGroupingOverride,
   getSetting, setSetting, pickFolder, searchLibrary, queryHome, resetPlayHistory,
-  type AuthorRow, type AuthorDetail, type ChapterRow, type ScanResult, type DiscoveryWork,
-  type RenameItem, type RenameResult, type SearchResults, type HomeData,
+  type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork,
+  type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
 } from "./lib/api";
 import { HomeView } from "./views/HomeView";
 import { LibraryView } from "./views/LibraryView";
@@ -17,9 +17,11 @@ import { RenameView } from "./views/RenameView";
 import { SettingsView } from "./views/SettingsView";
 import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
+import { NowPlayingPanel } from "./player/NowPlayingPanel";
+import { AppShell, type ShellRoute } from "./components/AppShell";
 import { clampSeek } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -61,6 +63,14 @@ type Route =
   | { kind: "rename" }
   | { kind: "settings"; firstRun: boolean };
 
+function shellRoute(route: Route): ShellRoute {
+  if (route.kind === "home") return "home";
+  if (route.kind === "discovery") return "discovery";
+  if (route.kind === "rename") return "rename";
+  if (route.kind === "settings") return "settings";
+  return "library";
+}
+
 export default function App() {
   const [route, setRoute] = useState<Route>({ kind: "loading" });
   const [scan, setScan] = useState<ScanResult | null>(null);
@@ -73,6 +83,8 @@ export default function App() {
   const [libraryRoot, setLibraryRoot] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState(false);
+  const [harnessMenuOpen, setHarnessMenuOpen] = useState(false);
 
   // ---- library search (controlled; spans authors/works/chapters) ----
   const [query, setQuery] = useState("");
@@ -96,9 +108,10 @@ export default function App() {
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailRef = useRef<AuthorDetail | null>(null);
   detailRef.current = detail;
-  const [current, setCurrent] = useState<ChapterRow | null>(null);
-  const currentRef = useRef<ChapterRow | null>(null);
+  const [current, setCurrent] = useState<PlaybackContext | null>(null);
+  const currentRef = useRef<PlaybackContext | null>(null);
   currentRef.current = current;
+  const [playerExpanded, setPlayerExpanded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -107,6 +120,13 @@ export default function App() {
 
   const [home, setHome] = useState<HomeData | null>(null);
   const [homeNow, setHomeNow] = useState(0);
+  const routeRef = useRef<Route>(route);
+  routeRef.current = route;
+
+  function setSidebarCollapsed(collapsed: boolean) {
+    setSidebarCollapsedState(collapsed);
+    void setSetting("sidebar_collapsed", String(collapsed));
+  }
 
   async function loadHome() {
     const now = Date.now();
@@ -241,6 +261,7 @@ export default function App() {
     await setChapterPlayed(chapterId, played);
     if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
     await loadAuthors();
+    if (routeRef.current.kind === "home") await loadHome();
   }
 
   async function setGrouping(chapterId: number, baseTitle: string, chapterNo: number) {
@@ -254,11 +275,11 @@ export default function App() {
     await loadAuthors();
   }
 
-  function playChapter(c: ChapterRow) {
-    setCurrent(c);
+  function playChapter(context: PlaybackContext) {
+    setCurrent(context);
     const audio = audioRef.current;
     if (audio) {
-      audio.src = fileUrl(c.filePath);
+      audio.src = fileUrl(context.chapter.filePath);
       audio.load();
       void audio.play().catch(() => { /* autoplay may be blocked; bar still shows */ });
     }
@@ -304,9 +325,10 @@ export default function App() {
     setIsPlaying(false);
     const c = currentRef.current;
     if (!c) return;
-    await markChapterFinished(c.id, Date.now());
+    await markChapterFinished(c.chapter.id, Date.now());
     if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
     await loadAuthors();
+    if (routeRef.current.kind === "home") await loadHome();
     // Stop after each chapter — no auto-advance.
   }
 
@@ -336,6 +358,7 @@ export default function App() {
       }
 
       setBrowsePrefs(parseBrowsePrefs(await getSetting("browse_prefs")));
+      setSidebarCollapsedState((await getSetting("sidebar_collapsed")) === "true");
 
       if (args.autostart && args.walkthrough) {
         const openFirstAuthor = async () => {
@@ -343,7 +366,80 @@ export default function App() {
           if (list.length > 0) await openAuthor(list[0].id);
         };
         const steps =
-          args.walkthrough === "home"
+          args.walkthrough === "m12"
+            ? m12Steps({
+                showEmptyHome: async () => {
+                  await resetPlayHistory();
+                  setSidebarCollapsedState(false);
+                  setHarnessMenuOpen(false);
+                  await loadHome();
+                  setRoute({ kind: "home" });
+                },
+                showHome: async () => {
+                  const list = await getAuthors();
+                  for (const author of list.slice(0, 3)) await setAuthorTags(author.id, ["cozy"]);
+                  if (list.length > 0) {
+                    const creator = await getAuthorDetail(list[0].id);
+                    const chapters = creator.works.flatMap((work) => work.chapters);
+                    const day = 86_400_000;
+                    if (chapters[0]) await markChapterFinished(chapters[0].id, Date.now() - day);
+                    if (chapters[1]) await markChapterFinished(chapters[1].id, Date.now());
+                  }
+                  await refreshTags();
+                  setAuthors(await getAuthors());
+                  await loadHome();
+                  setRoute({ kind: "home" });
+                },
+                collapseSidebar: async () => { setSidebarCollapsedState(true); setRoute({ kind: "home" }); },
+                showLibrary: async () => { setSidebarCollapsedState(false); setQuery(""); setResults(null); setRoute({ kind: "library" }); },
+                showSearch: async () => {
+                  setQuery("cool");
+                  setResults(await searchLibrary("cool"));
+                  setRoute({ kind: "library" });
+                },
+                showAuthorDetail: openFirstAuthor,
+                showDiscovery: openDiscovery,
+                showDiscoveryByTag: async () => {
+                  // Self-contained: reset play history so "For You" is empty
+                  // (discovery_for_you requires recent play events; with none it
+                  // returns []), then open Discovery fresh and apply a tag filter.
+                  // Without "For You" cards pushing it below the fold, the "Pick a
+                  // tag" chip + by-tag result set are visible in the viewport.
+                  await resetPlayHistory();
+                  await openDiscovery();
+                  await pickTags(["cozy"]);
+                },
+                showRename: openRename,
+                showSettings: async () => { setRoute({ kind: "settings", firstRun: false }); },
+                showPlayerCompact: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works[0];
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  setDetail(creator);
+                  setRoute({ kind: "author" });
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((item) => item.played).length,
+                  });
+                  setPlayerExpanded(false);
+                },
+                showPlayerExpanded: async () => { setPlayerExpanded(true); },
+                showContextMenu: async () => {
+                  setPlayerExpanded(false);
+                  await loadHome();
+                  setRoute({ kind: "home" });
+                  setHarnessMenuOpen(true);
+                },
+              })
+            : args.walkthrough === "home"
             ? homeSteps({
                 showEmptyHome: async () => {
                   // Wipe any play history left over from prior harness runs so
@@ -370,8 +466,17 @@ export default function App() {
                 const list = await getAuthors();
                 if (list.length === 0) return;
                 const d = await getAuthorDetail(list[0].id);
-                const first = d.works[0]?.chapters[0];
-                if (first) playChapter(first);
+                const work = d.works[0];
+                const first = work?.chapters[0];
+                if (work && first) playChapter({
+                  chapter: first,
+                  authorId: d.id,
+                  authorName: d.name,
+                  workId: work.id,
+                  workTitle: work.baseTitle,
+                  workTotalChapters: work.chapters.length,
+                  workPlayedChapters: work.chapters.filter((chapter) => chapter.played).length,
+                });
               } })
             : args.walkthrough === "discovery"
             ? discoverySteps({
@@ -541,12 +646,10 @@ export default function App() {
         <HomeView
           home={home}
           nowMs={homeNow}
-          onPlayChapter={playChapter}
+          onPlay={playChapter}
           onOpenAuthor={openAuthor}
           onOpenLibrary={() => setRoute({ kind: "library" })}
-          onOpenDiscovery={openDiscovery}
-          onOpenRename={openRename}
-          onOpenSettings={openSettings}
+          featureMenuOpen={harnessMenuOpen}
         />
       );
     }
@@ -577,7 +680,6 @@ export default function App() {
           picked={pickedTags}
           onPickTags={pickTags}
           onOpenAuthor={openAuthor}
-          onBack={() => setRoute({ kind: "library" })}
         />
       );
     }
@@ -589,7 +691,6 @@ export default function App() {
           onApply={doApplyRenames}
           onUndo={doUndoRenames}
           onReload={reloadRenamePreview}
-          onBack={() => setRoute({ kind: "library" })}
         />
       );
     }
@@ -603,7 +704,6 @@ export default function App() {
           firstRun={route.firstRun}
           onChooseFolder={chooseFolder}
           onRescan={rescan}
-          onBack={() => setRoute({ kind: "library" })}
         />
       );
     }
@@ -614,10 +714,6 @@ export default function App() {
         results={results}
         onQueryChange={setQuery}
         onOpenAuthor={openAuthor}
-        onOpenHome={openHome}
-        onOpenDiscovery={openDiscovery}
-        onOpenRename={openRename}
-        onOpenSettings={openSettings}
         sort={browsePrefs.authorSort}
         onSortChange={setAuthorSort}
         filterTag={browsePrefs.filterTag}
@@ -629,9 +725,29 @@ export default function App() {
     );
   }
 
+  const player = (
+    <PlayerBar
+      context={current}
+      isPlaying={isPlaying}
+      currentTime={currentTime}
+      duration={duration}
+      volume={volume}
+      sleepMinutes={sleepMinutes}
+      onToggle={toggle}
+      onSeek={seek}
+      onSkip={skip}
+      onVolume={setVolume}
+      onSetSleep={setSleep}
+      onExpand={() => setPlayerExpanded(true)}
+      onOpenAuthor={openAuthor}
+    />
+  );
+  const view = routedView();
+  const standalone = route.kind === "loading" || route.kind === "scan" ||
+    (route.kind === "settings" && route.firstRun);
+
   return (
-    <div className="app">
-      {routedView()}
+    <div className="app" style={{ height: "100%" }}>
       <audio
         ref={audioRef}
         onPlay={() => setIsPlaying(true)}
@@ -640,20 +756,41 @@ export default function App() {
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
         onEnded={handleEnded}
       />
-      <PlayerBar
-        title={current?.title ?? ""}
-        hasChapter={current !== null}
-        isPlaying={isPlaying}
-        currentTime={currentTime}
-        duration={duration}
-        volume={volume}
-        sleepMinutes={sleepMinutes}
-        onToggle={toggle}
-        onSeek={seek}
-        onSkip={skip}
-        onVolume={setVolume}
-        onSetSleep={setSleep}
-      />
+      {standalone ? <div className="standalone-view">{view}</div> : (
+        <AppShell
+          active={shellRoute(route)}
+          collapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
+          onHome={openHome}
+          onLibrary={() => setRoute({ kind: "library" })}
+          onDiscovery={openDiscovery}
+          onRename={openRename}
+          onSettings={openSettings}
+          player={player}
+        >
+          {view}
+        </AppShell>
+      )}
+      {current && playerExpanded && (
+        <NowPlayingPanel
+          context={current}
+          isPlaying={isPlaying}
+          currentTime={currentTime}
+          duration={duration}
+          volume={volume}
+          sleepMinutes={sleepMinutes}
+          onClose={() => setPlayerExpanded(false)}
+          onToggle={toggle}
+          onSeek={seek}
+          onSkip={skip}
+          onVolume={setVolume}
+          onSetSleep={setSleep}
+          onOpenAuthor={(authorId) => {
+            setPlayerExpanded(false);
+            void openAuthor(authorId);
+          }}
+        />
+      )}
     </div>
   );
 }

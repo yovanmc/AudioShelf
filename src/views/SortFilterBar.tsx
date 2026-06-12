@@ -10,7 +10,7 @@ export function SortFilterBar(props: {
   allTags: string[];
 }) {
   return (
-    <div className="sort-filter-bar" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <div className="sort-filter-bar toolbar card" style={{ padding: 12 }}>
       <label>
         Sort:{" "}
         <select

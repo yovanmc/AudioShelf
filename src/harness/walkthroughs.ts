@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -152,5 +152,37 @@ export function tagsSteps(nav: {
     { name: "seed", run: nav.seed },
     { name: "detail", run: nav.openDetail },
     { name: "search-by-tag", run: nav.searchByTag },
+  ];
+}
+
+export function m12Steps(nav: {
+  showEmptyHome: () => Promise<void>;
+  showHome: () => Promise<void>;
+  collapseSidebar: () => Promise<void>;
+  showLibrary: () => Promise<void>;
+  showSearch: () => Promise<void>;
+  showAuthorDetail: () => Promise<void>;
+  showDiscovery: () => Promise<void>;
+  showDiscoveryByTag: () => Promise<void>;
+  showRename: () => Promise<void>;
+  showSettings: () => Promise<void>;
+  showPlayerCompact: () => Promise<void>;
+  showPlayerExpanded: () => Promise<void>;
+  showContextMenu: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "home-empty", run: nav.showEmptyHome },
+    { name: "home", run: nav.showHome },
+    { name: "home-sidebar-collapsed", run: nav.collapseSidebar },
+    { name: "library", run: nav.showLibrary },
+    { name: "search", run: nav.showSearch },
+    { name: "author-detail", run: nav.showAuthorDetail },
+    { name: "discovery", run: nav.showDiscovery },
+    { name: "discovery-by-tag", run: nav.showDiscoveryByTag },
+    { name: "rename-preview", run: nav.showRename },
+    { name: "settings", run: nav.showSettings },
+    { name: "player-compact", run: nav.showPlayerCompact },
+    { name: "player-expanded", run: nav.showPlayerExpanded },
+    { name: "context-menu", run: nav.showContextMenu },
   ];
 }

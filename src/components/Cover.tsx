@@ -27,6 +27,53 @@ export function Swatch({ name, size = 28 }: { name: string; size?: number }) {
   );
 }
 
+function Artwork({ kind, id, name, size, className }: {
+  kind: "author" | "work"; id: number; name: string; size: number; className: string;
+}) {
+  const key = `${kind}:${id}`;
+  const [path, setPath] = useState<string | null>(() => coverCache.get(key) ?? null);
+
+  useEffect(() => {
+    let alive = true;
+    if (coverCache.has(key)) {
+      setPath(coverCache.get(key) ?? null);
+      return;
+    }
+    Promise.resolve(kind === "author" ? getAuthorCover(id) : getWorkCover(id))
+      .then((p) => {
+        const value = p ?? null;
+        coverCache.set(key, value);
+        if (alive) setPath(value);
+      })
+      .catch(() => {
+        coverCache.set(key, null);
+        if (alive) setPath(null);
+      });
+    return () => { alive = false; };
+  }, [id, key, kind]);
+
+  return (
+    <span className={`artwork ${className}`} style={{ width: size, height: size, background: colorFor(name) }} aria-label={`${name} artwork`}>
+      {path ? <img src={fileUrl(path)} alt="" /> : initials(name)}
+    </span>
+  );
+}
+
+export function WorkArtwork({ workId, title, size = 72, className = "" }: { workId: number; title: string; size?: number; className?: string }) {
+  return <Artwork kind="work" id={workId} name={title} size={size} className={`work-artwork ${className}`} />;
+}
+
+export function CreatorAvatar({ authorId, name, size = 36, className = "", decorative = false }: { authorId: number; name: string; size?: number; className?: string; decorative?: boolean }) {
+  if (decorative) {
+    return (
+      <span aria-hidden="true">
+        <Artwork kind="author" id={authorId} name={name} size={size} className={`creator-avatar ${className}`} />
+      </span>
+    );
+  }
+  return <Artwork kind="author" id={authorId} name={name} size={size} className={`creator-avatar ${className}`} />;
+}
+
 // Resolved cover paths cached across mounts (virtualized rows remount on scroll).
 // Value: asset cache path, or null when there's no cover.
 const coverCache = new Map<string, string | null>();

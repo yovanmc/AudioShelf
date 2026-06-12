@@ -35,7 +35,7 @@ describe("DiscoveryView", () => {
   it("opens an author from a suggestion", async () => {
     const onOpen = vi.fn();
     render(<DiscoveryView forYou={forYou} allTags={["cozy"]} byTags={[]} picked={[]} onPickTags={() => {}} onOpenAuthor={onOpen} onBack={() => {}} />);
-    await userEvent.click(screen.getByRole("button", { name: "Open Sam Smith" }));
+    await userEvent.click(screen.getByRole("button", { name: "View creator" }));
     expect(onOpen).toHaveBeenCalledWith(2);
   });
 });

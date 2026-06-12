@@ -34,12 +34,27 @@ export interface ContinueItem {
   workTitle: string;
   nextChapter: ChapterRow;
   remainingUnplayed: number;
+  totalChapters: number;
+  playedChapters: number;
   lastPlayedAt: number;
+}
+export interface RecommendationWork {
+  workId: number;
+  baseTitle: string;
+  authorId: number;
+  authorName: string;
+  totalChapters: number;
+  unplayedCount: number;
+  tags: string[];
+  matchedTags: string[];
+  reason: string;
 }
 export interface RecentItem {
   chapterId: number;
   chapterTitle: string;
+  workId: number;
   workTitle: string;
+  authorId: number;
   authorName: string;
   playedAt: number;
 }
@@ -50,8 +65,19 @@ export interface ListeningStats {
   recent: RecentItem[];
 }
 export interface HomeData {
-  continueListening: ContinueItem[];
+  keepListening: ContinueItem | null;
+  recommendations: RecommendationWork[];
   stats: ListeningStats;
+}
+
+export interface PlaybackContext {
+  chapter: ChapterRow;
+  authorId: number;
+  authorName: string;
+  workId: number;
+  workTitle: string;
+  workTotalChapters: number;
+  workPlayedChapters: number;
 }
 
 export interface RenameItem {
