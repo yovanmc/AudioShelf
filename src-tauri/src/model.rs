@@ -30,6 +30,7 @@ pub struct ChapterRow {
     pub duration_secs: i64,
     pub file_path: String,
     pub played: bool,
+    pub tags: Vec<String>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -37,6 +38,7 @@ pub struct ChapterRow {
 pub struct WorkRow {
     pub id: i64,
     pub base_title: String,
+    pub tags: Vec<String>,
     pub chapters: Vec<ChapterRow>,
 }
 

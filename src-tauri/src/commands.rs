@@ -103,7 +103,12 @@ pub fn mark_chapter_finished(state: tauri::State<DbState>, chapter_id: i64, now_
 #[tauri::command]
 pub fn get_all_tags(state: tauri::State<DbState>) -> Result<Vec<String>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare("SELECT DISTINCT tag FROM author_tags ORDER BY tag").map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT tag FROM author_tags
+         UNION SELECT tag FROM work_tags
+         UNION SELECT tag FROM chapter_tags
+         ORDER BY tag",
+    ).map_err(|e| e.to_string())?;
     let tags = stmt
         .query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())?
         .collect::<rusqlite::Result<Vec<String>>>().map_err(|e| e.to_string())?;
@@ -116,19 +121,43 @@ pub fn set_author_tags(state: tauri::State<DbState>, author_id: i64, tags: Vec<S
     set_tags(&conn, author_id, &tags).map_err(|e| e.to_string())
 }
 
-/// Replace an author's tag set (deduped, blanks dropped, trimmed).
-pub(crate) fn set_tags(conn: &rusqlite::Connection, author_id: i64, tags: &[String]) -> rusqlite::Result<()> {
-    conn.execute("DELETE FROM author_tags WHERE author_id=?1", params![author_id])?;
+/// Replace an entity's tag set in `table` (deduped, blanks dropped, trimmed).
+/// `table`/`key_col` are caller-provided compile-time constants (never user input).
+pub(crate) fn replace_tags(
+    conn: &rusqlite::Connection,
+    table: &'static str,
+    key_col: &'static str,
+    id: i64,
+    tags: &[String],
+) -> rusqlite::Result<()> {
+    conn.execute(&format!("DELETE FROM {table} WHERE {key_col}=?1"), params![id])?;
     let mut seen = std::collections::BTreeSet::new();
     for raw in tags {
         let t = raw.trim();
         if t.is_empty() || !seen.insert(t.to_string()) { continue; }
         conn.execute(
-            "INSERT OR IGNORE INTO author_tags(author_id, tag) VALUES (?1, ?2)",
-            params![author_id, t],
+            &format!("INSERT OR IGNORE INTO {table}({key_col}, tag) VALUES (?1, ?2)"),
+            params![id, t],
         )?;
     }
     Ok(())
+}
+
+/// Replace an author's tag set. Kept as a named alias for existing call sites/tests.
+pub(crate) fn set_tags(conn: &rusqlite::Connection, author_id: i64, tags: &[String]) -> rusqlite::Result<()> {
+    replace_tags(conn, "author_tags", "author_id", author_id, tags)
+}
+
+#[tauri::command]
+pub fn set_work_tags(state: tauri::State<DbState>, work_id: i64, tags: Vec<String>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    replace_tags(&conn, "work_tags", "work_id", work_id, &tags).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_chapter_tags(state: tauri::State<DbState>, chapter_id: i64, tags: Vec<String>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    replace_tags(&conn, "chapter_tags", "chapter_id", chapter_id, &tags).map_err(|e| e.to_string())
 }
 
 // ---- query helpers (pub so integration tests and the testing module can call them) ----
@@ -181,7 +210,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
     )?;
     let mut works: Vec<WorkRow> = wstmt
         .query_map(params![author_id], |r| {
-            Ok(WorkRow { id: r.get(0)?, base_title: r.get(1)?, chapters: Vec::new() })
+            Ok(WorkRow { id: r.get(0)?, base_title: r.get(1)?, tags: Vec::new(), chapters: Vec::new() })
         })?
         .collect::<rusqlite::Result<_>>()?;
     works.sort_by(|a, b| natural_cmp(&a.base_title, &b.base_title));
@@ -206,11 +235,26 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                     duration_secs: r.get(4)?,
                     file_path: r.get(5)?,
                     played: r.get::<_, i64>(6)? != 0,
+                    tags: Vec::new(),
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
         chapters.sort_by(|a, b| a.chapter_no.cmp(&b.chapter_no));
         work.chapters = chapters;
+
+        // Work-level tags.
+        let mut wt = conn.prepare("SELECT tag FROM work_tags WHERE work_id=?1 ORDER BY tag")?;
+        work.tags = wt
+            .query_map(params![work.id], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<_>>()?;
+
+        // Chapter-level tags.
+        for ch in &mut work.chapters {
+            let mut ct = conn.prepare("SELECT tag FROM chapter_tags WHERE chapter_id=?1 ORDER BY tag")?;
+            ch.tags = ct
+                .query_map(params![ch.id], |r| r.get::<_, String>(0))?
+                .collect::<rusqlite::Result<_>>()?;
+        }
     }
 
     let mut tstmt = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1 ORDER BY tag")?;
@@ -257,7 +301,9 @@ pub fn search(conn: &rusqlite::Connection, query: &str, cap: usize) -> rusqlite:
     let mut wstmt = conn.prepare(
         "SELECT w.id, w.base_title, a.id, COALESCE(a.display_name, a.folder_name)
          FROM works w JOIN authors a ON w.author_id=a.id
-         WHERE w.status='active' AND a.status='active' AND w.base_title LIKE ?1 ESCAPE '\\'
+         WHERE w.status='active' AND a.status='active'
+               AND (w.base_title LIKE ?1 ESCAPE '\\'
+                    OR EXISTS (SELECT 1 FROM work_tags wt WHERE wt.work_id=w.id AND wt.tag LIKE ?1 ESCAPE '\\'))
          ORDER BY w.base_title LIMIT ?2",
     )?;
     let works: Vec<WorkHit> = wstmt
@@ -275,7 +321,8 @@ pub fn search(conn: &rusqlite::Connection, query: &str, cap: usize) -> rusqlite:
         "SELECT c.id, c.raw_filename, w.id, w.base_title, a.id, COALESCE(a.display_name, a.folder_name)
          FROM chapters c JOIN works w ON c.work_id=w.id JOIN authors a ON w.author_id=a.id
          WHERE c.status='active' AND w.status='active' AND a.status='active'
-               AND c.raw_filename LIKE ?1 ESCAPE '\\'
+               AND (c.raw_filename LIKE ?1 ESCAPE '\\'
+                    OR EXISTS (SELECT 1 FROM chapter_tags ct WHERE ct.chapter_id=c.id AND ct.tag LIKE ?1 ESCAPE '\\'))
          ORDER BY c.raw_filename LIMIT ?2",
     )?;
     let chapters: Vec<ChapterHit> = cstmt
@@ -305,8 +352,9 @@ pub fn search_library(state: tauri::State<DbState>, query: String) -> Result<Sea
     search(&conn, &query, SEARCH_CAP).map_err(|e| e.to_string())
 }
 
-/// Works (with unplayed chapters) by authors having any of `tags`, ranked by
-/// shared-tag count then unplayed count. `exclude_authors` are filtered out.
+/// Works (with unplayed chapters) whose author OR the work itself carries any of
+/// `tags`, ranked by shared-tag count then unplayed count. `exclude_authors` are
+/// filtered out. `sharedTags` is the union of matching author- and work-level tags.
 pub(crate) fn discovery_for_tags(
     conn: &rusqlite::Connection,
     tags: &[String],
@@ -316,47 +364,48 @@ pub(crate) fn discovery_for_tags(
     if tags.is_empty() {
         return Ok(Vec::new());
     }
-    // Candidate authors: those sharing >=1 tag, not excluded.
     let mut works: Vec<DiscoveryWork> = Vec::new();
-    let mut astmt = conn.prepare("SELECT id, COALESCE(display_name, folder_name) FROM authors WHERE status='active'")?;
-    let authors: Vec<(i64, String)> = astmt
-        .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
+
+    // All active works (with their author) that have >=1 unplayed chapter.
+    let mut wstmt = conn.prepare(
+        "SELECT w.id, w.base_title, a.id, COALESCE(a.display_name, a.folder_name),
+                (SELECT count(*) FROM chapters c WHERE c.work_id=w.id AND c.status='active' AND c.played=0)
+         FROM works w JOIN authors a ON w.author_id=a.id
+         WHERE w.status='active' AND a.status='active'",
+    )?;
+    let rows: Vec<(i64, String, i64, String, i64)> = wstmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
         .collect::<rusqlite::Result<_>>()?;
-    for (author_id, author_name) in authors {
-        if exclude_authors.contains(&author_id) {
+
+    for (work_id, base_title, author_id, author_name, unplayed) in rows {
+        if unplayed == 0 || exclude_authors.contains(&author_id) {
             continue;
         }
-        let mut tstmt = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1")?;
-        let author_tags: Vec<String> = tstmt
-            .query_map(params![author_id], |r| r.get::<_, String>(0))?
-            .collect::<rusqlite::Result<_>>()?;
-        let mut shared: Vec<String> = author_tags.iter().filter(|t| tags.contains(t)).cloned().collect();
-        shared.sort();
+        // Union of this work's author tags and its own work tags.
+        let mut owned: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        let mut atstmt = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1")?;
+        for t in atstmt.query_map(params![author_id], |r| r.get::<_, String>(0))? {
+            owned.insert(t?);
+        }
+        let mut wtstmt = conn.prepare("SELECT tag FROM work_tags WHERE work_id=?1")?;
+        for t in wtstmt.query_map(params![work_id], |r| r.get::<_, String>(0))? {
+            owned.insert(t?);
+        }
+        // Intersect with the requested tags. BTreeSet keeps `shared` sorted.
+        let shared: Vec<String> = owned.into_iter().filter(|t| tags.contains(t)).collect();
         if shared.is_empty() {
             continue;
         }
-        // This author's works that have >=1 unplayed chapter.
-        let mut wstmt = conn.prepare(
-            "SELECT w.id, w.base_title,
-                    (SELECT count(*) FROM chapters c WHERE c.work_id=w.id AND c.status='active' AND c.played=0)
-             FROM works w WHERE w.author_id=?1 AND w.status='active'",
-        )?;
-        let rows: Vec<(i64, String, i64)> = wstmt
-            .query_map(params![author_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-            .collect::<rusqlite::Result<_>>()?;
-        for (work_id, base_title, unplayed) in rows {
-            if unplayed > 0 {
-                works.push(DiscoveryWork {
-                    work_id,
-                    base_title,
-                    author_id,
-                    author_name: author_name.clone(),
-                    unplayed_count: unplayed,
-                    shared_tags: shared.clone(),
-                });
-            }
-        }
+        works.push(DiscoveryWork {
+            work_id,
+            base_title,
+            author_id,
+            author_name,
+            unplayed_count: unplayed,
+            shared_tags: shared,
+        });
     }
+
     works.sort_by(|a, b| {
         b.shared_tags.len().cmp(&a.shared_tags.len())
             .then(b.unplayed_count.cmp(&a.unplayed_count))
@@ -391,6 +440,12 @@ pub(crate) fn discovery_for_you(conn: &rusqlite::Connection) -> rusqlite::Result
     for id in &recent {
         let mut stmt = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1")?;
         for t in stmt.query_map(params![id], |r| r.get::<_, String>(0))? {
+            tags.insert(t?);
+        }
+        let mut wstmt = conn.prepare(
+            "SELECT wt.tag FROM work_tags wt JOIN works w ON wt.work_id=w.id WHERE w.author_id=?1",
+        )?;
+        for t in wstmt.query_map(params![id], |r| r.get::<_, String>(0))? {
             tags.insert(t?);
         }
     }
@@ -642,6 +697,111 @@ mod tests {
         assert_eq!(res[1].author_name, "Bob");
         // All works here have 1 unplayed chapter.
         assert!(res.iter().all(|w| w.unplayed_count == 1));
+    }
+
+    #[test]
+    fn work_and_chapter_tags_round_trip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("A").join("X.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let author_id = query_authors(&conn).unwrap()[0].id;
+        let detail = query_author_detail(&conn, author_id).unwrap();
+        let work_id = detail.works[0].id;
+        let chapter_id = detail.works[0].chapters[0].id;
+
+        super::replace_tags(&conn, "work_tags", "work_id", work_id,
+            &["epic".into(), " epic ".into(), "".into(), "saga".into()]).unwrap();
+        super::replace_tags(&conn, "chapter_tags", "chapter_id", chapter_id,
+            &["intro".into()]).unwrap();
+
+        let d = query_author_detail(&conn, author_id).unwrap();
+        assert_eq!(d.works[0].tags, vec!["epic".to_string(), "saga".to_string()]); // sorted, deduped, trimmed
+        assert_eq!(d.works[0].chapters[0].tags, vec!["intro".to_string()]);
+
+        // Replace-all semantics.
+        super::replace_tags(&conn, "work_tags", "work_id", work_id, &["calm".into()]).unwrap();
+        assert_eq!(query_author_detail(&conn, author_id).unwrap().works[0].tags, vec!["calm".to_string()]);
+    }
+
+    #[test]
+    fn get_all_tags_unions_all_levels() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("A").join("X.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let author_id = query_authors(&conn).unwrap()[0].id;
+        let detail = query_author_detail(&conn, author_id).unwrap();
+        let work_id = detail.works[0].id;
+        let chapter_id = detail.works[0].chapters[0].id;
+
+        super::set_tags(&conn, author_id, &["cozy".into()]).unwrap();
+        super::replace_tags(&conn, "work_tags", "work_id", work_id, &["cozy".into(), "epic".into()]).unwrap();
+        super::replace_tags(&conn, "chapter_tags", "chapter_id", chapter_id, &["intro".into()]).unwrap();
+
+        // get_all_tags is a #[tauri::command] needing State; assert the underlying union SQL instead.
+        let mut stmt = conn.prepare(
+            "SELECT tag FROM author_tags
+             UNION SELECT tag FROM work_tags
+             UNION SELECT tag FROM chapter_tags
+             ORDER BY tag",
+        ).unwrap();
+        let all: Vec<String> = stmt.query_map([], |r| r.get::<_, String>(0)).unwrap()
+            .collect::<rusqlite::Result<_>>().unwrap();
+        assert_eq!(all, vec!["cozy".to_string(), "epic".to_string(), "intro".to_string()]);
+    }
+
+    #[test]
+    fn discovery_unions_author_and_work_tags() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Alice").join("Tale.mp3"));
+        touch(&root.join("Bob").join("Saga.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+
+        // Bob has NO author tags, but his work "Saga" carries "cozy" at the work level.
+        let bob_detail = query_author_detail(&conn, ids["Bob"]).unwrap();
+        let saga_id = bob_detail.works[0].id;
+        super::replace_tags(&conn, "work_tags", "work_id", saga_id, &["cozy".into()]).unwrap();
+        // Alice has author tag "cozy".
+        super::set_tags(&conn, ids["Alice"], &["cozy".into()]).unwrap();
+
+        let res = super::discovery_for_tags(&conn, &["cozy".into()], &[], 50).unwrap();
+        let titles: Vec<&str> = res.iter().map(|w| w.base_title.as_str()).collect();
+        assert!(titles.contains(&"Tale"), "author-tag match should surface");
+        assert!(titles.contains(&"Saga"), "work-tag match should surface (union)");
+        assert!(res.iter().all(|w| w.shared_tags == vec!["cozy".to_string()]));
+    }
+
+    #[test]
+    fn search_matches_work_and_chapter_tags() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("A").join("Quiet One.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let author_id = query_authors(&conn).unwrap()[0].id;
+        let detail = query_author_detail(&conn, author_id).unwrap();
+        let work_id = detail.works[0].id;
+        let chapter_id = detail.works[0].chapters[0].id;
+
+        super::replace_tags(&conn, "work_tags", "work_id", work_id, &["mystery".into()]).unwrap();
+        super::replace_tags(&conn, "chapter_tags", "chapter_id", chapter_id, &["cliffhanger".into()]).unwrap();
+
+        // "mystery" matches no title/filename, only the work tag.
+        let r1 = super::search(&conn, "mystery", 50).unwrap();
+        assert_eq!(r1.works.len(), 1);
+        assert_eq!(r1.works[0].work_id, work_id);
+
+        // "cliffhanger" matches only the chapter tag.
+        let r2 = super::search(&conn, "cliffhanger", 50).unwrap();
+        assert_eq!(r2.chapters.len(), 1);
+        assert_eq!(r2.chapters[0].chapter_id, chapter_id);
     }
 
     #[test]

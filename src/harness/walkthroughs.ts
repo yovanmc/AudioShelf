@@ -31,7 +31,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers"] as const;
+export const walkthroughs = ["browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -117,5 +117,23 @@ export function coversSteps(nav: {
   return [
     { name: "library", run: nav.showLibrary },
     { name: "author-detail", run: nav.openFirstAuthor },
+  ];
+}
+
+/**
+ * Build the "tags" walkthrough: seed an author/work/chapter tag on the first
+ * author, open its detail (showing all three tag levels — the chapter editor is
+ * open-by-default because the chapter is tagged), then search the unique work tag
+ * "mystery" to prove tags are searchable.
+ */
+export function tagsSteps(nav: {
+  seed: () => Promise<void>;
+  openDetail: () => Promise<void>;
+  searchByTag: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "seed", run: nav.seed },
+    { name: "detail", run: nav.openDetail },
+    { name: "search-by-tag", run: nav.searchByTag },
   ];
 }

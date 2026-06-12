@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   getLaunchArgs, scanLibrary, getAuthors, getAuthorDetail,
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
-  getAllTags, setAuthorTags, getDiscovery, getDiscoveryByTags,
+  getAllTags, setAuthorTags, setWorkTags, setChapterTags, getDiscovery, getDiscoveryByTags,
   previewRenames, applyRenames, undoRenames,
   setGroupingOverride, clearGroupingOverride,
   getSetting, setSetting, pickFolder, searchLibrary,
@@ -18,7 +18,7 @@ import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
 import { clampSeek } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps } from "./harness/walkthroughs";
+import { browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps } from "./harness/walkthroughs";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -97,6 +97,20 @@ export default function App() {
   async function setTags(tags: string[]) {
     if (!detailRef.current) return;
     await setAuthorTags(detailRef.current.id, tags);
+    setDetail(await getAuthorDetail(detailRef.current.id));
+    await refreshTags();
+  }
+
+  async function setWorkTagsFor(workId: number, tags: string[]) {
+    if (!detailRef.current) return;
+    await setWorkTags(workId, tags);
+    setDetail(await getAuthorDetail(detailRef.current.id));
+    await refreshTags();
+  }
+
+  async function setChapterTagsFor(chapterId: number, tags: string[]) {
+    if (!detailRef.current) return;
+    await setChapterTags(chapterId, tags);
     setDetail(await getAuthorDetail(detailRef.current.id));
     await refreshTags();
   }
@@ -367,6 +381,32 @@ export default function App() {
                 showLibrary: async () => setRoute({ kind: "library" }),
                 openFirstAuthor,
               })
+            : args.walkthrough === "tags"
+            ? tagsSteps({
+                // Seed an author tag, a work tag, and a chapter tag on the first author.
+                seed: async () => {
+                  const list = await getAuthors();
+                  if (list.length === 0) return;
+                  await setAuthorTags(list[0].id, ["cozy"]);
+                  const d = await getAuthorDetail(list[0].id);
+                  const w = d.works[0];
+                  if (w) {
+                    await setWorkTags(w.id, ["mystery"]);
+                    const ch = w.chapters[0];
+                    if (ch) await setChapterTags(ch.id, ["intro"]);
+                  }
+                  await refreshTags();
+                },
+                openDetail: async () => {
+                  const list = await getAuthors();
+                  if (list.length > 0) await openAuthor(list[0].id);
+                },
+                searchByTag: async () => {
+                  setRoute({ kind: "library" });
+                  setQuery("mystery");
+                  setResults(await searchLibrary("mystery"));
+                },
+              })
             : browseSteps({
                 showScanResult: async () => setRoute({ kind: "scan" }),
                 showLibrary: async () => setRoute({ kind: "library" }),
@@ -414,6 +454,8 @@ export default function App() {
           onTogglePlayed={togglePlayed}
           onPlayChapter={playChapter}
           onSetTags={setTags}
+          onSetWorkTags={setWorkTagsFor}
+          onSetChapterTags={setChapterTagsFor}
           onSetGrouping={setGrouping}
           onClearGrouping={clearGrouping}
           allTags={allTags}
