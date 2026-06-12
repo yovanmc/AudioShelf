@@ -483,7 +483,13 @@ export default function App() {
                   const list = await getAuthors();
                   if (!list.length) return;
                   const creator = await getAuthorDetail(list[0].id);
-                  const work = creator.works[0];
+                  // Pick the work with the MOST chapters so the "In this work"
+                  // list renders (works are title-ordered, so works[0] is the
+                  // single-chapter "Another Standalone Tale", not "Cool Story").
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
                   const chapter = work?.chapters[0];
                   if (!work || !chapter) return;
                   setDetail(creator);
