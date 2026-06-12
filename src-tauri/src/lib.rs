@@ -66,7 +66,8 @@ pub fn run() {
             commands::clear_grouping_override,
             commands::search_library,
             commands::get_work_cover,
-            commands::get_author_cover
+            commands::get_author_cover,
+            commands::reset_play_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

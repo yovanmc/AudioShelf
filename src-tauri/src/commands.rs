@@ -789,6 +789,18 @@ pub fn undo_renames(state: tauri::State<DbState>, manifest_path: String) -> Resu
     })
 }
 
+/// Harness-only: delete all play history (play_events rows + chapter played flags).
+/// This is intentionally NOT wired into any user-facing UI — it exists solely so
+/// the verify-harness can capture a genuine empty-state Home screenshot before
+/// seeding play events for the populated-state shot, even across repeated runs.
+#[tauri::command]
+pub fn reset_play_history(state: tauri::State<DbState>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM play_events", []).map_err(|e| e.to_string())?;
+    conn.execute("UPDATE chapters SET played=0", []).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Resolve a chapter's current file path and its author id.
 fn chapter_path_and_author(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<(String, i64)> {
     conn.query_row(

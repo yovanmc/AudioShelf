@@ -119,6 +119,9 @@ export const captureWindow = (path: string) => invoke("capture_window", { path }
 export const finishWalkthrough = (doneSignal: string | null, exitWhenDone: boolean) =>
   invoke("finish_walkthrough", { doneSignal, exitWhenDone });
 
+/** Harness-only: wipe all play history so the empty-home shot is genuinely clean. */
+export const resetPlayHistory = () => invoke("reset_play_history");
+
 export const fileUrl = (p: string) => convertFileSrc(p);
 
 export const getSetting = (key: string) => invoke<string | null>("get_setting", { key });

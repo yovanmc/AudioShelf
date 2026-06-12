@@ -5,7 +5,7 @@ import {
   getAllTags, setAuthorTags, setWorkTags, setChapterTags, getDiscovery, getDiscoveryByTags,
   previewRenames, applyRenames, undoRenames,
   setGroupingOverride, clearGroupingOverride,
-  getSetting, setSetting, pickFolder, searchLibrary, queryHome,
+  getSetting, setSetting, pickFolder, searchLibrary, queryHome, resetPlayHistory,
   type AuthorRow, type AuthorDetail, type ChapterRow, type ScanResult, type DiscoveryWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData,
 } from "./lib/api";
@@ -346,6 +346,9 @@ export default function App() {
           args.walkthrough === "home"
             ? homeSteps({
                 showEmptyHome: async () => {
+                  // Wipe any play history left over from prior harness runs so
+                  // this shot genuinely reflects the empty-state Home.
+                  await resetPlayHistory();
                   await loadHome();
                   setRoute({ kind: "home" });
                 },
