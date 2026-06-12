@@ -1,4 +1,6 @@
 import type { RenameItem, RenameResult } from "../lib/api";
+import { Button, Card, Notice } from "../components/ui";
+import { Icon } from "../components/Icon";
 
 function pluralFiles(n: number): string {
   return `${n} file${n === 1 ? "" : "s"}`;
@@ -9,16 +11,16 @@ export function RenameView(props: {
   result: RenameResult | null;
   onApply: (chapterIds: number[]) => void;
   onUndo: () => void;
-  onBack: () => void;
+  onBack?: () => void;
   onReload: () => void;
 }) {
   const okItems = props.items.filter((i) => i.status === "ok");
   const okIds = okItems.map((i) => i.chapterId);
 
   return (
-    <div className="rename">
-      <button onClick={props.onBack}>← Library</button>
-      <h1>Rename tool</h1>
+    <main className="view rename">
+      <header className="view-section"><div className="muted">Previewed, conflict-aware, reversible</div><h1>Rename tool</h1></header>
+      <Card className="view-section" style={{ padding: 20 }}>
       <p className="rename-blurb">
         Preview canonical filenames below. Only <strong>{pluralFiles(okItems.length)}</strong> will
         change; conflicts and already-clean files are skipped. Renames are reversible — an Undo
@@ -26,23 +28,24 @@ export function RenameView(props: {
       </p>
 
       {props.result ? (
-        <div className="rename-result" role="status">
+        <Notice tone={props.result.failures.length ? "error" : "success"} role="status">
           <p>Renamed {pluralFiles(props.result.renamedCount)}.</p>
           {props.result.failures.length > 0 && (
             <ul className="rename-failures">
               {props.result.failures.map((f, i) => <li key={i}>{f}</li>)}
             </ul>
           )}
-          <button onClick={props.onUndo}>Undo this rename</button>
-          <button onClick={props.onReload}>Refresh preview</button>
-        </div>
+          <Button variant="secondary" onClick={props.onUndo}>Undo this rename</Button>
+          <Button variant="ghost" onClick={props.onReload}><Icon name="refresh" /> Refresh preview</Button>
+        </Notice>
       ) : (
-        <button disabled={okIds.length === 0} onClick={() => props.onApply(okIds)}>
+        <Button variant="primary" disabled={okIds.length === 0} onClick={() => props.onApply(okIds)}>
           Rename {pluralFiles(okItems.length)}
-        </button>
+        </Button>
       )}
+      </Card>
 
-      <table className="rename-table">
+      <Card style={{ overflow: "hidden" }}><table className="rename-table data-table">
         <thead>
           <tr><th>Author</th><th>Current</th><th>Proposed</th><th>Status</th></tr>
         </thead>
@@ -62,7 +65,7 @@ export function RenameView(props: {
             </tr>
           ))}
         </tbody>
-      </table>
-    </div>
+      </table></Card>
+    </main>
   );
 }

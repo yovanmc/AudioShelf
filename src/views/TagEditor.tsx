@@ -23,9 +23,9 @@ export function TagEditor(props: {
 
   return (
     <div className="tag-editor">
-      <ul className="tag-list">
+      <ul className="tag-list chips" style={{ listStyle: "none", padding: 0, margin: 0 }}>
         {props.tags.map((t) => (
-          <li key={t} className="tag-chip">
+          <li key={t} className="tag-chip chip">
             <span>{t}</span>
             <button aria-label={`Remove tag ${t}`} onClick={() => remove(t)}>×</button>
           </li>

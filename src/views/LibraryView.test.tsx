@@ -106,17 +106,11 @@ describe("LibraryView", () => {
     expect(screen.getByText("No matches.")).toBeInTheDocument();
   });
 
-  it("fires the toolbar callbacks", async () => {
-    const onOpenDiscovery = vi.fn();
-    const onOpenRename = vi.fn();
-    const onOpenSettings = vi.fn();
-    render(<LibraryView {...baseProps({ onOpenDiscovery, onOpenRename, onOpenSettings })} />);
-    await userEvent.click(screen.getByRole("button", { name: "Discover" }));
-    await userEvent.click(screen.getByRole("button", { name: "Rename tool" }));
-    await userEvent.click(screen.getByRole("button", { name: /settings/i }));
-    expect(onOpenDiscovery).toHaveBeenCalled();
-    expect(onOpenRename).toHaveBeenCalled();
-    expect(onOpenSettings).toHaveBeenCalled();
+  it("leaves top-level navigation to the app shell", () => {
+    render(<LibraryView {...baseProps()} />);
+    expect(screen.queryByRole("button", { name: "Discover" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rename tool" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /settings/i })).not.toBeInTheDocument();
   });
 
   it("sort 'length' reorders rows by totalSecs descending", () => {

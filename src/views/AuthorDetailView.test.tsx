@@ -26,7 +26,7 @@ const noop = () => {};
 describe("AuthorDetailView", () => {
   it("renders works, chapters, and a played marker", () => {
     render(<AuthorDetailView detail={detail} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
-    expect(screen.getByText("Jane Doe")).toBeInTheDocument();
+    expect(screen.getAllByText("Jane Doe").length).toBeGreaterThan(0);
     expect(screen.getByText("Cool Story")).toBeInTheDocument();
     const ch2 = screen.getByText("Cool Story 2 the sequel").closest("li")!;
     expect(ch2).toHaveAttribute("data-played", "true");
@@ -43,7 +43,11 @@ describe("AuthorDetailView", () => {
     const onPlay = vi.fn();
     render(<AuthorDetailView detail={detail} onTogglePlayed={noop} onPlayChapter={onPlay} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "Play 'Cool Story'" }));
-    expect(onPlay).toHaveBeenCalledWith(detail.works[0].chapters[0]);
+    expect(onPlay).toHaveBeenCalledWith(expect.objectContaining({
+      chapter: detail.works[0].chapters[0],
+      authorName: "Jane Doe",
+      workTitle: "Cool Story",
+    }));
   });
 
   it("renders the tag editor and reports tag changes", async () => {

@@ -1,7 +1,10 @@
 import { useState } from "react";
-import type { AuthorDetail, ChapterRow, WorkRow } from "../lib/api";
+import type { AuthorDetail, ChapterRow, PlaybackContext, WorkRow } from "../lib/api";
 import { TagEditor } from "./TagEditor";
-import { Cover } from "../components/Cover";
+import { CreatorAvatar, WorkArtwork } from "../components/Cover";
+import { CreatorIdentity } from "../components/CreatorIdentity";
+import { Button, ProgressBar } from "../components/ui";
+import { Icon } from "../components/Icon";
 import { formatDuration } from "../lib/time";
 import { sortWorks, type WorkSort } from "../lib/browse";
 
@@ -57,7 +60,7 @@ function ChapterTags(props: {
         aria-label={`Toggle tags for '${chapter.title}'`}
         onClick={() => setOpen((o) => !o)}
       >
-        🏷 Tags{chapter.tags.length > 0 ? ` (${chapter.tags.length})` : ""}
+        Tags{chapter.tags.length > 0 ? ` (${chapter.tags.length})` : ""}
       </button>
       {open && (
         <TagEditor
@@ -73,7 +76,7 @@ function ChapterTags(props: {
 export function AuthorDetailView(props: {
   detail: AuthorDetail;
   onTogglePlayed: (chapterId: number, played: boolean) => void;
-  onPlayChapter: (chapter: ChapterRow) => void;
+  onPlayChapter: (context: PlaybackContext) => void;
   onSetTags: (tags: string[]) => void;
   onSetGrouping: (chapterId: number, baseTitle: string, chapterNo: number) => void;
   onClearGrouping: (chapterId: number) => void;
@@ -97,12 +100,35 @@ export function AuthorDetailView(props: {
     });
   const expandAll = () => setCollapsed(new Set());
   const collapseAll = () => setCollapsed(new Set(works.map((w) => w.id)));
+  const chapters = detail.works.flatMap((work) => work.chapters);
+  const played = chapters.filter((chapter) => chapter.played).length;
+  const totalSecs = chapters.reduce((sum, chapter) => sum + chapter.durationSecs, 0);
+  const progress = chapters.length ? Math.round((played / chapters.length) * 100) : 0;
+  const firstUnplayed = works
+    .flatMap((work) => work.chapters.map((chapter) => ({ work, chapter })))
+    .find(({ chapter }) => !chapter.played);
   return (
-    <div className="author-detail">
-      <button onClick={props.onBack}>← Library</button>
-      <h1>{detail.name}</h1>
-      <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
-      <div className="work-controls" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <main className="view author-detail">
+      <Button variant="ghost" onClick={props.onBack}><Icon name="chevronLeft" /> Library</Button>
+      <section className="card view-section" style={{ display: "flex", gap: 24, alignItems: "center", padding: 24 }}>
+        <CreatorAvatar authorId={detail.id} name={detail.name} size={112} />
+        <div style={{ flex: 1 }}>
+          <div className="muted">Creator</div>
+          <h1>{detail.name}</h1>
+          <p className="muted">{works.length} works · {chapters.length} chapters · {formatDuration(totalSecs)} · {progress}% played</p>
+          <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
+          {firstUnplayed && <Button variant="primary" onClick={() => props.onPlayChapter({
+            chapter: firstUnplayed.chapter,
+            authorId: detail.id,
+            authorName: detail.name,
+            workId: firstUnplayed.work.id,
+            workTitle: firstUnplayed.work.baseTitle,
+            workTotalChapters: firstUnplayed.work.chapters.length,
+            workPlayedChapters: firstUnplayed.work.chapters.filter((chapter) => chapter.played).length,
+          })}>Keep listening</Button>}
+        </div>
+      </section>
+      <div className="work-controls toolbar">
         <label>
           Sort works:{" "}
           <select
@@ -115,23 +141,27 @@ export function AuthorDetailView(props: {
             <option value="played">Played %</option>
           </select>
         </label>
-        <button onClick={allCollapsed ? expandAll : collapseAll}>
+        <Button variant="secondary" onClick={allCollapsed ? expandAll : collapseAll}>
           {allCollapsed ? "Expand all" : "Collapse all"}
-        </button>
+        </Button>
       </div>
       {works.map((w) => (
-        <section key={w.id} className="work">
-          <h2 style={{ display: "flex", alignItems: "center" }}>
+        <section key={w.id} className="work card view-section" style={{ padding: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <button
               aria-label={`${collapsed.has(w.id) ? "Expand" : "Collapse"} '${w.baseTitle}'`}
               onClick={() => toggleWork(w.id)}
-              style={{ marginRight: 4 }}
+              className="icon-button"
             >
-              {collapsed.has(w.id) ? "▸" : "▾"}
+              <Icon name={collapsed.has(w.id) ? "chevronRight" : "collapse"} />
             </button>
-            <Cover kind="work" id={w.id} name={w.baseTitle} size={40} />
-            <span className="work-title">{w.baseTitle}{" "}({w.chapters.length})</span>
-          </h2>
+            <WorkArtwork workId={w.id} title={w.baseTitle} size={72} />
+            <div style={{ flex: 1 }}>
+              <h2 className="work-title">{w.baseTitle} ({w.chapters.length})</h2>
+              <div className="muted">{w.chapters.length} chapters · {w.chapters.filter((chapter) => !chapter.played).length} unplayed</div>
+              <ProgressBar value={w.chapters.length ? Math.round((w.chapters.filter((chapter) => chapter.played).length / w.chapters.length) * 100) : 0} label={`${w.baseTitle} progress`} />
+            </div>
+          </div>
           <div className="work-tags">
             <span className="work-tags-label">Tags:</span>
             <TagEditor
@@ -141,10 +171,18 @@ export function AuthorDetailView(props: {
             />
           </div>
           {!collapsed.has(w.id) && (
-          <ul>
+          <ul className="recent-list">
             {w.chapters.map((c) => (
-              <li key={c.id} data-played={c.played ? "true" : "false"}>
-                <button aria-label={`Play '${c.title}'`} onClick={() => props.onPlayChapter(c)}>▶</button>
+              <li className="recent-row" key={c.id} data-played={c.played ? "true" : "false"}>
+                <button className="icon-button" aria-label={`Play '${c.title}'`} onClick={() => props.onPlayChapter({
+                  chapter: c,
+                  authorId: detail.id,
+                  authorName: detail.name,
+                  workId: w.id,
+                  workTitle: w.baseTitle,
+                  workTotalChapters: w.chapters.length,
+                  workPlayedChapters: w.chapters.filter((chapter) => chapter.played).length,
+                })}><Icon name="play" /></button>
                 <label aria-label={`Mark '${c.title}' played`}>
                   <input
                     type="checkbox"
@@ -152,8 +190,8 @@ export function AuthorDetailView(props: {
                     onChange={(e) => props.onTogglePlayed(c.id, e.target.checked)}
                   />
                 </label>
-                <span className="chapter-title">{c.title}</span>{" — "}
-                <span className="chapter-duration">{formatDuration(c.durationSecs)}</span>
+                <span style={{ minWidth: 0, flex: 1 }}><span className="chapter-title">{c.title}</span><span className="chapter-duration muted" style={{ display: "block" }}>Chapter {c.chapterNo} · {formatDuration(c.durationSecs)}</span></span>
+                <CreatorIdentity authorId={detail.id} authorName={detail.name} size={28} />
                 <ChapterGroupingForm
                   work={w}
                   chapter={c}
@@ -171,6 +209,6 @@ export function AuthorDetailView(props: {
           )}
         </section>
       ))}
-    </div>
+    </main>
   );
 }

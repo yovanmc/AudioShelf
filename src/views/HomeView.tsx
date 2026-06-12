@@ -1,123 +1,106 @@
-import type { ChapterRow, HomeData } from "../lib/api";
-import { Cover } from "../components/Cover";
+import type { HomeData, PlaybackContext } from "../lib/api";
+import { WorkCard } from "../components/WorkCard";
+import { Button, EmptyState, StatCard } from "../components/ui";
+import { CreatorIdentity } from "../components/CreatorIdentity";
+import { keepListeningPercent, recommendationPercent } from "../lib/home";
 import { formatLong, formatRelative } from "../lib/time";
 
 export function HomeView(props: {
   home: HomeData | null;
   nowMs: number;
-  onPlayChapter: (c: ChapterRow) => void;
+  onPlay: (context: PlaybackContext) => void;
   onOpenAuthor: (id: number) => void;
   onOpenLibrary: () => void;
-  onOpenDiscovery: () => void;
-  onOpenRename: () => void;
-  onOpenSettings: () => void;
+  featureMenuOpen?: boolean;
 }) {
-  const home = props.home;
-  const nav = (
-    <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-      <button onClick={props.onOpenLibrary}>Library</button>
-      <button onClick={props.onOpenDiscovery}>Discover</button>
-      <button onClick={props.onOpenRename}>Rename tool</button>
-      <button onClick={props.onOpenSettings}>Settings</button>
-    </div>
-  );
-
-  if (!home) {
-    return (
-      <div className="home">
-        {nav}
-        <p>Loading…</p>
-      </div>
-    );
+  if (!props.home) {
+    return <div className="view"><div className="card empty-state">Loading your shelf...</div></div>;
   }
-
-  const continueListening = home.keepListening ? [home.keepListening] : [];
-  const { stats } = home;
-  const isEmpty =
-    continueListening.length === 0 && stats.chaptersFinished === 0 && stats.recent.length === 0;
-
+  const { keepListening, recommendations, stats } = props.home;
+  const empty = !keepListening && recommendations.length === 0 && stats.recent.length === 0;
+  const context: PlaybackContext | null = keepListening ? {
+    chapter: keepListening.nextChapter,
+    authorId: keepListening.authorId,
+    authorName: keepListening.authorName,
+    workId: keepListening.workId,
+    workTitle: keepListening.workTitle,
+    workTotalChapters: keepListening.totalChapters,
+    workPlayedChapters: keepListening.playedChapters,
+  } : null;
   return (
-    <div className="home">
-      {nav}
-      <h1>Home</h1>
-
-      {isEmpty && (
-        <p className="home-empty">
-          Nothing played yet — open your <button onClick={props.onOpenLibrary}>Library</button> to
-          start listening.
-        </p>
+    <main className="view home">
+      <header className="view-section">
+        <div className="muted">Your personal audio library</div>
+        <h1>Home</h1>
+      </header>
+      {empty && (
+        <EmptyState title="Your shelf is ready" action={<Button variant="primary" onClick={props.onOpenLibrary}>Browse your library</Button>}>
+          Nothing played yet. Start a chapter and AudioShelf will build your listening dashboard.
+        </EmptyState>
       )}
-
-      {continueListening.length > 0 && (
-        <section className="jump-back-in">
-          <h2>Jump back in</h2>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {continueListening.map((it) => (
-              <li
-                key={it.workId}
-                style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}
-              >
-                <Cover kind="work" id={it.workId} name={it.workTitle} size={40} />
-                <span style={{ flex: 1 }}>
-                  <button onClick={() => props.onOpenAuthor(it.authorId)}>
-                    <strong>{it.authorName}</strong>
-                  </button>{" "}
-                  — {it.workTitle}
-                  <br />
-                  <span className="muted">
-                    Next: Ch {it.nextChapter.chapterNo} — {it.nextChapter.title} ·{" "}
-                    {it.remainingUnplayed} left · {formatRelative(it.lastPlayedAt, props.nowMs)}
-                  </span>
-                </span>
-                <button onClick={() => props.onPlayChapter(it.nextChapter)}>▶ Play</button>
+      {keepListening && context && (
+        <section className="view-section">
+          <div className="section-heading"><div><div className="muted">Continue where you left off</div><h2>Keep listening to {keepListening.authorName}</h2></div></div>
+          <WorkCard
+            featured
+            workId={keepListening.workId}
+            title={keepListening.workTitle}
+            authorId={keepListening.authorId}
+            authorName={keepListening.authorName}
+            progress={keepListeningPercent(keepListening)}
+            meta={`Next: Chapter ${keepListening.nextChapter.chapterNo}, ${keepListening.nextChapter.title} · ${keepListening.remainingUnplayed} left · ${formatRelative(keepListening.lastPlayedAt, props.nowMs)}`}
+            actionLabel="Keep listening"
+            onAction={() => props.onPlay(context)}
+            onOpenAuthor={() => props.onOpenAuthor(keepListening.authorId)}
+            menuItems={[{ label: "View creator", onSelect: () => props.onOpenAuthor(keepListening.authorId) }]}
+            menuOpen={props.featureMenuOpen}
+          />
+        </section>
+      )}
+      {recommendations.length > 0 && (
+        <section className="view-section">
+          <div className="section-heading"><div><div className="muted">Based on your library and listening</div><h2>You May Like</h2></div></div>
+          <div className="card-grid">
+            {recommendations.slice(0, 6).map((work) => (
+              <WorkCard
+                key={work.workId}
+                workId={work.workId}
+                title={work.baseTitle}
+                authorId={work.authorId}
+                authorName={work.authorName}
+                reason={work.reason}
+                tags={work.matchedTags.length ? work.matchedTags : work.tags}
+                progress={recommendationPercent(work)}
+                meta={`${work.unplayedCount} of ${work.totalChapters} chapters unplayed`}
+                actionLabel="View creator"
+                onAction={() => props.onOpenAuthor(work.authorId)}
+                onOpenAuthor={() => props.onOpenAuthor(work.authorId)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+      {stats.recent.length > 0 && (
+        <section className="view-section">
+          <h2>Recently listened</h2>
+          <ul className="recent-list card">
+            {stats.recent.map((item, index) => (
+              <li className="recent-row" key={`${item.chapterId}-${index}`}>
+                <CreatorIdentity authorId={item.authorId} authorName={item.authorName} size={36} onOpen={() => props.onOpenAuthor(item.authorId)} />
+                <div><strong>{item.chapterTitle}</strong><div className="muted">{item.workTitle} · {formatRelative(item.playedAt, props.nowMs)}</div></div>
               </li>
             ))}
           </ul>
         </section>
       )}
-
-      <section className="your-listening">
+      <section className="view-section">
         <h2>Your listening</h2>
-        <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
-          <Tile label="Total time" value={formatLong(stats.totalSecs)} />
-          <Tile label="Chapters finished" value={String(stats.chaptersFinished)} />
-          <Tile label="Streak" value={`🔥 ${stats.streakDays} day${stats.streakDays === 1 ? "" : "s"}`} />
+        <div className="stats-grid">
+          <StatCard label="Total time" value={formatLong(stats.totalSecs)} />
+          <StatCard label="Chapters finished" value={stats.chaptersFinished} />
+          <StatCard label="Current streak" value={`${stats.streakDays} day${stats.streakDays === 1 ? "" : "s"}`} />
         </div>
-        {stats.recent.length > 0 && (
-          <>
-            <h3>Recent</h3>
-            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-              {stats.recent.map((r, i) => (
-                <li key={`${r.chapterId}-${i}`} style={{ padding: "2px 0" }}>
-                  {r.chapterTitle}{" "}
-                  <span className="muted">
-                    — {r.workTitle} · {r.authorName} · {formatRelative(r.playedAt, props.nowMs)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
       </section>
-    </div>
-  );
-}
-
-function Tile({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        border: "1px solid #ccc",
-        borderRadius: 8,
-        padding: "8px 12px",
-        minWidth: 110,
-        textAlign: "center",
-      }}
-    >
-      <div style={{ fontSize: 20, fontWeight: 700 }}>{value}</div>
-      <div className="muted" style={{ fontSize: 12 }}>
-        {label}
-      </div>
-    </div>
+    </main>
   );
 }

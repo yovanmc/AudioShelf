@@ -27,7 +27,17 @@ const home: HomeData = {
     playedChapters: 1,
     lastPlayedAt: 1_000,
   },
-  recommendations: [],
+  recommendations: Array.from({ length: 6 }, (_, index) => ({
+    workId: 10 + index,
+    baseTitle: `Suggestion ${index + 1}`,
+    authorId: 20 + index,
+    authorName: `Creator ${index + 1}`,
+    totalChapters: 4,
+    unplayedCount: 3,
+    tags: ["cozy"],
+    matchedTags: ["cozy"],
+    reason: "Shares cozy",
+  })),
   stats: {
     totalSecs: 600,
     chaptersFinished: 2,
@@ -50,12 +60,9 @@ function baseProps(over: Partial<React.ComponentProps<typeof HomeView>> = {}) {
   return {
     home,
     nowMs: 3_000,
-    onPlayChapter: vi.fn(),
+    onPlay: vi.fn(),
     onOpenAuthor: vi.fn(),
     onOpenLibrary: vi.fn(),
-    onOpenDiscovery: vi.fn(),
-    onOpenRename: vi.fn(),
-    onOpenSettings: vi.fn(),
     ...over,
   };
 }
@@ -63,18 +70,20 @@ function baseProps(over: Partial<React.ComponentProps<typeof HomeView>> = {}) {
 describe("HomeView", () => {
   it("renders continue-listening and stats", () => {
     render(<HomeView {...baseProps()} />);
-    expect(screen.getByText("Jump back in")).toBeInTheDocument();
-    expect(screen.getByText("Alice")).toBeInTheDocument();
-    expect(screen.getByText(/Next: Ch 2 — Tale 2/)).toBeInTheDocument();
+    expect(screen.getByText("Keep listening to Alice")).toBeInTheDocument();
+    expect(screen.getAllByText("Alice").length).toBeGreaterThan(0);
+    expect(screen.getByText(/Next: Chapter 2, Tale 2/)).toBeInTheDocument();
     expect(screen.getByText("Total time")).toBeInTheDocument();
-    expect(screen.getByText(/🔥 2 days/)).toBeInTheDocument();
+    expect(screen.getByText("2 days")).toBeInTheDocument();
+    expect(screen.getByText("You May Like")).toBeInTheDocument();
+    expect(screen.getAllByText("Shares cozy")).toHaveLength(6);
   });
 
   it("plays the next chapter when Play is clicked", async () => {
-    const onPlayChapter = vi.fn();
-    render(<HomeView {...baseProps({ onPlayChapter })} />);
-    await userEvent.click(screen.getByText("▶ Play"));
-    expect(onPlayChapter).toHaveBeenCalledWith(nextChapter);
+    const onPlay = vi.fn();
+    render(<HomeView {...baseProps({ onPlay })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Keep listening" }));
+    expect(onPlay).toHaveBeenCalledWith(expect.objectContaining({ chapter: nextChapter }));
   });
 
   it("shows an empty state when nothing has been played", () => {
@@ -89,6 +98,6 @@ describe("HomeView", () => {
 
   it("shows a loading state when home is null", () => {
     render(<HomeView {...baseProps({ home: null })} />);
-    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.getByText("Loading your shelf...")).toBeInTheDocument();
   });
 });
