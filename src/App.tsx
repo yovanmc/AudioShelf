@@ -166,14 +166,17 @@ export default function App() {
   }
 
   // ---- browse prefs persistence ----
-  const persistPrefs = (next: BrowsePrefs) => {
-    setBrowsePrefs(next);
-    void setSetting("browse_prefs", JSON.stringify(next));
+  const persistPrefs = (update: (prev: BrowsePrefs) => BrowsePrefs) => {
+    setBrowsePrefs((prev) => {
+      const next = update(prev);
+      void setSetting("browse_prefs", JSON.stringify(next));
+      return next;
+    });
   };
-  const setAuthorSort = (s: AuthorSort) => persistPrefs({ ...browsePrefs, authorSort: s });
-  const setFilterTag = (t: string | null) => persistPrefs({ ...browsePrefs, filterTag: t });
-  const setFilterStatus = (s: PlayedStatus) => persistPrefs({ ...browsePrefs, filterStatus: s });
-  const setWorkSort = (s: WorkSort) => persistPrefs({ ...browsePrefs, workSort: s });
+  const setAuthorSort = (s: AuthorSort) => persistPrefs((p) => ({ ...p, authorSort: s }));
+  const setFilterTag = (t: string | null) => persistPrefs((p) => ({ ...p, filterTag: t }));
+  const setFilterStatus = (s: PlayedStatus) => persistPrefs((p) => ({ ...p, filterStatus: s }));
+  const setWorkSort = (s: WorkSort) => persistPrefs((p) => ({ ...p, workSort: s }));
 
   // Persist the chosen root, scan it, and refresh the author list. Fails safe:
   // a bad/missing path leaves the user on Settings with an error, never crashes.
