@@ -1,7 +1,7 @@
 //! Tauri commands and the shared DB state.
 
 use crate::db;
-use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterHit, ChapterRow, DiscoveryWork, MoreWork, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
+use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterHit, ChapterRow, ContinueItem, DiscoveryWork, HomeData, ListeningStats, MoreWork, RecentItem, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
 use crate::natsort::natural_cmp;
 use crate::regroup;
 use crate::rename;
@@ -501,6 +501,216 @@ pub(crate) fn more_from_author(conn: &rusqlite::Connection, author_id: i64) -> r
     Ok(rows)
 }
 
+/// Load a single chapter as a `ChapterRow` (title derived from raw_filename; tags included).
+fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<ChapterRow> {
+    let mut row = conn.query_row(
+        "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played
+         FROM chapters WHERE id=?1",
+        params![chapter_id],
+        |r| {
+            let raw: String = r.get(1)?;
+            let title = std::path::Path::new(&raw)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or(raw);
+            Ok(ChapterRow {
+                id: r.get(0)?,
+                title,
+                chapter_no: r.get(2)?,
+                format: r.get(3)?,
+                duration_secs: r.get(4)?,
+                file_path: r.get(5)?,
+                played: r.get::<_, i64>(6)? != 0,
+                tags: Vec::new(),
+            })
+        },
+    )?;
+    let mut ct = conn.prepare("SELECT tag FROM chapter_tags WHERE chapter_id=?1 ORDER BY tag")?;
+    row.tags = ct
+        .query_map(params![chapter_id], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(row)
+}
+
+/// "Jump back in": for each recently-played author (most-recent first), the next unplayed
+/// chapter to resume. Prefers the author's most-recently-played work, else their first
+/// active work with an unplayed chapter. Authors with nothing unplayed are omitted.
+pub(crate) fn home_continue(conn: &rusqlite::Connection, limit: usize) -> rusqlite::Result<Vec<ContinueItem>> {
+    // Over-fetch: some recent authors may be fully played and get skipped.
+    let authors = recent_authors(conn, limit.saturating_mul(2).max(limit))?;
+    let mut out: Vec<ContinueItem> = Vec::new();
+    for author_id in authors {
+        if out.len() >= limit {
+            break;
+        }
+        let author_name: String = conn.query_row(
+            "SELECT COALESCE(display_name, folder_name) FROM authors WHERE id=?1",
+            params![author_id],
+            |r| r.get(0),
+        )?;
+        let last_played_at: i64 = conn.query_row(
+            "SELECT MAX(pe.played_at) FROM play_events pe
+             JOIN chapters c ON pe.chapter_id=c.id JOIN works w ON c.work_id=w.id
+             WHERE w.author_id=?1",
+            params![author_id],
+            |r| r.get(0),
+        )?;
+
+        // Candidate work = the author's most-recently-played work.
+        let candidate_work: Option<i64> = conn
+            .query_row(
+                "SELECT c.work_id FROM play_events pe
+                 JOIN chapters c ON pe.chapter_id=c.id JOIN works w ON c.work_id=w.id
+                 WHERE w.author_id=?1
+                 GROUP BY c.work_id ORDER BY MAX(pe.played_at) DESC LIMIT 1",
+                params![author_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+
+        // Next unplayed chapter (id, work_id): prefer candidate work, else first active work.
+        let next: Option<(i64, i64)> = {
+            let in_candidate = match candidate_work {
+                Some(wid) => conn
+                    .query_row(
+                        "SELECT id FROM chapters
+                         WHERE work_id=?1 AND status='active' AND played=0
+                         ORDER BY chapter_no ASC LIMIT 1",
+                        params![wid],
+                        |r| r.get::<_, i64>(0),
+                    )
+                    .optional()?
+                    .map(|cid| (cid, wid)),
+                None => None,
+            };
+            match in_candidate {
+                Some(pair) => Some(pair),
+                None => conn
+                    .query_row(
+                        "SELECT c.id, c.work_id FROM chapters c JOIN works w ON c.work_id=w.id
+                         WHERE w.author_id=?1 AND w.status='active' AND c.status='active' AND c.played=0
+                         ORDER BY w.sort_key ASC, c.chapter_no ASC LIMIT 1",
+                        params![author_id],
+                        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+                    )
+                    .optional()?,
+            }
+        };
+
+        let (chapter_id, work_id) = match next {
+            Some(p) => p,
+            None => continue, // author fully played — nothing to resume
+        };
+
+        let work_title: String =
+            conn.query_row("SELECT base_title FROM works WHERE id=?1", params![work_id], |r| r.get(0))?;
+        let remaining_unplayed: i64 = conn.query_row(
+            "SELECT count(*) FROM chapters WHERE work_id=?1 AND status='active' AND played=0",
+            params![work_id],
+            |r| r.get(0),
+        )?;
+        let next_chapter = load_chapter_row(conn, chapter_id)?;
+
+        out.push(ContinueItem {
+            author_id,
+            author_name,
+            work_id,
+            work_title,
+            next_chapter,
+            remaining_unplayed,
+            last_played_at,
+        });
+    }
+    Ok(out)
+}
+
+/// Length of the current streak: consecutive local-day indices ending at the most recent
+/// active day, counted only if that day is `today` or `today - 1` (else the streak is 0).
+pub(crate) fn streak_len(days: &std::collections::BTreeSet<i64>, today: i64) -> i64 {
+    let last = match days.iter().next_back() {
+        Some(&d) => d,
+        None => return 0,
+    };
+    if last < today - 1 {
+        return 0; // most recent activity is 2+ days ago — streak broken
+    }
+    let mut count = 0i64;
+    let mut d = last;
+    while days.contains(&d) {
+        count += 1;
+        d -= 1;
+    }
+    count
+}
+
+/// "Your listening" stats. Totals come from the `played` flag (replays not double-counted);
+/// streak + recent history come from `play_events`.
+pub(crate) fn home_stats(
+    conn: &rusqlite::Connection,
+    now_ms: i64,
+    tz_offset_minutes: i64,
+    recent_limit: usize,
+) -> rusqlite::Result<ListeningStats> {
+    let chapters_finished: i64 = conn.query_row(
+        "SELECT count(*) FROM chapters WHERE status='active' AND played=1",
+        [],
+        |r| r.get(0),
+    )?;
+    let total_secs: i64 = conn.query_row(
+        "SELECT COALESCE(sum(duration_secs), 0) FROM chapters WHERE status='active' AND played=1",
+        [],
+        |r| r.get(0),
+    )?;
+
+    // Local calendar-day index. getTimezoneOffset() = (UTC - local) minutes ⇒ local = ms - off.
+    let day = |ms: i64| (ms - tz_offset_minutes * 60_000).div_euclid(86_400_000);
+    let mut days: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
+    {
+        let mut s = conn.prepare("SELECT played_at FROM play_events")?;
+        let mut q = s.query([])?;
+        while let Some(r) = q.next()? {
+            let ms: i64 = r.get(0)?;
+            days.insert(day(ms));
+        }
+    }
+    let streak_days = streak_len(&days, day(now_ms));
+
+    let mut rstmt = conn.prepare(
+        "SELECT c.id, c.raw_filename, w.base_title, COALESCE(a.display_name, a.folder_name), pe.played_at
+         FROM play_events pe
+         JOIN chapters c ON pe.chapter_id=c.id
+         JOIN works w ON c.work_id=w.id
+         JOIN authors a ON w.author_id=a.id
+         ORDER BY pe.played_at DESC LIMIT ?1",
+    )?;
+    let recent: Vec<RecentItem> = rstmt
+        .query_map(params![recent_limit as i64], |r| {
+            let raw: String = r.get(1)?;
+            let chapter_title = std::path::Path::new(&raw)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or(raw);
+            Ok(RecentItem {
+                chapter_id: r.get(0)?,
+                chapter_title,
+                work_title: r.get(2)?,
+                author_name: r.get(3)?,
+                played_at: r.get(4)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+
+    Ok(ListeningStats { total_secs, chapters_finished, streak_days, recent })
+}
+
+#[tauri::command]
+pub fn query_home(state: tauri::State<DbState>, now_ms: i64, tz_offset_minutes: i64) -> Result<HomeData, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let continue_listening = home_continue(&conn, 8).map_err(|e| e.to_string())?;
+    let stats = home_stats(&conn, now_ms, tz_offset_minutes, 10).map_err(|e| e.to_string())?;
+    Ok(HomeData { continue_listening, stats })
+}
+
 #[tauri::command]
 pub fn get_discovery(state: tauri::State<DbState>) -> Result<Vec<DiscoveryWork>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
@@ -984,6 +1194,83 @@ mod tests {
         // Cap is honoured per bucket.
         let res = super::search(&conn, "o", 1).unwrap();
         assert!(res.authors.len() <= 1 && res.works.len() <= 1 && res.chapters.len() <= 1);
+    }
+
+    #[test]
+    fn streak_len_handles_runs_gaps_and_breaks() {
+        use std::collections::BTreeSet;
+        let today = 100i64;
+        assert_eq!(streak_len(&BTreeSet::new(), today), 0, "no activity");
+        assert_eq!(streak_len(&BTreeSet::from([100]), today), 1, "today only");
+        assert_eq!(streak_len(&BTreeSet::from([99]), today), 1, "yesterday counts as live");
+        assert_eq!(streak_len(&BTreeSet::from([100, 99, 98]), today), 3, "three-day run");
+        assert_eq!(streak_len(&BTreeSet::from([100, 98]), today), 1, "gap stops the run");
+        assert_eq!(streak_len(&BTreeSet::from([98]), today), 0, "2+ days ago is broken");
+    }
+
+    #[test]
+    fn home_continue_resumes_next_unplayed_and_omits_finished_authors() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // Alice: one 2-chapter work ("Tale", "Tale 2"); Bob: one single-chapter work.
+        touch(&root.join("Alice").join("Tale.mp3"));
+        touch(&root.join("Alice").join("Tale 2.mp3"));
+        touch(&root.join("Bob").join("Saga.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+        let alice_detail = query_author_detail(&conn, ids["Alice"]).unwrap();
+        let ch1 = alice_detail.works[0].chapters[0].id; // "Tale" (chapter_no 1)
+        let bob_detail = query_author_detail(&conn, ids["Bob"]).unwrap();
+        let saga = bob_detail.works[0].chapters[0].id;
+
+        // Alice finishes ch1 (more recently); Bob finishes his only chapter (older).
+        mark_finished(&conn, saga, 1_000).unwrap();
+        mark_finished(&conn, ch1, 2_000).unwrap();
+
+        let items = home_continue(&conn, 8).unwrap();
+        // Bob is fully played → omitted. Only Alice remains, most-recent first.
+        assert_eq!(items.len(), 1, "fully-played author omitted");
+        let a = &items[0];
+        assert_eq!(a.author_name, "Alice");
+        assert_eq!(a.next_chapter.chapter_no, 2, "resume at the next unplayed chapter");
+        assert_eq!(a.remaining_unplayed, 1);
+        assert_eq!(a.last_played_at, 2_000);
+    }
+
+    #[test]
+    fn home_stats_totals_streak_and_recent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Alice").join("Tale.mp3"));
+        touch(&root.join("Alice").join("Tale 2.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let aid = query_authors(&conn).unwrap()[0].id;
+        // Fake files scan to 0s; seed known durations.
+        conn.execute(
+            "UPDATE chapters SET duration_secs=300 WHERE work_id IN (SELECT id FROM works WHERE author_id=?1)",
+            params![aid],
+        )
+        .unwrap();
+        let detail = query_author_detail(&conn, aid).unwrap();
+        let ch1 = detail.works[0].chapters[0].id;
+        let ch2 = detail.works[0].chapters[1].id;
+
+        const DAY: i64 = 86_400_000;
+        let now = 10 * DAY + 50_000_000; // arbitrary "today" inside day index 10 (tz=0)
+        mark_finished(&conn, ch1, now - DAY).unwrap(); // yesterday
+        mark_finished(&conn, ch2, now).unwrap();       // today
+
+        let stats = home_stats(&conn, now, 0, 10).unwrap();
+        assert_eq!(stats.chapters_finished, 2);
+        assert_eq!(stats.total_secs, 600, "two 300s chapters");
+        assert_eq!(stats.streak_days, 2, "today + yesterday");
+        assert_eq!(stats.recent.len(), 2);
+        assert!(stats.recent[0].played_at >= stats.recent[1].played_at, "newest first");
+        assert_eq!(stats.recent[0].chapter_id, ch2);
     }
 }
 

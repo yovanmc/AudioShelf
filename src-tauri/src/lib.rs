@@ -58,6 +58,7 @@ pub fn run() {
             commands::get_discovery,
             commands::get_discovery_by_tags,
             commands::get_more_from_author,
+            commands::query_home,
             commands::preview_renames,
             commands::apply_renames,
             commands::undo_renames,
