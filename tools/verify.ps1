@@ -39,6 +39,14 @@ if (-not $proc.HasExited) { try { $proc.Kill() } catch {} }
 if (Test-Path $done) {
   Write-Host "WALKTHROUGH OK. Shots:"
   Get-ChildItem $shots | ForEach-Object { Write-Host "  $($_.FullName)" }
+
+  # Pixel-diff comparison against a stable baseline. Informational only --
+  # CHANGED/NEW shots do NOT fail the run; the diff-manifest.txt tells the
+  # verifier which images are worth loading into context.
+  $baseline = Join-Path $root ".shots-baseline\$Walkthrough"
+  . (Join-Path $PSScriptRoot "Compare-Screenshots.ps1")
+  Compare-ScreenshotSet -CurrentDir $shots -BaselineDir $baseline | Out-Null
+
   exit 0
 } else {
   Write-Host "WALKTHROUGH TIMED OUT (no done-signal)"; exit 1
