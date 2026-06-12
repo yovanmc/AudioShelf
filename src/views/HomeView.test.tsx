@@ -136,4 +136,16 @@ describe("HomeView", () => {
     const { container } = render(<HomeView {...baseProps()} />);
     expect(container.querySelector(".shelf")).toBeNull();
   });
+
+  it("clicking a recently-listened row calls onOpenAuthor with that author id", async () => {
+    const onOpenAuthor = vi.fn();
+    const { container } = render(<HomeView {...baseProps({ onOpenAuthor })} />);
+    // The recent list has one item: authorId=1, authorName="Alice"
+    // CreatorIdentity renders a button with the author name when onOpen is provided
+    const recentList = container.querySelector(".recent-list")!;
+    const creatorButton = recentList.querySelector("button.creator-identity") as HTMLElement;
+    expect(creatorButton).not.toBeNull();
+    await userEvent.click(creatorButton);
+    expect(onOpenAuthor).toHaveBeenCalledWith(1);
+  });
 });
