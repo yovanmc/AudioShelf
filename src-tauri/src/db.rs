@@ -35,6 +35,16 @@ CREATE TABLE IF NOT EXISTS author_tags (
   tag TEXT NOT NULL,
   PRIMARY KEY (author_id, tag)
 );
+CREATE TABLE IF NOT EXISTS work_tags (
+  work_id INTEGER NOT NULL REFERENCES works(id),
+  tag TEXT NOT NULL,
+  PRIMARY KEY (work_id, tag)
+);
+CREATE TABLE IF NOT EXISTS chapter_tags (
+  chapter_id INTEGER NOT NULL REFERENCES chapters(id),
+  tag TEXT NOT NULL,
+  PRIMARY KEY (chapter_id, tag)
+);
 CREATE TABLE IF NOT EXISTS play_events (
   id INTEGER PRIMARY KEY,
   chapter_id INTEGER NOT NULL REFERENCES chapters(id),

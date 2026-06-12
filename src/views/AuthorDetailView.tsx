@@ -48,6 +48,32 @@ function ChapterGroupingForm(props: {
   );
 }
 
+function ChapterTags(props: {
+  chapter: ChapterRow;
+  allTags: string[];
+  onSetChapterTags: (chapterId: number, tags: string[]) => void;
+}) {
+  const { chapter } = props;
+  const [open, setOpen] = useState(chapter.tags.length > 0);
+  return (
+    <span className="chapter-tags">
+      <button
+        aria-label={`Toggle tags for '${chapter.title}'`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        🏷 Tags{chapter.tags.length > 0 ? ` (${chapter.tags.length})` : ""}
+      </button>
+      {open && (
+        <TagEditor
+          tags={chapter.tags}
+          allTags={props.allTags}
+          onChange={(t) => props.onSetChapterTags(chapter.id, t)}
+        />
+      )}
+    </span>
+  );
+}
+
 export function AuthorDetailView(props: {
   detail: AuthorDetail;
   onTogglePlayed: (chapterId: number, played: boolean) => void;
@@ -55,6 +81,8 @@ export function AuthorDetailView(props: {
   onSetTags: (tags: string[]) => void;
   onSetGrouping: (chapterId: number, baseTitle: string, chapterNo: number) => void;
   onClearGrouping: (chapterId: number) => void;
+  onSetWorkTags: (workId: number, tags: string[]) => void;
+  onSetChapterTags: (chapterId: number, tags: string[]) => void;
   allTags: string[];
   onBack: () => void;
 }) {
@@ -70,6 +98,14 @@ export function AuthorDetailView(props: {
             <Cover kind="work" id={w.id} name={w.baseTitle} size={40} />
             <span className="work-title">{w.baseTitle}{" "}({w.chapters.length})</span>
           </h2>
+          <div className="work-tags">
+            <span className="work-tags-label">Tags:</span>
+            <TagEditor
+              tags={w.tags}
+              allTags={props.allTags}
+              onChange={(t) => props.onSetWorkTags(w.id, t)}
+            />
+          </div>
           <ul>
             {w.chapters.map((c) => (
               <li key={c.id} data-played={c.played ? "true" : "false"}>
@@ -88,6 +124,11 @@ export function AuthorDetailView(props: {
                   chapter={c}
                   onSetGrouping={props.onSetGrouping}
                   onClearGrouping={props.onClearGrouping}
+                />
+                <ChapterTags
+                  chapter={c}
+                  allTags={props.allTags}
+                  onSetChapterTags={props.onSetChapterTags}
                 />
               </li>
             ))}

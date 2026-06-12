@@ -7,9 +7,9 @@ export interface AuthorRow {
 }
 export interface ChapterRow {
   id: number; title: string; chapterNo: number; format: string;
-  durationSecs: number; filePath: string; played: boolean;
+  durationSecs: number; filePath: string; played: boolean; tags: string[];
 }
-export interface WorkRow { id: number; baseTitle: string; chapters: ChapterRow[]; }
+export interface WorkRow { id: number; baseTitle: string; tags: string[]; chapters: ChapterRow[]; }
 export interface AuthorDetail { id: number; name: string; tags: string[]; works: WorkRow[]; }
 
 export interface AuthorHit { authorId: number; authorName: string; }
@@ -64,6 +64,10 @@ export const setAuthorDisplayName = (authorId: number, name: string | null) =>
 export const getAllTags = () => invoke<string[]>("get_all_tags");
 export const setAuthorTags = (authorId: number, tags: string[]) =>
   invoke("set_author_tags", { authorId, tags });
+export const setWorkTags = (workId: number, tags: string[]) =>
+  invoke("set_work_tags", { workId, tags });
+export const setChapterTags = (chapterId: number, tags: string[]) =>
+  invoke("set_chapter_tags", { chapterId, tags });
 export const getDiscovery = () => invoke<DiscoveryWork[]>("get_discovery");
 export const getDiscoveryByTags = (tags: string[]) =>
   invoke<DiscoveryWork[]>("get_discovery_by_tags", { tags });

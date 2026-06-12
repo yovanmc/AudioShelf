@@ -53,6 +53,8 @@ pub fn run() {
             commands::set_author_display_name,
             commands::get_all_tags,
             commands::set_author_tags,
+            commands::set_work_tags,
+            commands::set_chapter_tags,
             commands::get_discovery,
             commands::get_discovery_by_tags,
             commands::get_more_from_author,
