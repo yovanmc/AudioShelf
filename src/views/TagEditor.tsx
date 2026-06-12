@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 
 export function TagEditor(props: {
   tags: string[];
   allTags: string[];
   onChange: (tags: string[]) => void;
 }) {
+  const listId = useId();
   const [value, setValue] = useState("");
 
   function add() {
@@ -32,7 +33,7 @@ export function TagEditor(props: {
         ))}
       </ul>
       <input
-        list="all-tags"
+        list={listId}
         placeholder="Add tag"
         value={value}
         onChange={(e) => setValue(e.target.value)}
@@ -43,7 +44,7 @@ export function TagEditor(props: {
           }
         }}
       />
-      <datalist id="all-tags">
+      <datalist id={listId}>
         {props.allTags.map((t) => <option key={t} value={t} />)}
       </datalist>
     </div>

@@ -51,9 +51,14 @@ describe("PlayerBar", () => {
     render(<PlayerBar {...props()} />);
     expect(screen.getByText("Cool Story")).toBeInTheDocument();
     expect(screen.getByText("Jane Doe")).toBeInTheDocument();
-    expect(screen.getByText("Chapter 2")).toBeInTheDocument();
     expect(screen.getByText("0:30")).toBeInTheDocument();
     expect(screen.getByText("2:00")).toBeInTheDocument();
+  });
+
+  it("shows Chapter X of Y inline", () => {
+    render(<PlayerBar {...props()} />);
+    // context has chapterNo: 2, workTotalChapters: 4
+    expect(screen.getByText("Chapter 2 of 4")).toBeInTheDocument();
   });
 
   it("opens the expanded player", async () => {

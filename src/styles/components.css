@@ -79,3 +79,12 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 .dialog__close { position: absolute; top: var(--space-3); right: var(--space-3); }
 .chip--toggle { cursor: pointer; }
 .chip--on { background: var(--color-accent); color: #fff; }
+.player-bar__utility { gap: var(--space-3); border-left: 1px solid var(--color-border); padding-left: var(--space-4); }
+.player-bar__chapter-pos { font-size: 0.82em; }
+.now-playing__work-link h1 { cursor: pointer; }
+.now-playing__work-link h1:hover { color: var(--color-accent-hover); }
+.button:focus-visible, .icon-button:focus-visible, .chip--toggle:focus-visible,
+.sidebar__item:focus-visible, input:focus-visible, [role="menuitem"]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

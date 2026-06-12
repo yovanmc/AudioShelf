@@ -26,7 +26,7 @@ const noop = () => {};
 describe("AuthorDetailView", () => {
   it("renders works, chapters, and a played marker", () => {
     render(<AuthorDetailView detail={detail} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
-    expect(screen.getAllByText("Jane Doe").length).toBeGreaterThan(0);
+    expect(screen.getByText("Jane Doe")).toBeInTheDocument();
     expect(screen.getByText("Cool Story")).toBeInTheDocument();
     const ch2 = screen.getByText("Cool Story 2 the sequel").closest("li")!;
     expect(ch2).toHaveAttribute("data-played", "true");
@@ -50,7 +50,7 @@ describe("AuthorDetailView", () => {
     }));
   });
 
-  it("renders the tag editor and reports tag changes", async () => {
+  it("renders the author tag editor and reports tag changes", async () => {
     const onSetTags = vi.fn();
     const withTags = { ...detail, tags: ["cozy"] };
     render(<AuthorDetailView detail={withTags} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={onSetTags} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={["cozy", "calm"]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
@@ -59,7 +59,7 @@ describe("AuthorDetailView", () => {
     expect(onSetTags).toHaveBeenCalledWith([]);
   });
 
-  it("submits a grouping override with the typed work title and chapter number", async () => {
+  it("submits a grouping override via the menu dialog", async () => {
     const onSetGrouping = vi.fn();
     render(
       <AuthorDetailView
@@ -78,6 +78,11 @@ describe("AuthorDetailView", () => {
       />,
     );
     const firstChapter = detail.works[0].chapters[0];
+    // Open the chapter's more menu
+    await userEvent.click(screen.getByRole("button", { name: `More options for '${firstChapter.title}'` }));
+    // Click "Edit grouping" menu item
+    await userEvent.click(screen.getByRole("menuitem", { name: "Edit grouping" }));
+    // Dialog is now open — interact with the form
     const workInput = screen.getByLabelText(`Work title for '${firstChapter.title}'`);
     await userEvent.clear(workInput);
     await userEvent.type(workInput, "Merged Work");
@@ -85,7 +90,7 @@ describe("AuthorDetailView", () => {
     expect(onSetGrouping).toHaveBeenCalledWith(firstChapter.id, "Merged Work", firstChapter.chapterNo);
   });
 
-  it("clears a grouping override via Reset", async () => {
+  it("clears a grouping override via Reset in the dialog", async () => {
     const onClearGrouping = vi.fn();
     render(
       <AuthorDetailView
@@ -104,6 +109,11 @@ describe("AuthorDetailView", () => {
       />,
     );
     const firstChapter = detail.works[0].chapters[0];
+    // Open the chapter's more menu
+    await userEvent.click(screen.getByRole("button", { name: `More options for '${firstChapter.title}'` }));
+    // Click "Edit grouping" menu item
+    await userEvent.click(screen.getByRole("menuitem", { name: "Edit grouping" }));
+    // Reset in the dialog
     await userEvent.click(screen.getByLabelText(`Reset grouping for '${firstChapter.title}'`));
     expect(onClearGrouping).toHaveBeenCalledWith(firstChapter.id);
   });
@@ -142,7 +152,7 @@ describe("AuthorDetailView", () => {
     expect(onSetWorkTags).toHaveBeenCalledWith(10, []);
   });
 
-  it("chapter tag toggle button is present; open-by-default when chapter has tags", () => {
+  it("chapter with tags shows a read-only TagGroup chip in the browse row", () => {
     const detailWithChapterTag: AuthorDetail = {
       ...detail,
       works: [{
@@ -170,49 +180,13 @@ describe("AuthorDetailView", () => {
         onWorkSortChange={vi.fn()}
       />,
     );
-    // Toggle button for the tagged chapter.
-    expect(screen.getByLabelText("Toggle tags for 'Cool Story'")).toBeInTheDocument();
-    // Editor is open by default because the chapter has a tag — "intro" chip is visible.
+    // The "intro" chip is visible in the browse row (read-only TagGroup).
     expect(screen.getByText("intro")).toBeInTheDocument();
+    // There is no toggle button — the old ChapterTags component is gone from the row.
+    expect(screen.queryByLabelText("Toggle tags for 'Cool Story'")).not.toBeInTheDocument();
   });
 
-  it("clicking the chapter tag toggle hides the editor", async () => {
-    const detailWithChapterTag: AuthorDetail = {
-      ...detail,
-      works: [{
-        ...detail.works[0],
-        tags: [],
-        chapters: [
-          { ...detail.works[0].chapters[0], tags: ["intro"] },
-          { ...detail.works[0].chapters[1], tags: [] },
-        ],
-      }],
-    };
-    render(
-      <AuthorDetailView
-        detail={detailWithChapterTag}
-        onTogglePlayed={noop}
-        onPlayChapter={noop}
-        onSetTags={noop}
-        onSetGrouping={noop}
-        onClearGrouping={noop}
-        onSetWorkTags={noop}
-        onSetChapterTags={noop}
-        allTags={["intro"]}
-        onBack={noop}
-        workSort="az"
-        onWorkSortChange={vi.fn()}
-      />,
-    );
-    const toggleBtn = screen.getByLabelText("Toggle tags for 'Cool Story'");
-    // Editor starts open (chapter has "intro" tag).
-    expect(screen.getByText("intro")).toBeInTheDocument();
-    // Click toggle to hide.
-    await userEvent.click(toggleBtn);
-    expect(screen.queryByText("intro")).not.toBeInTheDocument();
-  });
-
-  it("removing a chapter tag calls onSetChapterTags", async () => {
+  it("opens the Edit tags dialog and calls onSetChapterTags on remove", async () => {
     const onSetChapterTags = vi.fn();
     const detailWithChapterTag: AuthorDetail = {
       ...detail,
@@ -241,7 +215,11 @@ describe("AuthorDetailView", () => {
         onWorkSortChange={vi.fn()}
       />,
     );
-    // The chapter editor is open (chapter has "intro" tag), remove it.
+    // Open the chapter's more menu for the first chapter ("Cool Story")
+    await userEvent.click(screen.getByRole("button", { name: "More options for 'Cool Story'" }));
+    // Click "Edit tags" menu item
+    await userEvent.click(screen.getByRole("menuitem", { name: "Edit tags" }));
+    // Dialog is open — remove "intro" tag
     await userEvent.click(screen.getByLabelText("Remove tag intro"));
     expect(onSetChapterTags).toHaveBeenCalledWith(100, []);
   });
@@ -405,5 +383,52 @@ describe("AuthorDetailView", () => {
     );
     expect(titlesAfter[0]).toBe("Bravo");
     expect(titlesAfter[1]).toBe("Alpha");
+  });
+
+  it("toolbar shows the Works count label", () => {
+    render(
+      <AuthorDetailView
+        detail={detail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(`Works (${detail.works.length})`)).toBeInTheDocument();
+  });
+
+  it("closing the Edit grouping dialog via Escape dismisses it", async () => {
+    render(
+      <AuthorDetailView
+        detail={detail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+      />,
+    );
+    const firstChapter = detail.works[0].chapters[0];
+    await userEvent.click(screen.getByRole("button", { name: `More options for '${firstChapter.title}'` }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Edit grouping" }));
+    // Dialog is open
+    expect(screen.getByRole("dialog", { name: "Edit grouping" })).toBeInTheDocument();
+    // Escape closes it
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Edit grouping" })).not.toBeInTheDocument();
   });
 });
