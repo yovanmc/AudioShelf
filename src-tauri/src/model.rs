@@ -133,3 +133,41 @@ pub struct SearchResults {
     pub works: Vec<WorkHit>,
     pub chapters: Vec<ChapterHit>,
 }
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ContinueItem {
+    pub author_id: i64,
+    pub author_name: String,
+    pub work_id: i64,
+    pub work_title: String,
+    pub next_chapter: ChapterRow,
+    pub remaining_unplayed: i64,
+    pub last_played_at: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentItem {
+    pub chapter_id: i64,
+    pub chapter_title: String,
+    pub work_title: String,
+    pub author_name: String,
+    pub played_at: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ListeningStats {
+    pub total_secs: i64,
+    pub chapters_finished: i64,
+    pub streak_days: i64,
+    pub recent: Vec<RecentItem>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeData {
+    pub continue_listening: Vec<ContinueItem>,
+    pub stats: ListeningStats,
+}

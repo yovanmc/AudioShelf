@@ -5,10 +5,11 @@ import {
   getAllTags, setAuthorTags, setWorkTags, setChapterTags, getDiscovery, getDiscoveryByTags,
   previewRenames, applyRenames, undoRenames,
   setGroupingOverride, clearGroupingOverride,
-  getSetting, setSetting, pickFolder, searchLibrary,
+  getSetting, setSetting, pickFolder, searchLibrary, queryHome, resetPlayHistory,
   type AuthorRow, type AuthorDetail, type ChapterRow, type ScanResult, type DiscoveryWork,
-  type RenameItem, type RenameResult, type SearchResults,
+  type RenameItem, type RenameResult, type SearchResults, type HomeData,
 } from "./lib/api";
+import { HomeView } from "./views/HomeView";
 import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
 import { DiscoveryView } from "./views/DiscoveryView";
@@ -18,7 +19,7 @@ import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
 import { clampSeek } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -53,6 +54,7 @@ function imagesSettled(): Promise<void> {
 type Route =
   | { kind: "loading" }
   | { kind: "scan" }
+  | { kind: "home" }
   | { kind: "library" }
   | { kind: "author" }
   | { kind: "discovery" }
@@ -102,6 +104,19 @@ export default function App() {
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(1);
   const [sleepMinutes, setSleepMinutes] = useState<number | null>(null);
+
+  const [home, setHome] = useState<HomeData | null>(null);
+  const [homeNow, setHomeNow] = useState(0);
+
+  async function loadHome() {
+    const now = Date.now();
+    setHomeNow(now);
+    setHome(await queryHome(now, new Date().getTimezoneOffset()));
+  }
+  async function openHome() {
+    await loadHome();
+    setRoute({ kind: "home" });
+  }
 
   async function loadAuthors() {
     setAuthors(await getAuthors());
@@ -209,7 +224,7 @@ export default function App() {
     const picked = await pickFolder();
     if (!picked) return; // user cancelled
     const ok = await scanRoot(picked, true);
-    if (ok) setRoute({ kind: "library" });
+    if (ok) await openHome();
   }
 
   async function rescan() {
@@ -328,7 +343,29 @@ export default function App() {
           if (list.length > 0) await openAuthor(list[0].id);
         };
         const steps =
-          args.walkthrough === "player"
+          args.walkthrough === "home"
+            ? homeSteps({
+                showEmptyHome: async () => {
+                  // Wipe any play history left over from prior harness runs so
+                  // this shot genuinely reflects the empty-state Home.
+                  await resetPlayHistory();
+                  await loadHome();
+                  setRoute({ kind: "home" });
+                },
+                seedAndShow: async () => {
+                  const list = await getAuthors();
+                  if (list.length > 0) {
+                    const d = await getAuthorDetail(list[0].id);
+                    const chs = d.works.flatMap((w) => w.chapters);
+                    const DAY = 86_400_000;
+                    if (chs[0]) await markChapterFinished(chs[0].id, Date.now() - DAY);
+                    if (chs[1]) await markChapterFinished(chs[1].id, Date.now());
+                  }
+                  await loadHome();
+                  setRoute({ kind: "home" });
+                },
+              })
+            : args.walkthrough === "player"
             ? playerSteps({ openFirstAuthor, playFirstChapter: async () => {
                 const list = await getAuthors();
                 if (list.length === 0) return;
@@ -472,7 +509,7 @@ export default function App() {
         });
         await finishWalkthrough(args.doneSignal, args.exitWhenDone);
       } else {
-        setRoute({ kind: "library" });
+        await openHome();
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -499,6 +536,20 @@ export default function App() {
   function routedView() {
     if (route.kind === "loading") return <div>Loading…</div>;
     if (route.kind === "scan") return <ScanView result={scan} />;
+    if (route.kind === "home") {
+      return (
+        <HomeView
+          home={home}
+          nowMs={homeNow}
+          onPlayChapter={playChapter}
+          onOpenAuthor={openAuthor}
+          onOpenLibrary={() => setRoute({ kind: "library" })}
+          onOpenDiscovery={openDiscovery}
+          onOpenRename={openRename}
+          onOpenSettings={openSettings}
+        />
+      );
+    }
     if (route.kind === "author" && detail) {
       return (
         <AuthorDetailView
@@ -563,6 +614,7 @@ export default function App() {
         results={results}
         onQueryChange={setQuery}
         onOpenAuthor={openAuthor}
+        onOpenHome={openHome}
         onOpenDiscovery={openDiscovery}
         onOpenRename={openRename}
         onOpenSettings={openSettings}

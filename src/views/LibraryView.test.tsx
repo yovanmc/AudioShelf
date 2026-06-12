@@ -25,6 +25,7 @@ function baseProps(over: Partial<React.ComponentProps<typeof LibraryView>> = {})
     allTags: [],
     onQueryChange: vi.fn(),
     onOpenAuthor: vi.fn(),
+    onOpenHome: vi.fn(),
     onOpenDiscovery: vi.fn(),
     onOpenRename: vi.fn(),
     onOpenSettings: vi.fn(),

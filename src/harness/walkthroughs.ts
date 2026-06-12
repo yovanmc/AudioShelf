@@ -20,6 +20,21 @@ export function browseSteps(nav: {
 }
 
 /**
+ * Build the "home" walkthrough: the empty personal home (nothing played), then — after
+ * seeding two finished chapters across two days at runtime — the populated home showing
+ * "Jump back in" + a 2-day streak. Seeding is runtime-only, so on-disk fixtures are untouched.
+ */
+export function homeSteps(nav: {
+  showEmptyHome: () => Promise<void>;
+  seedAndShow: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "home-empty", run: nav.showEmptyHome },
+    { name: "home", run: nav.seedAndShow },
+  ];
+}
+
+/**
  * Build the "player" walkthrough: open the first author, then start playback of
  * its first chapter so the now-playing bar is captured.
  */
@@ -33,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {

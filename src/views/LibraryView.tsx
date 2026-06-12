@@ -21,6 +21,7 @@ export function LibraryView(props: {
   allTags: string[];
   onQueryChange: (q: string) => void;
   onOpenAuthor: (id: number) => void;
+  onOpenHome: () => void;
   onOpenDiscovery: () => void;
   onOpenRename: () => void;
   onOpenSettings: () => void;
@@ -56,6 +57,7 @@ export function LibraryView(props: {
 
   return (
     <div className="library">
+      <button onClick={props.onOpenHome}>🏠 Home</button>
       <button onClick={props.onOpenDiscovery}>Discover</button>
       <button onClick={props.onOpenRename}>Rename tool</button>
       <button onClick={props.onOpenSettings}>Settings</button>
