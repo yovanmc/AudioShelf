@@ -471,6 +471,22 @@ export default function App() {
                   await loadHome();
                   setRoute({ kind: "home" });
                 },
+                showHomeShelves: async () => {
+                  // Seed two shelves deterministically: one tag shelf ("cozy", tagged
+                  // on the first 3 authors in showHome above) and one status shelf
+                  // ("unstarted"). Directly set shelfItems so the shot is deterministic
+                  // regardless of the async effect timing.
+                  const tagShelf: HomeShelf = { id: "s_harness_tag", title: "Cozy picks", kind: "tag", tag: "cozy" };
+                  const statusShelf: HomeShelf = { id: "s_harness_status", title: "Haven't started", kind: "status", status: "unstarted" };
+                  setHomeShelves([tagShelf, statusShelf]);
+                  const [tagItems, statusItems] = await Promise.all([
+                    loadShelfItems(tagShelf).catch(() => [] as ShelfItem[]),
+                    loadShelfItems(statusShelf).catch(() => [] as ShelfItem[]),
+                  ]);
+                  setShelfItems({ [tagShelf.id]: tagItems, [statusShelf.id]: statusItems });
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
                 collapseSidebar: async () => { setSidebarCollapsedState(true); setRoute({ kind: "home" }); },
                 showLibrary: async () => { setSidebarCollapsedState(false); setQuery(""); setResults(null); setRoute({ kind: "library" }); },
                 showSearch: async () => {

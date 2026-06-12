@@ -27,13 +27,14 @@ describe("m12Steps", () => {
   it("captures the complete M12 interface in order", () => {
     const noop = async () => {};
     expect(m12Steps({
-      showEmptyHome: noop, showHome: noop, collapseSidebar: noop, showLibrary: noop,
+      showEmptyHome: noop, showHome: noop, showHomeShelves: noop, collapseSidebar: noop,
+      showLibrary: noop,
       showSearch: noop, showAuthorDetail: noop, showDiscovery: noop, showDiscoveryByTag: noop,
       showRename: noop, showSettings: noop, showPlayerCompact: noop, showPlayerExpanded: noop,
       showPlayerChapters: noop,
       showContextMenu: noop,
     }).map((step) => step.name)).toEqual([
-      "home-empty", "home", "home-sidebar-collapsed", "library", "search",
+      "home-empty", "home", "home-shelves", "home-sidebar-collapsed", "library", "search",
       "author-detail", "discovery", "discovery-by-tag", "rename-preview",
       "settings", "player-compact", "player-expanded", "player-chapters", "context-menu",
     ]);
