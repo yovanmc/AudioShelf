@@ -11,13 +11,18 @@ export function HomeView(props: {
   onPlay: (context: PlaybackContext) => void;
   onOpenAuthor: (id: number) => void;
   onOpenLibrary: () => void;
+  onOpenSettings?: () => void;
+  onPlayNextOfWork?: (workId: number, authorId: number) => void;
   featureMenuOpen?: boolean;
 }) {
   if (!props.home) {
     return <div className="view"><div className="card empty-state">Loading your shelf...</div></div>;
   }
   const { keepListening, recommendations, stats } = props.home;
-  const empty = !keepListening && recommendations.length === 0 && stats.recent.length === 0;
+
+  // True first-run: nothing has ever been played
+  const noHistory = !keepListening && stats.recent.length === 0 && stats.chaptersFinished === 0;
+
   const context: PlaybackContext | null = keepListening ? {
     chapter: keepListening.nextChapter,
     authorId: keepListening.authorId,
@@ -30,9 +35,17 @@ export function HomeView(props: {
   return (
     <main className="view home">
       <PageHeader eyebrow="Your personal audio library" title="Home" />
-      {empty && (
-        <EmptyState title="Your shelf is ready" action={<Button variant="primary" onClick={props.onOpenLibrary}>Browse your library</Button>}>
-          Nothing played yet. Start a chapter and AudioShelf will build your listening dashboard.
+      {noHistory && (
+        <EmptyState
+          title="Welcome to AudioShelf"
+          action={
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+              {props.onOpenSettings && <Button variant="primary" onClick={props.onOpenSettings}>Choose your library / Go to Settings</Button>}
+              <Button variant="secondary" onClick={props.onOpenLibrary}>Browse library</Button>
+            </div>
+          }
+        >
+          Your library is organized by creator → work → chapter. Pick something to start — it plays one chapter, then stops.
         </EmptyState>
       )}
       {keepListening && context && (
@@ -54,9 +67,9 @@ export function HomeView(props: {
           />
         </section>
       )}
-      {recommendations.length > 0 && (
+      {!noHistory && recommendations.length > 0 && (
         <section className="view-section">
-          <SectionHeading eyebrow="Based on your library and listening" title="You May Like" />
+          <SectionHeading eyebrow={keepListening ? "Based on your library and listening" : "From your library"} title="You May Like" />
           <div className="card-grid">
             {recommendations.slice(0, 6).map((work) => (
               <WorkCard
@@ -73,6 +86,7 @@ export function HomeView(props: {
                 actionLabel="View creator"
                 onAction={() => props.onOpenAuthor(work.authorId)}
                 onOpenAuthor={() => props.onOpenAuthor(work.authorId)}
+                onPlay={props.onPlayNextOfWork ? () => props.onPlayNextOfWork!(work.workId, work.authorId) : undefined}
               />
             ))}
           </div>

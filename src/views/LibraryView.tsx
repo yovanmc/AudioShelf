@@ -2,9 +2,9 @@ import { FixedSizeList as List, type ListChildComponentProps } from "react-windo
 import type { AuthorRow, SearchResults } from "../lib/api";
 import { summarizeAuthor } from "../lib/library";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
-import { CreatorIdentity } from "../components/CreatorIdentity";
 import { EmptyState, PageHeader, TagGroup } from "../components/ui";
 import { Icon } from "../components/Icon";
+import { WorkCard } from "../components/WorkCard";
 import { SortFilterBar } from "./SortFilterBar";
 import { filterAuthors, sortAuthors, type AuthorSort, type PlayedStatus } from "../lib/browse";
 
@@ -18,6 +18,7 @@ export function LibraryView(props: {
   onFilterStatusChange: (status: PlayedStatus) => void; allTags: string[];
   onQueryChange: (query: string) => void; onOpenAuthor: (id: number) => void;
   onOpenHome?: () => void; onOpenDiscovery?: () => void; onOpenRename?: () => void; onOpenSettings?: () => void;
+  onPlayNextOfWork?: (workId: number, authorId: number) => void;
 }) {
   const searching = props.query.trim() !== "";
   const visible = filterAuthors(sortAuthors(props.authors, props.sort), { tag: props.filterTag, status: props.filterStatus });
@@ -47,7 +48,7 @@ export function LibraryView(props: {
           <input style={{ width: "100%" }} aria-label="Search library" placeholder="Search authors, works, chapters" value={props.query} onChange={(event) => props.onQueryChange(event.target.value)} />
         </label>
       </div>
-      {searching ? <SearchResultsPanel results={props.results} onOpenAuthor={props.onOpenAuthor} /> : (
+      {searching ? <SearchResultsPanel results={props.results} onOpenAuthor={props.onOpenAuthor} onPlayNextOfWork={props.onPlayNextOfWork} /> : (
         <>
           <SortFilterBar sort={props.sort} onSortChange={props.onSortChange} filterTag={props.filterTag} onFilterTagChange={props.onFilterTagChange} filterStatus={props.filterStatus} onFilterStatusChange={props.onFilterStatusChange} allTags={props.allTags} />
           {visible.length === 0
@@ -59,7 +60,7 @@ export function LibraryView(props: {
   );
 }
 
-function SearchResultsPanel({ results, onOpenAuthor }: { results: SearchResults | null; onOpenAuthor: (id: number) => void }) {
+function SearchResultsPanel({ results, onOpenAuthor, onPlayNextOfWork }: { results: SearchResults | null; onOpenAuthor: (id: number) => void; onPlayNextOfWork?: (workId: number, authorId: number) => void }) {
   if (!results) return <div className="card empty-state">Searching...</div>;
   if (!results.authors.length && !results.works.length && !results.chapters.length) return <EmptyState title="No matches.">Try another creator, title, chapter, or tag.</EmptyState>;
   return (
@@ -68,10 +69,33 @@ function SearchResultsPanel({ results, onOpenAuthor }: { results: SearchResults 
         {results.authors.map((author) => <button className="list-row" style={{ width: "100%", background: "none", border: 0 }} key={author.authorId} onClick={() => onOpenAuthor(author.authorId)}><CreatorAvatar authorId={author.authorId} name={author.authorName} size={40} /><strong>{author.authorName}</strong></button>)}
       </div></section>}
       {results.works.length > 0 && <section className="view-section"><h2>Works</h2><div className="card-grid">
-        {results.works.map((work) => <button className="card work-card" style={{ textAlign: "left" }} key={work.workId} onClick={() => onOpenAuthor(work.authorId)}><WorkArtwork workId={work.workId} title={work.baseTitle} size={88} /><strong>{work.baseTitle}</strong><CreatorIdentity authorId={work.authorId} authorName={work.authorName} /></button>)}
+        {results.works.map((work) => (
+          <WorkCard
+            key={work.workId}
+            workId={work.workId}
+            title={work.baseTitle}
+            authorId={work.authorId}
+            authorName={work.authorName}
+            actionLabel="View creator"
+            onAction={() => onOpenAuthor(work.authorId)}
+            onOpenAuthor={() => onOpenAuthor(work.authorId)}
+            onPlay={onPlayNextOfWork ? () => onPlayNextOfWork(work.workId, work.authorId) : undefined}
+          />
+        ))}
       </div></section>}
       {results.chapters.length > 0 && <section className="view-section"><h2>Chapters</h2><div className="card">
-        {results.chapters.map((chapter) => <button className="list-row" style={{ width: "100%", background: "none", border: 0, textAlign: "left" }} key={chapter.chapterId} onClick={() => onOpenAuthor(chapter.authorId)}><WorkArtwork workId={chapter.workId} title={chapter.baseTitle} size={48} /><span><strong>{chapter.title}</strong><span className="muted" style={{ display: "block" }}>{chapter.baseTitle} · {chapter.authorName}</span></span></button>)}
+        {results.chapters.map((chapter) => (
+          <button
+            className="list-row"
+            style={{ width: "100%", background: "none", border: 0, textAlign: "left" }}
+            key={chapter.chapterId}
+            onClick={() => onPlayNextOfWork ? onPlayNextOfWork(chapter.workId, chapter.authorId) : onOpenAuthor(chapter.authorId)}
+          >
+            <Icon name="play" />
+            <WorkArtwork workId={chapter.workId} title={chapter.baseTitle} size={48} />
+            <span><strong>{chapter.title}</strong><span className="muted" style={{ display: "block" }}>{chapter.baseTitle} · {chapter.authorName}</span></span>
+          </button>
+        ))}
       </div></section>}
     </div>
   );

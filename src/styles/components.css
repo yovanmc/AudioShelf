@@ -77,3 +77,5 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 .chips--end { margin-inline-start: auto; justify-content: flex-end; }
 .dialog { position: relative; }
 .dialog__close { position: absolute; top: var(--space-3); right: var(--space-3); }
+.chip--toggle { cursor: pointer; }
+.chip--on { background: var(--color-accent); color: #fff; }

@@ -1,9 +1,9 @@
 import type { DiscoveryWork } from "../lib/api";
 import { WorkCard } from "../components/WorkCard";
-import { EmptyState, PageHeader } from "../components/ui";
+import { EmptyState, PageHeader, SectionHeading } from "../components/ui";
 
-function WorkList({ works, onOpenAuthor }: { works: DiscoveryWork[]; onOpenAuthor: (id: number) => void }) {
-  if (!works.length) return <EmptyState title="Nothing to suggest yet">Play some audio or add tags to build recommendations.</EmptyState>;
+function WorkList({ works, onOpenAuthor, onPlayNext }: { works: DiscoveryWork[]; onOpenAuthor: (id: number) => void; onPlayNext?: (workId: number, authorId: number) => void }) {
+  if (!works.length) return <EmptyState title="Personalized picks — needs listening history">Play some audio or add tags to build recommendations.</EmptyState>;
   return <div className="card-grid">{works.map((work) => (
     <WorkCard
       key={work.workId}
@@ -17,6 +17,7 @@ function WorkList({ works, onOpenAuthor }: { works: DiscoveryWork[]; onOpenAutho
       actionLabel="View creator"
       onAction={() => onOpenAuthor(work.authorId)}
       onOpenAuthor={() => onOpenAuthor(work.authorId)}
+      onPlay={onPlayNext ? () => onPlayNext(work.workId, work.authorId) : undefined}
     />
   ))}</div>;
 }
@@ -24,6 +25,7 @@ function WorkList({ works, onOpenAuthor }: { works: DiscoveryWork[]; onOpenAutho
 export function DiscoveryView(props: {
   forYou: DiscoveryWork[]; allTags: string[]; byTags: DiscoveryWork[]; picked: string[];
   onPickTags: (tags: string[]) => void; onOpenAuthor: (id: number) => void; onBack?: () => void;
+  onPlayNextOfWork?: (workId: number, authorId: number) => void;
 }) {
   const toggleTag = (tag: string) => props.onPickTags(
     props.picked.includes(tag) ? props.picked.filter((item) => item !== tag) : [...props.picked, tag],
@@ -31,13 +33,27 @@ export function DiscoveryView(props: {
   return (
     <main className="view discovery">
       <PageHeader eyebrow="Suggestions from your library" title="Discover" />
-      <section className="view-section"><h2>For You</h2><WorkList works={props.forYou} onOpenAuthor={props.onOpenAuthor} /></section>
       <section className="view-section">
-        <h2>Pick a tag</h2>
+        <SectionHeading title="Pick a tag" />
         <div className="toolbar card" style={{ padding: 12 }}>
-          {props.allTags.map((tag) => <label className="chip" key={tag} aria-label={`Filter by tag ${tag}`}><input type="checkbox" checked={props.picked.includes(tag)} onChange={() => toggleTag(tag)} /> {tag}</label>)}
+          {props.allTags.map((tag) => {
+            const on = props.picked.includes(tag);
+            return (
+              <button
+                key={tag}
+                type="button"
+                className={`chip chip--toggle${on ? " chip--on" : ""}`}
+                aria-pressed={on}
+                onClick={() => toggleTag(tag)}
+              >{tag}</button>
+            );
+          })}
         </div>
-        {props.picked.length > 0 && <WorkList works={props.byTags} onOpenAuthor={props.onOpenAuthor} />}
+        {props.picked.length > 0 && <WorkList works={props.byTags} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} />}
+      </section>
+      <section className="view-section">
+        <SectionHeading title="For You" />
+        <WorkList works={props.forYou} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} />
       </section>
     </main>
   );
