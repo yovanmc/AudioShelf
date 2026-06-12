@@ -448,7 +448,19 @@ export default function App() {
                 },
                 showPlayerExpanded: async () => { setPlayerExpanded(true); },
                 showContextMenu: async () => {
+                  // showDiscoveryByTag (step 7) wiped play history; re-seed it
+                  // so keepListening is non-null and the featured WorkCard renders
+                  // with menuOpen={harnessMenuOpen} to demonstrate Menu layering.
                   setPlayerExpanded(false);
+                  const list = await getAuthors();
+                  if (list.length > 0) {
+                    const creator = await getAuthorDetail(list[0].id);
+                    const chapters = creator.works.flatMap((work) => work.chapters);
+                    const day = 86_400_000;
+                    if (chapters[0]) await markChapterFinished(chapters[0].id, Date.now() - day);
+                    if (chapters[1]) await markChapterFinished(chapters[1].id, Date.now());
+                  }
+                  setSidebarCollapsedState(false);
                   await loadHome();
                   setRoute({ kind: "home" });
                   setHarnessMenuOpen(true);
