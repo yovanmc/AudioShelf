@@ -180,7 +180,9 @@ pub fn query_authors(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<Author
                 (SELECT count(*) FROM chapters c JOIN works w ON c.work_id=w.id
                    WHERE w.author_id=a.id AND c.status='active'),
                 (SELECT count(*) FROM chapters c JOIN works w ON c.work_id=w.id
-                   WHERE w.author_id=a.id AND c.status='active' AND c.played=0)
+                   WHERE w.author_id=a.id AND c.status='active' AND c.played=0),
+                (SELECT COALESCE(sum(c.duration_secs), 0) FROM chapters c JOIN works w ON c.work_id=w.id
+                   WHERE w.author_id=a.id AND c.status='active')
          FROM authors a WHERE a.status='active'",
     )?;
     let mut rows: Vec<AuthorRow> = stmt
@@ -191,9 +193,43 @@ pub fn query_authors(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<Author
                 work_count: r.get(2)?,
                 chapter_count: r.get(3)?,
                 unplayed_count: r.get(4)?,
+                total_secs: r.get(5)?,
+                tags: Vec::new(),
             })
         })?
         .collect::<rusqlite::Result<_>>()?;
+
+    // Per-author tag set = author_tags ∪ that author's work_tags (chapter tags excluded
+    // by design, mirroring M9 Discover). Two grouped passes into a map, then assign.
+    use std::collections::{BTreeSet, HashMap};
+    let mut tag_map: HashMap<i64, BTreeSet<String>> = HashMap::new();
+    {
+        let mut s = conn.prepare("SELECT author_id, tag FROM author_tags")?;
+        let mut q = s.query([])?;
+        while let Some(r) = q.next()? {
+            let id: i64 = r.get(0)?;
+            let tag: String = r.get(1)?;
+            tag_map.entry(id).or_default().insert(tag);
+        }
+    }
+    {
+        let mut s = conn.prepare(
+            "SELECT w.author_id, t.tag FROM work_tags t JOIN works w ON t.work_id=w.id
+               WHERE w.status='active'",
+        )?;
+        let mut q = s.query([])?;
+        while let Some(r) = q.next()? {
+            let id: i64 = r.get(0)?;
+            let tag: String = r.get(1)?;
+            tag_map.entry(id).or_default().insert(tag);
+        }
+    }
+    for row in rows.iter_mut() {
+        if let Some(set) = tag_map.remove(&row.id) {
+            row.tags = set.into_iter().collect();
+        }
+    }
+
     rows.sort_by(|a, b| natural_cmp(&a.name, &b.name));
     Ok(rows)
 }
@@ -621,6 +657,47 @@ mod tests {
         let detail = query_author_detail(&conn, authors[0].id).unwrap();
         assert_eq!(detail.works.len(), 1);
         assert_eq!(detail.works[0].chapters.len(), 2);
+    }
+
+    #[test]
+    fn query_authors_reports_total_secs_and_tags() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Alice").join("Tale.mp3"));
+        touch(&root.join("Alice").join("Tale 2.mp3"));
+        touch(&root.join("Bob").join("Saga.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+
+        // Seed known duration_secs values directly — scan leaves them at 0 for fake files.
+        conn.execute("UPDATE chapters SET duration_secs=300 WHERE work_id IN (SELECT id FROM works WHERE author_id=?1)",
+            params![ids["Alice"]]).unwrap();
+        conn.execute("UPDATE chapters SET duration_secs=120 WHERE work_id IN (SELECT id FROM works WHERE author_id=?1)",
+            params![ids["Bob"]]).unwrap();
+
+        // Give Alice an author-level tag and a work-level tag; Bob gets no tags.
+        let alice_work_id: i64 = conn.query_row(
+            "SELECT id FROM works WHERE author_id=?1 LIMIT 1", params![ids["Alice"]], |r| r.get(0)).unwrap();
+        super::set_tags(&conn, ids["Alice"], &["cozy".into()]).unwrap();
+        super::replace_tags(&conn, "work_tags", "work_id", alice_work_id, &["epic".into()]).unwrap();
+
+        let authors = query_authors(&conn).unwrap();
+        let alice = authors.iter().find(|a| a.name == "Alice").unwrap();
+        let bob   = authors.iter().find(|a| a.name == "Bob").unwrap();
+
+        // Alice has 2 chapters each at 300 s => 600 total.
+        assert_eq!(alice.total_secs, 600, "Alice total_secs should be sum of her chapter durations");
+        // Bob has 1 chapter at 120 s.
+        assert_eq!(bob.total_secs, 120, "Bob total_secs should be sum of his chapter durations");
+
+        // Alice's tags = author_tags ∪ work_tags, sorted, de-duplicated.
+        assert_eq!(alice.tags, vec!["cozy".to_string(), "epic".to_string()],
+            "Alice tags should be union of author_tags and work_tags, sorted");
+        // Bob has no tags.
+        assert!(bob.tags.is_empty(), "Bob should have no tags");
     }
 
     #[test]
