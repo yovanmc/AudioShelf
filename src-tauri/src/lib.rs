@@ -33,6 +33,8 @@ pub fn run() {
             capture::capture_window,
             capture::finish_walkthrough,
             commands::scan_library,
+            commands::get_setting,
+            commands::set_setting,
             commands::get_authors,
             commands::get_author_detail,
             commands::set_chapter_played,
