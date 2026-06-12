@@ -6,7 +6,7 @@ use crate::natsort::natural_cmp;
 use crate::regroup;
 use crate::rename;
 use crate::scan;
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use std::sync::Mutex;
 
 pub struct DbState(pub Mutex<rusqlite::Connection>);
@@ -27,6 +27,36 @@ pub fn scan_library(app: tauri::AppHandle, state: tauri::State<DbState>, root: S
     // Allow the WebView <audio> element to read files under the library root only.
     let _ = app.asset_protocol_scope().allow_directory(&root, true);
     Ok(report)
+}
+
+#[tauri::command]
+pub fn get_setting(state: tauri::State<DbState>, key: String) -> Result<Option<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    get_setting_value(&conn, &key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_setting(state: tauri::State<DbState>, key: String, value: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    set_setting_value(&conn, &key, &value).map_err(|e| e.to_string())
+}
+
+/// Read a settings value by key, or `None` if the key is absent.
+pub(crate) fn get_setting_value(conn: &rusqlite::Connection, key: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row("SELECT value FROM settings WHERE key=?1", params![key], |r| {
+        r.get::<_, String>(0)
+    })
+    .optional()
+}
+
+/// Insert-or-update a settings value (upsert on the `key` primary key).
+pub(crate) fn set_setting_value(conn: &rusqlite::Connection, key: &str, value: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO settings(key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        params![key, value],
+    )?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -557,6 +587,30 @@ mod tests {
         conn.execute("DELETE FROM grouping_overrides WHERE chapter_path=?1", params![path]).unwrap();
         crate::regroup::regroup_author(&conn, id).unwrap();
         assert_eq!(query_author_detail(&conn, id).unwrap().works.len(), 2);
+    }
+
+    #[test]
+    fn settings_round_trip() {
+        let conn = crate::db::open_in_memory().unwrap();
+        // Missing key reads as None.
+        assert_eq!(get_setting_value(&conn, "library_root").unwrap(), None);
+        // First write inserts.
+        set_setting_value(&conn, "library_root", "C:/Audio").unwrap();
+        assert_eq!(
+            get_setting_value(&conn, "library_root").unwrap(),
+            Some("C:/Audio".to_string())
+        );
+        // Second write upserts (overwrites, not duplicates).
+        set_setting_value(&conn, "library_root", "D:/Other").unwrap();
+        assert_eq!(
+            get_setting_value(&conn, "library_root").unwrap(),
+            Some("D:/Other".to_string())
+        );
+        // The pre-seeded schema_version key is untouched.
+        assert_eq!(
+            get_setting_value(&conn, "schema_version").unwrap(),
+            Some("1".to_string())
+        );
     }
 
     #[test]

@@ -5,6 +5,7 @@ import {
   getAllTags, setAuthorTags, getDiscovery, getDiscoveryByTags,
   previewRenames, applyRenames, undoRenames,
   setGroupingOverride, clearGroupingOverride,
+  getSetting, setSetting, pickFolder,
   type AuthorRow, type AuthorDetail, type ChapterRow, type ScanResult, type DiscoveryWork,
   type RenameItem, type RenameResult,
 } from "./lib/api";
@@ -12,11 +13,12 @@ import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
 import { DiscoveryView } from "./views/DiscoveryView";
 import { RenameView } from "./views/RenameView";
+import { SettingsView } from "./views/SettingsView";
 import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
 import { clampSeek } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps } from "./harness/walkthroughs";
+import { browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps } from "./harness/walkthroughs";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -31,7 +33,8 @@ type Route =
   | { kind: "library" }
   | { kind: "author" }
   | { kind: "discovery" }
-  | { kind: "rename" };
+  | { kind: "rename" }
+  | { kind: "settings"; firstRun: boolean };
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ kind: "loading" });
@@ -42,6 +45,9 @@ export default function App() {
   const [forYou, setForYou] = useState<DiscoveryWork[]>([]);
   const [byTags, setByTags] = useState<DiscoveryWork[]>([]);
   const [pickedTags, setPickedTags] = useState<string[]>([]);
+  const [libraryRoot, setLibraryRoot] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   // ---- rename state ----
   const [renameItems, setRenameItems] = useState<RenameItem[]>([]);
@@ -108,6 +114,45 @@ export default function App() {
   async function pickTags(tags: string[]) {
     setPickedTags(tags);
     setByTags(tags.length === 0 ? [] : await getDiscoveryByTags(tags));
+  }
+
+  // Persist the chosen root, scan it, and refresh the author list. Fails safe:
+  // a bad/missing path leaves the user on Settings with an error, never crashes.
+  async function scanRoot(root: string, persist: boolean) {
+    setBusy(true);
+    setScanError(null);
+    try {
+      const result = await scanLibrary(root);
+      if (persist) await setSetting("library_root", root);
+      setLibraryRoot(root);
+      setScan(result);
+      await loadAuthors();
+      await refreshTags();
+      return true;
+    } catch (e) {
+      setScanError(String(e));
+      setLibraryRoot(root);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openSettings() {
+    setScanError(null);
+    setRoute({ kind: "settings", firstRun: false });
+  }
+
+  async function chooseFolder() {
+    const picked = await pickFolder();
+    if (!picked) return; // user cancelled
+    const ok = await scanRoot(picked, true);
+    if (ok) setRoute({ kind: "library" });
+  }
+
+  async function rescan() {
+    if (!libraryRoot) return;
+    await scanRoot(libraryRoot, true);
   }
 
   async function openAuthor(id: number) {
@@ -191,15 +236,27 @@ export default function App() {
   useEffect(() => {
     (async () => {
       const args = await getLaunchArgs();
+      // Precedence: --library flag (harness/dev) → persisted root → first-run onboarding.
       if (args.library) {
         setRoute({ kind: "scan" });
-        const result = await scanLibrary(args.library);
-        setScan(result);
-        await loadAuthors();
+        await scanRoot(args.library, false); // flag is ephemeral; don't persist it
       } else {
-        await loadAuthors();
+        const saved = await getSetting("library_root");
+        if (saved) {
+          setRoute({ kind: "scan" });
+          const ok = await scanRoot(saved, false); // already persisted
+          if (!ok) {
+            // Saved root is gone/unreadable — fail safe to Settings with the error shown.
+            setRoute({ kind: "settings", firstRun: false });
+            return;
+          }
+        } else {
+          await refreshTags();
+          // No flag and nothing persisted → onboarding.
+          setRoute({ kind: "settings", firstRun: true });
+          return;
+        }
       }
-      await refreshTags();
 
       if (args.autostart && args.walkthrough) {
         const openFirstAuthor = async () => {
@@ -270,6 +327,10 @@ export default function App() {
                   if (merged) setDetail(await clearGroupingOverride(merged.id));
                 },
               })
+            : args.walkthrough === "settings"
+            ? settingsSteps({
+                openSettings: async () => setRoute({ kind: "settings", firstRun: false }),
+              })
             : browseSteps({
                 showScanResult: async () => setRoute({ kind: "scan" }),
                 showLibrary: async () => setRoute({ kind: "library" }),
@@ -326,7 +387,21 @@ export default function App() {
         />
       );
     }
-    return <LibraryView authors={authors} onOpenAuthor={openAuthor} onOpenDiscovery={openDiscovery} onOpenRename={openRename} />;
+    if (route.kind === "settings") {
+      return (
+        <SettingsView
+          root={libraryRoot}
+          lastScan={scan}
+          scanError={scanError}
+          busy={busy}
+          firstRun={route.firstRun}
+          onChooseFolder={chooseFolder}
+          onRescan={rescan}
+          onBack={() => setRoute({ kind: "library" })}
+        />
+      );
+    }
+    return <LibraryView authors={authors} onOpenAuthor={openAuthor} onOpenDiscovery={openDiscovery} onOpenRename={openRename} onOpenSettings={openSettings} />;
   }
 
   return (

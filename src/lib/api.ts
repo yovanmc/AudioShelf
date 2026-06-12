@@ -1,4 +1,5 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 
 export interface ScanResult { authors: number; works: number; chapters: number; }
 export interface AuthorRow {
@@ -71,3 +72,21 @@ export const finishWalkthrough = (doneSignal: string | null, exitWhenDone: boole
   invoke("finish_walkthrough", { doneSignal, exitWhenDone });
 
 export const fileUrl = (p: string) => convertFileSrc(p);
+
+export const getSetting = (key: string) => invoke<string | null>("get_setting", { key });
+export const setSetting = (key: string, value: string) =>
+  invoke("set_setting", { key, value });
+
+/**
+ * Open the OS folder picker. Resolves to the chosen absolute path, or `null` if
+ * the user cancelled. `directory: true` + default `multiple: false` yields a
+ * single path string (never an array) or null.
+ */
+export async function pickFolder(): Promise<string | null> {
+  const picked = await open({
+    directory: true,
+    multiple: false,
+    title: "Choose your audio library folder",
+  });
+  return typeof picked === "string" ? picked : null;
+}

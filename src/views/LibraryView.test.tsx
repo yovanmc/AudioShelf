@@ -11,7 +11,7 @@ const authors: AuthorRow[] = [
 
 describe("LibraryView", () => {
   it("lists authors and filters by search", async () => {
-    render(<LibraryView authors={authors} onOpenAuthor={() => {}} onOpenDiscovery={() => {}} onOpenRename={() => {}} />);
+    render(<LibraryView authors={authors} onOpenAuthor={() => {}} onOpenDiscovery={() => {}} onOpenRename={() => {}} onOpenSettings={() => {}} />);
     expect(screen.getByText("Alice")).toBeInTheDocument();
     expect(screen.getByText("Bob")).toBeInTheDocument();
 
@@ -22,22 +22,37 @@ describe("LibraryView", () => {
 
   it("invokes onOpenAuthor when a row is clicked", async () => {
     const onOpen = vi.fn();
-    render(<LibraryView authors={authors} onOpenAuthor={onOpen} onOpenDiscovery={() => {}} onOpenRename={() => {}} />);
+    render(<LibraryView authors={authors} onOpenAuthor={onOpen} onOpenDiscovery={() => {}} onOpenRename={() => {}} onOpenSettings={() => {}} />);
     await userEvent.click(screen.getByText("Bob"));
     expect(onOpen).toHaveBeenCalledWith(2);
   });
 
   it("opens discovery", async () => {
     const onDisc = vi.fn();
-    render(<LibraryView authors={authors} onOpenAuthor={() => {}} onOpenDiscovery={onDisc} onOpenRename={() => {}} />);
+    render(<LibraryView authors={authors} onOpenAuthor={() => {}} onOpenDiscovery={onDisc} onOpenRename={() => {}} onOpenSettings={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "Discover" }));
     expect(onDisc).toHaveBeenCalled();
   });
 
   it("opens the rename tool", async () => {
     const onOpenRename = vi.fn();
-    render(<LibraryView authors={[]} onOpenAuthor={() => {}} onOpenDiscovery={() => {}} onOpenRename={onOpenRename} />);
+    render(<LibraryView authors={[]} onOpenAuthor={() => {}} onOpenDiscovery={() => {}} onOpenRename={onOpenRename} onOpenSettings={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "Rename tool" }));
     expect(onOpenRename).toHaveBeenCalled();
+  });
+
+  it("fires onOpenSettings when the Settings button is clicked", async () => {
+    const onOpenSettings = vi.fn();
+    render(
+      <LibraryView
+        authors={[]}
+        onOpenAuthor={vi.fn()}
+        onOpenDiscovery={vi.fn()}
+        onOpenRename={vi.fn()}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /settings/i }));
+    expect(onOpenSettings).toHaveBeenCalledOnce();
   });
 });

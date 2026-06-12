@@ -22,6 +22,7 @@ fn get_launch_args(state: tauri::State<LaunchArgs>) -> LaunchArgs {
 pub fn run() {
     let args = LaunchArgs::parse_lenient(std::env::args());
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(args)
         .setup(|app| {
             let conn = commands::init_db(&app.handle());
@@ -33,6 +34,8 @@ pub fn run() {
             capture::capture_window,
             capture::finish_walkthrough,
             commands::scan_library,
+            commands::get_setting,
+            commands::set_setting,
             commands::get_authors,
             commands::get_author_detail,
             commands::set_chapter_played,
