@@ -1,14 +1,20 @@
 param(
   [string]$Walkthrough = "browse",
   [int]$TimeoutSec = 240,
-  [switch]$SkipBuild
+  [switch]$SkipBuild,
+  [string]$OutputRoot = ".shots"
 )
 $ErrorActionPreference = "Stop"
 $root    = Split-Path -Parent $PSScriptRoot
 $devenv  = Join-Path $PSScriptRoot "dev-env.cmd"
 $fixture = Join-Path $root ".fixture"
-$shots   = Join-Path $root ".shots\$Walkthrough"
-$done    = Join-Path $root ".shots\$Walkthrough.done"
+$output  = if ([System.IO.Path]::IsPathRooted($OutputRoot)) {
+  $OutputRoot
+} else {
+  Join-Path $root $OutputRoot
+}
+$shots   = Join-Path $output $Walkthrough
+$done    = Join-Path $output "$Walkthrough.done"
 
 # Run from the repo root so `cargo tauri build` can locate src-tauri/tauri.conf.json
 # regardless of the caller's working directory.

@@ -5,3 +5,5 @@ dist/
 .fixture/
 .shots/
 .shots-baseline/
+.shots-before/
+.shots-after/
