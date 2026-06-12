@@ -13,7 +13,7 @@ const context = {
   workPlayedChapters: 2,
 };
 
-function props() {
+function props(overrides = {}) {
   return {
     context,
     isPlaying: false,
@@ -28,6 +28,11 @@ function props() {
     onVolume: vi.fn(),
     onSetSleep: vi.fn(),
     onOpenAuthor: vi.fn(),
+    chapters: [] as import("../lib/api").ChapterRow[],
+    onJumpToChapter: vi.fn(),
+    timeLabelMode: "elapsed" as const,
+    onCycleTimeLabel: vi.fn(),
+    ...overrides,
   };
 }
 
@@ -81,5 +86,55 @@ describe("NowPlayingPanel", () => {
     // The work title "Cool Story" is inside a button that calls onOpenAuthor
     await userEvent.click(screen.getByRole("button", { name: "Cool Story" }));
     expect(p.onOpenAuthor).toHaveBeenCalledWith(1);
+  });
+
+  it("clicking the time-label button calls onCycleTimeLabel", async () => {
+    const p = props();
+    render(<NowPlayingPanel {...p} />);
+    await userEvent.click(screen.getByTitle("Toggle time display"));
+    expect(p.onCycleTimeLabel).toHaveBeenCalled();
+  });
+
+  it("shows remaining time when mode is remaining", () => {
+    render(<NowPlayingPanel {...props({ timeLabelMode: "remaining", currentTime: 30, duration: 120 })} />);
+    expect(screen.getByTitle("Toggle time display")).toHaveTextContent("-1:30");
+  });
+
+  it("shows percent when mode is percent", () => {
+    render(<NowPlayingPanel {...props({ timeLabelMode: "percent", currentTime: 30, duration: 120 })} />);
+    expect(screen.getByTitle("Toggle time display")).toHaveTextContent("25%");
+  });
+
+  it("renders chapter list when given more than one chapter", () => {
+    const chapters: import("../lib/api").ChapterRow[] = [
+      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [] },
+      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [] },
+    ];
+    render(<NowPlayingPanel {...props({ chapters })} />);
+    expect(screen.getByText("In this work", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText(/Ch 2 — Chapter 2/)).toBeInTheDocument();
+    expect(screen.getByText(/Ch 3 — Other Chapter/)).toBeInTheDocument();
+    // The current chapter (id=1, matching context.chapter.id=1) has aria-current
+    const currentBtn = screen.getByRole("button", { name: /Ch 2 — Chapter 2/ });
+    expect(currentBtn).toHaveAttribute("aria-current", "true");
+  });
+
+  it("clicking a chapter calls onJumpToChapter with that chapter", async () => {
+    const chapters: import("../lib/api").ChapterRow[] = [
+      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [] },
+      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [] },
+    ];
+    const onJumpToChapter = vi.fn();
+    render(<NowPlayingPanel {...props({ chapters, onJumpToChapter })} />);
+    await userEvent.click(screen.getByRole("button", { name: /Ch 3 — Other Chapter/ }));
+    expect(onJumpToChapter).toHaveBeenCalledWith(chapters[1]);
+  });
+
+  it("does not render chapter list for a single-chapter work", () => {
+    const chapters: import("../lib/api").ChapterRow[] = [
+      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [] },
+    ];
+    render(<NowPlayingPanel {...props({ chapters })} />);
+    expect(screen.queryByText("In this work", { exact: false })).not.toBeInTheDocument();
   });
 });

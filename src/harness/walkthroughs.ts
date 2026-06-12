@@ -168,6 +168,7 @@ export function m12Steps(nav: {
   showSettings: () => Promise<void>;
   showPlayerCompact: () => Promise<void>;
   showPlayerExpanded: () => Promise<void>;
+  showPlayerChapters: () => Promise<void>;
   showContextMenu: () => Promise<void>;
 }): Step[] {
   return [
@@ -183,6 +184,7 @@ export function m12Steps(nav: {
     { name: "settings", run: nav.showSettings },
     { name: "player-compact", run: nav.showPlayerCompact },
     { name: "player-expanded", run: nav.showPlayerExpanded },
+    { name: "player-chapters", run: nav.showPlayerChapters },
     { name: "context-menu", run: nav.showContextMenu },
   ];
 }

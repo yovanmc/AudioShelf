@@ -30,11 +30,12 @@ describe("m12Steps", () => {
       showEmptyHome: noop, showHome: noop, collapseSidebar: noop, showLibrary: noop,
       showSearch: noop, showAuthorDetail: noop, showDiscovery: noop, showDiscoveryByTag: noop,
       showRename: noop, showSettings: noop, showPlayerCompact: noop, showPlayerExpanded: noop,
+      showPlayerChapters: noop,
       showContextMenu: noop,
     }).map((step) => step.name)).toEqual([
       "home-empty", "home", "home-sidebar-collapsed", "library", "search",
       "author-detail", "discovery", "discovery-by-tag", "rename-preview",
-      "settings", "player-compact", "player-expanded", "context-menu",
+      "settings", "player-compact", "player-expanded", "player-chapters", "context-menu",
     ]);
   });
 });
