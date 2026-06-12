@@ -20,6 +20,6 @@ describe("matchesSearch", () => {
 
 describe("summarizeAuthor", () => {
   it("summarizes works/chapters and unplayed", () => {
-    expect(summarizeAuthor(author)).toBe("3 works · 7 chapters · 2 unplayed");
+    expect(summarizeAuthor(author)).toBe("3 works · 7 chapters · 2 unplayed · 71% played · 0:00");
   });
 });

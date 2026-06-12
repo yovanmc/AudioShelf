@@ -1,4 +1,5 @@
 import type { AuthorRow } from "./api";
+import { formatDuration } from "./time";
 
 export function matchesSearch(author: AuthorRow, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -7,5 +8,7 @@ export function matchesSearch(author: AuthorRow, query: string): boolean {
 }
 
 export function summarizeAuthor(a: AuthorRow): string {
-  return `${a.workCount} works · ${a.chapterCount} chapters · ${a.unplayedCount} unplayed`;
+  const played = a.chapterCount - a.unplayedCount;
+  const pct = a.chapterCount > 0 ? Math.round((played / a.chapterCount) * 100) : 0;
+  return `${a.workCount} works · ${a.chapterCount} chapters · ${a.unplayedCount} unplayed · ${pct}% played · ${formatDuration(a.totalSecs)}`;
 }
