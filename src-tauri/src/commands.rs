@@ -543,13 +543,16 @@ pub(crate) fn home_keep_listening(
             params![author_id],
             |r| r.get(0),
         )?;
-        let last_played_at: i64 = conn.query_row(
+        let last_played_at: i64 = match conn.query_row(
             "SELECT MAX(pe.played_at) FROM play_events pe
              JOIN chapters c ON pe.chapter_id=c.id JOIN works w ON c.work_id=w.id
              WHERE w.author_id=?1",
             params![author_id],
-            |r| r.get(0),
-        )?;
+            |r| r.get::<_, Option<i64>>(0),
+        )? {
+            Some(v) => v,
+            None => continue, // no play-events for this author — skip
+        };
 
         // Candidate work = the author's most-recently-played work.
         let candidate_work: Option<i64> = conn
