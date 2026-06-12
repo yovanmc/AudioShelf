@@ -749,3 +749,102 @@ mod tests {
         assert!(res.authors.len() <= 1 && res.works.len() <= 1 && res.chapters.len() <= 1);
     }
 }
+
+/// Max thumbnail edge in pixels (square-bounded, aspect preserved).
+const COVER_MAX: u32 = 256;
+
+/// `<app_data>/covers`, created if missing. Matches the asset scope granted in `setup`.
+fn covers_cache_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
+    use tauri::Manager;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("covers");
+    std::fs::create_dir_all(&dir).ok();
+    dir
+}
+
+/// First (lowest chapter_no) active chapter file for a work.
+fn first_chapter_file_for_work(
+    conn: &rusqlite::Connection,
+    work_id: i64,
+) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT file_path FROM chapters
+         WHERE work_id=?1 AND status='active'
+         ORDER BY chapter_no LIMIT 1",
+        params![work_id],
+        |r| r.get::<_, String>(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+}
+
+/// First active chapter file for an author (first work by sort_key, first chapter by no).
+fn first_chapter_file_for_author(
+    conn: &rusqlite::Connection,
+    author_id: i64,
+) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT c.file_path FROM chapters c
+         JOIN works w ON c.work_id = w.id
+         WHERE w.author_id=?1 AND c.status='active' AND w.status='active'
+         ORDER BY w.sort_key, c.chapter_no LIMIT 1",
+        params![author_id],
+        |r| r.get::<_, String>(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+}
+
+/// Cover for a work: its first file's embedded art, else a folder image. Returns the
+/// cached thumbnail's absolute path, or None if there's no cover.
+#[tauri::command]
+pub fn get_work_cover(
+    app: tauri::AppHandle,
+    state: tauri::State<DbState>,
+    work_id: i64,
+) -> Result<Option<String>, String> {
+    let file = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        first_chapter_file_for_work(&conn, work_id).map_err(|e| e.to_string())?
+    }; // drop the DB lock before image work
+    let Some(file) = file else { return Ok(None) };
+    let dir = covers_cache_dir(&app);
+    let p = crate::covers::cover_cache_for_chapter(
+        &dir,
+        std::path::Path::new(&file),
+        crate::covers::CoverPriority::EmbeddedFirst,
+        COVER_MAX,
+    );
+    Ok(p.map(|x| x.to_string_lossy().to_string()))
+}
+
+/// Cover for an author: a folder image, else the first file's embedded art.
+#[tauri::command]
+pub fn get_author_cover(
+    app: tauri::AppHandle,
+    state: tauri::State<DbState>,
+    author_id: i64,
+) -> Result<Option<String>, String> {
+    let file = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        first_chapter_file_for_author(&conn, author_id).map_err(|e| e.to_string())?
+    };
+    let Some(file) = file else { return Ok(None) };
+    let dir = covers_cache_dir(&app);
+    let p = crate::covers::cover_cache_for_chapter(
+        &dir,
+        std::path::Path::new(&file),
+        crate::covers::CoverPriority::FolderFirst,
+        COVER_MAX,
+    );
+    Ok(p.map(|x| x.to_string_lossy().to_string()))
+}
