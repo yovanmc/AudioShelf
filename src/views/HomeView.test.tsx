@@ -63,6 +63,8 @@ function baseProps(over: Partial<React.ComponentProps<typeof HomeView>> = {}) {
     onPlay: vi.fn(),
     onOpenAuthor: vi.fn(),
     onOpenLibrary: vi.fn(),
+    onOpenSettings: vi.fn(),
+    onPlayNextOfWork: vi.fn(),
     ...over,
   };
 }
@@ -86,14 +88,25 @@ describe("HomeView", () => {
     expect(onPlay).toHaveBeenCalledWith(expect.objectContaining({ chapter: nextChapter }));
   });
 
-  it("shows an empty state when nothing has been played", () => {
+  it("triggers onPlayNextOfWork when a recommendation Play button is clicked", async () => {
+    const onPlayNextOfWork = vi.fn();
+    render(<HomeView {...baseProps({ onPlayNextOfWork })} />);
+    // Click the first Play button on the first recommendation card
+    const playButtons = screen.getAllByRole("button", { name: "▶ Play" });
+    await userEvent.click(playButtons[0]);
+    expect(onPlayNextOfWork).toHaveBeenCalledWith(10, 20);
+  });
+
+  it("shows first-run welcome and suppresses You May Like when no history", () => {
     const empty: HomeData = {
       keepListening: null,
       recommendations: [],
       stats: { totalSecs: 0, chaptersFinished: 0, streakDays: 0, recent: [] },
     };
     render(<HomeView {...baseProps({ home: empty })} />);
-    expect(screen.getByText(/Nothing played yet/)).toBeInTheDocument();
+    expect(screen.getByText("Welcome to AudioShelf")).toBeInTheDocument();
+    expect(screen.getByText(/organized by creator/)).toBeInTheDocument();
+    expect(screen.queryByText("You May Like")).not.toBeInTheDocument();
   });
 
   it("shows a loading state when home is null", () => {

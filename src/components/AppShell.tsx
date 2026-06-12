@@ -27,7 +27,7 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
       key={item.key}
       className="sidebar__item"
       aria-label={item.label}
-      title={collapsed ? item.label : undefined}
+      title={item.label}
       aria-current={active === item.key ? "page" : undefined}
       onClick={item.action}
     >
@@ -47,7 +47,7 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
         <button
           className="sidebar__item"
           aria-label="Settings"
-          title={collapsed ? "Settings" : undefined}
+          title="Settings"
           aria-current={active === "settings" ? "page" : undefined}
           onClick={onSettings}
         >

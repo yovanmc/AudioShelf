@@ -37,7 +37,7 @@ describe("SortFilterBar", () => {
   it("status select has expected options", () => {
     render(<SortFilterBar {...baseProps()} />);
     expect(screen.getByRole("option", { name: "All" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Has unplayed" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Has unlistened chapters" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Fully played" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Not started" })).toBeInTheDocument();
   });

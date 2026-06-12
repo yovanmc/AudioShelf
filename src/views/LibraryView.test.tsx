@@ -97,7 +97,8 @@ describe("LibraryView", () => {
       chapters: [],
     };
     render(<LibraryView {...baseProps({ query: "cool", results, onOpenAuthor })} />);
-    await userEvent.click(screen.getByText(/Cool Story/));
+    // WorkCard now renders a "View creator" button for work results
+    await userEvent.click(screen.getByRole("button", { name: "View creator" }));
     expect(onOpenAuthor).toHaveBeenCalledWith(42);
   });
 

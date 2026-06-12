@@ -275,6 +275,21 @@ export default function App() {
     await loadAuthors();
   }
 
+  async function playNextChapterOfWork(workId: number, authorId: number) {
+    const detail = await getAuthorDetail(authorId);
+    const work = detail.works.find((w) => w.id === workId);
+    if (!work) return;
+    const next = work.chapters.find((c) => !c.played) ?? work.chapters[0];
+    if (!next) return;
+    const total = work.chapters.length;
+    const played = work.chapters.filter((c) => c.played).length;
+    playChapter({
+      chapter: next, authorId: detail.id, authorName: detail.name,
+      workId: work.id, workTitle: work.baseTitle,
+      workTotalChapters: total, workPlayedChapters: played,
+    });
+  }
+
   function playChapter(context: PlaybackContext) {
     setCurrent(context);
     const audio = audioRef.current;
@@ -433,7 +448,19 @@ export default function App() {
                 },
                 showPlayerExpanded: async () => { setPlayerExpanded(true); },
                 showContextMenu: async () => {
+                  // showDiscoveryByTag (step 7) wiped play history; re-seed it
+                  // so keepListening is non-null and the featured WorkCard renders
+                  // with menuOpen={harnessMenuOpen} to demonstrate Menu layering.
                   setPlayerExpanded(false);
+                  const list = await getAuthors();
+                  if (list.length > 0) {
+                    const creator = await getAuthorDetail(list[0].id);
+                    const chapters = creator.works.flatMap((work) => work.chapters);
+                    const day = 86_400_000;
+                    if (chapters[0]) await markChapterFinished(chapters[0].id, Date.now() - day);
+                    if (chapters[1]) await markChapterFinished(chapters[1].id, Date.now());
+                  }
+                  setSidebarCollapsedState(false);
                   await loadHome();
                   setRoute({ kind: "home" });
                   setHarnessMenuOpen(true);
@@ -649,6 +676,8 @@ export default function App() {
           onPlay={playChapter}
           onOpenAuthor={openAuthor}
           onOpenLibrary={() => setRoute({ kind: "library" })}
+          onOpenSettings={openSettings}
+          onPlayNextOfWork={playNextChapterOfWork}
           featureMenuOpen={harnessMenuOpen}
         />
       );
@@ -680,6 +709,7 @@ export default function App() {
           picked={pickedTags}
           onPickTags={pickTags}
           onOpenAuthor={openAuthor}
+          onPlayNextOfWork={playNextChapterOfWork}
         />
       );
     }
@@ -721,6 +751,7 @@ export default function App() {
         filterStatus={browsePrefs.filterStatus}
         onFilterStatusChange={setFilterStatus}
         allTags={allTags}
+        onPlayNextOfWork={playNextChapterOfWork}
       />
     );
   }

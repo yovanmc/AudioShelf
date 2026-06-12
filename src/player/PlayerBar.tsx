@@ -45,7 +45,7 @@ export function PlayerBar(props: PlayerBarProps) {
         <div>
           <CreatorIdentity authorId={context.authorId} authorName={context.authorName} size={26} onOpen={() => props.onOpenAuthor(context.authorId)} />
           <div><strong>{context.workTitle}</strong></div>
-          <div className="muted">{context.chapter.title}</div>
+          <div className="muted">{context.chapter.title} · <span className="player-bar__chapter-pos">Chapter {context.chapter.chapterNo} of {context.workTotalChapters}</span></div>
         </div>
       </div>
       <div>

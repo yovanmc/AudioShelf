@@ -2,8 +2,8 @@ import { useState } from "react";
 import type { AuthorDetail, ChapterRow, PlaybackContext, WorkRow } from "../lib/api";
 import { TagEditor } from "./TagEditor";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
-import { CreatorIdentity } from "../components/CreatorIdentity";
-import { Button, ProgressBar } from "../components/ui";
+import { Button, Dialog, ProgressBar, TagGroup } from "../components/ui";
+import { Menu } from "../components/Menu";
 import { Icon } from "../components/Icon";
 import { formatDuration } from "../lib/time";
 import { sortWorks, type WorkSort } from "../lib/browse";
@@ -47,31 +47,7 @@ function ChapterGroupingForm(props: {
   );
 }
 
-function ChapterTags(props: {
-  chapter: ChapterRow;
-  allTags: string[];
-  onSetChapterTags: (chapterId: number, tags: string[]) => void;
-}) {
-  const { chapter } = props;
-  const [open, setOpen] = useState(chapter.tags.length > 0);
-  return (
-    <span className="chapter-tags">
-      <button
-        aria-label={`Toggle tags for '${chapter.title}'`}
-        onClick={() => setOpen((o) => !o)}
-      >
-        Tags{chapter.tags.length > 0 ? ` (${chapter.tags.length})` : ""}
-      </button>
-      {open && (
-        <TagEditor
-          tags={chapter.tags}
-          allTags={props.allTags}
-          onChange={(t) => props.onSetChapterTags(chapter.id, t)}
-        />
-      )}
-    </span>
-  );
-}
+type EditState = { chapterId: number; mode: "grouping" | "tags" } | null;
 
 export function AuthorDetailView(props: {
   detail: AuthorDetail;
@@ -89,6 +65,7 @@ export function AuthorDetailView(props: {
 }) {
   const { detail } = props;
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const [editState, setEditState] = useState<EditState>(null);
   const works = sortWorks(detail.works, props.workSort);
   const allCollapsed = works.length > 0 && works.every((w) => collapsed.has(w.id));
   const toggleWork = (id: number) =>
@@ -107,6 +84,18 @@ export function AuthorDetailView(props: {
   const firstUnplayed = works
     .flatMap((work) => work.chapters.map((chapter) => ({ work, chapter })))
     .find(({ chapter }) => !chapter.played);
+
+  // Find the chapter and work for the currently open dialog
+  const editChapterInfo = editState
+    ? (() => {
+        for (const w of detail.works) {
+          const c = w.chapters.find((ch) => ch.id === editState.chapterId);
+          if (c) return { work: w, chapter: c };
+        }
+        return null;
+      })()
+    : null;
+
   return (
     <main className="view author-detail">
       <Button variant="ghost" onClick={props.onBack}><Icon name="chevronLeft" /> Library</Button>
@@ -129,6 +118,7 @@ export function AuthorDetailView(props: {
         </div>
       </section>
       <div className="work-controls toolbar">
+        <span className="muted">Works ({detail.works.length})</span>
         <label>
           Sort works:{" "}
           <select
@@ -191,17 +181,13 @@ export function AuthorDetailView(props: {
                   />
                 </label>
                 <span style={{ minWidth: 0, flex: 1 }}><span className="chapter-title">{c.title}</span><span className="chapter-duration muted" style={{ display: "block" }}>Chapter {c.chapterNo} · {formatDuration(c.durationSecs)}</span></span>
-                <CreatorIdentity authorId={detail.id} authorName={detail.name} size={28} />
-                <ChapterGroupingForm
-                  work={w}
-                  chapter={c}
-                  onSetGrouping={props.onSetGrouping}
-                  onClearGrouping={props.onClearGrouping}
-                />
-                <ChapterTags
-                  chapter={c}
-                  allTags={props.allTags}
-                  onSetChapterTags={props.onSetChapterTags}
+                <TagGroup tags={c.tags} />
+                <Menu
+                  label={`More options for '${c.title}'`}
+                  items={[
+                    { label: "Edit grouping", onSelect: () => setEditState({ chapterId: c.id, mode: "grouping" }) },
+                    { label: "Edit tags", onSelect: () => setEditState({ chapterId: c.id, mode: "tags" }) },
+                  ]}
                 />
               </li>
             ))}
@@ -209,6 +195,25 @@ export function AuthorDetailView(props: {
           )}
         </section>
       ))}
+      {editState && editChapterInfo && editState.mode === "grouping" && (
+        <Dialog label="Edit grouping" onClose={() => setEditState(null)}>
+          <ChapterGroupingForm
+            work={editChapterInfo.work}
+            chapter={editChapterInfo.chapter}
+            onSetGrouping={(id, title, no) => { props.onSetGrouping(id, title, no); setEditState(null); }}
+            onClearGrouping={(id) => { props.onClearGrouping(id); setEditState(null); }}
+          />
+        </Dialog>
+      )}
+      {editState && editChapterInfo && editState.mode === "tags" && (
+        <Dialog label="Edit tags" onClose={() => setEditState(null)}>
+          <TagEditor
+            tags={editChapterInfo.chapter.tags}
+            allTags={props.allTags}
+            onChange={(t) => props.onSetChapterTags(editChapterInfo.chapter.id, t)}
+          />
+        </Dialog>
+      )}
     </main>
   );
 }

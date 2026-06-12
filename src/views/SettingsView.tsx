@@ -1,5 +1,5 @@
 import type { ScanResult } from "../lib/api";
-import { Button, Card, Notice } from "../components/ui";
+import { Button, Card, Notice, PageHeader } from "../components/ui";
 import { Icon } from "../components/Icon";
 
 export function SettingsView(props: {
@@ -15,7 +15,7 @@ export function SettingsView(props: {
   const { root, lastScan, scanError, busy, firstRun } = props;
   return (
     <main className={firstRun ? "settings" : "view settings"}>
-      <header className="view-section"><div className="muted">{firstRun ? "Welcome to AudioShelf" : "Library preferences"}</div><h1>{firstRun ? "Choose your audio library" : "Settings"}</h1></header>
+      <PageHeader eyebrow={firstRun ? "Welcome to AudioShelf" : "Library preferences"} title={firstRun ? "Choose your audio library" : "Settings"} />
 
       {firstRun && (
         <p className="muted">
