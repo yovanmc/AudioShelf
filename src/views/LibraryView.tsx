@@ -3,7 +3,7 @@ import type { AuthorRow, SearchResults } from "../lib/api";
 import { summarizeAuthor } from "../lib/library";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
 import { CreatorIdentity } from "../components/CreatorIdentity";
-import { EmptyState } from "../components/ui";
+import { EmptyState, PageHeader, TagGroup } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { SortFilterBar } from "./SortFilterBar";
 import { filterAuthors, sortAuthors, type AuthorSort, type PlayedStatus } from "../lib/browse";
@@ -31,7 +31,7 @@ export function LibraryView(props: {
             <strong className="author-name">{author.name}</strong>
             <span className="author-summary muted" style={{ display: "block" }}>{summarizeAuthor(author)}</span>
           </span>
-          <span className="chips">{author.tags.slice(0, 2).map((tag) => <span className="chip" key={tag}>{tag}</span>)}</span>
+          <TagGroup tags={author.tags} max={2} align="end" />
           <Icon name="chevronRight" />
         </button>
       </div>
@@ -39,7 +39,7 @@ export function LibraryView(props: {
   };
   return (
     <main className="view library">
-      <header className="view-section"><div className="muted">All creators and audio</div><h1>Library</h1></header>
+      <PageHeader eyebrow={searching ? "Search results" : "All creators and audio"} title="Library" />
       <div className="toolbar">
         <label style={{ display: "flex", flex: 1, alignItems: "center", gap: 8 }}>
           <Icon name="search" />

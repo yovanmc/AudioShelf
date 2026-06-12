@@ -1,6 +1,6 @@
 import type { DiscoveryWork } from "../lib/api";
 import { WorkCard } from "../components/WorkCard";
-import { EmptyState } from "../components/ui";
+import { EmptyState, PageHeader } from "../components/ui";
 
 function WorkList({ works, onOpenAuthor }: { works: DiscoveryWork[]; onOpenAuthor: (id: number) => void }) {
   if (!works.length) return <EmptyState title="Nothing to suggest yet">Play some audio or add tags to build recommendations.</EmptyState>;
@@ -30,7 +30,7 @@ export function DiscoveryView(props: {
   );
   return (
     <main className="view discovery">
-      <header className="view-section"><div className="muted">Tag and history powered</div><h1>Discover</h1></header>
+      <PageHeader eyebrow="Suggestions from your library" title="Discover" />
       <section className="view-section"><h2>For You</h2><WorkList works={props.forYou} onOpenAuthor={props.onOpenAuthor} /></section>
       <section className="view-section">
         <h2>Pick a tag</h2>

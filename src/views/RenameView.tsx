@@ -1,5 +1,5 @@
 import type { RenameItem, RenameResult } from "../lib/api";
-import { Button, Card, Notice } from "../components/ui";
+import { Button, Card, Notice, PageHeader } from "../components/ui";
 import { Icon } from "../components/Icon";
 
 function pluralFiles(n: number): string {
@@ -19,7 +19,7 @@ export function RenameView(props: {
 
   return (
     <main className="view rename">
-      <header className="view-section"><div className="muted">Previewed, conflict-aware, reversible</div><h1>Rename tool</h1></header>
+      <PageHeader eyebrow="Tidy up your file names — changes are reversible" title="Rename tool" />
       <Card className="view-section" style={{ padding: 20 }}>
       <p className="rename-blurb">
         Preview canonical filenames below. Only <strong>{pluralFiles(okItems.length)}</strong> will

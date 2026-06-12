@@ -46,7 +46,7 @@ export function SortFilterBar(props: {
           onChange={(e) => props.onFilterStatusChange(e.target.value as PlayedStatus)}
         >
           <option value="all">All</option>
-          <option value="unplayed">Has unplayed</option>
+          <option value="unplayed">Has unlistened chapters</option>
           <option value="done">Fully played</option>
           <option value="unstarted">Not started</option>
         </select>

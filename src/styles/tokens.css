@@ -12,6 +12,7 @@
   --color-accent: #218bff;
   --color-accent-hover: #49a2ff;
   --color-accent-soft: rgb(33 139 255 / 16%);
+  --color-accent-muted: rgb(33 139 255 / 55%);
   --color-success: #39b8a0;
   --color-warning: #e7a94b;
   --color-danger: #ef6b73;

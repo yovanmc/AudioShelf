@@ -1,6 +1,6 @@
 import type { HomeData, PlaybackContext } from "../lib/api";
 import { WorkCard } from "../components/WorkCard";
-import { Button, EmptyState, StatCard } from "../components/ui";
+import { Button, EmptyState, PageHeader, SectionHeading, StatCard } from "../components/ui";
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { keepListeningPercent, recommendationPercent } from "../lib/home";
 import { formatLong, formatRelative } from "../lib/time";
@@ -29,10 +29,7 @@ export function HomeView(props: {
   } : null;
   return (
     <main className="view home">
-      <header className="view-section">
-        <div className="muted">Your personal audio library</div>
-        <h1>Home</h1>
-      </header>
+      <PageHeader eyebrow="Your personal audio library" title="Home" />
       {empty && (
         <EmptyState title="Your shelf is ready" action={<Button variant="primary" onClick={props.onOpenLibrary}>Browse your library</Button>}>
           Nothing played yet. Start a chapter and AudioShelf will build your listening dashboard.
@@ -40,7 +37,7 @@ export function HomeView(props: {
       )}
       {keepListening && context && (
         <section className="view-section">
-          <div className="section-heading"><div><div className="muted">Continue where you left off</div><h2>Keep listening to {keepListening.authorName}</h2></div></div>
+          <SectionHeading eyebrow="Continue where you left off" title={`Keep listening to ${keepListening.authorName}`} />
           <WorkCard
             featured
             workId={keepListening.workId}
@@ -59,7 +56,7 @@ export function HomeView(props: {
       )}
       {recommendations.length > 0 && (
         <section className="view-section">
-          <div className="section-heading"><div><div className="muted">Based on your library and listening</div><h2>You May Like</h2></div></div>
+          <SectionHeading eyebrow="Based on your library and listening" title="You May Like" />
           <div className="card-grid">
             {recommendations.slice(0, 6).map((work) => (
               <WorkCard
@@ -69,6 +66,7 @@ export function HomeView(props: {
                 authorId={work.authorId}
                 authorName={work.authorName}
                 reason={work.reason}
+                reasonTone="progress"
                 tags={work.matchedTags.length ? work.matchedTags : work.tags}
                 progress={recommendationPercent(work)}
                 meta={`${work.unplayedCount} of ${work.totalChapters} chapters unplayed`}
