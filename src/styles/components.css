@@ -101,3 +101,6 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 .card-row { display: flex; gap: var(--space-4); overflow-x: auto; padding-bottom: var(--space-2); scroll-snap-type: x proximity; }
 .card-row > * { flex: 0 0 220px; scroll-snap-align: start; }
 .shelf-creator { display: flex; align-items: center; padding: var(--space-3); }
+.tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.tab { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-muted); border-radius: 999px; padding: var(--space-2) var(--space-3); cursor: pointer; font: inherit; }
+.tab--active { background: var(--color-accent-soft); color: var(--color-text); border-color: var(--color-accent); }

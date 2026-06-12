@@ -50,7 +50,23 @@ export function LibraryView(props: {
       </div>
       {searching ? <SearchResultsPanel results={props.results} onOpenAuthor={props.onOpenAuthor} onPlayNextOfWork={props.onPlayNextOfWork} /> : (
         <>
-          <SortFilterBar sort={props.sort} onSortChange={props.onSortChange} filterTag={props.filterTag} onFilterTagChange={props.onFilterTagChange} filterStatus={props.filterStatus} onFilterStatusChange={props.onFilterStatusChange} allTags={props.allTags} />
+          <div className="tabs" role="tablist" aria-label="Played status">
+            {([
+              ["all", "All"], ["unplayed", "Has unplayed"], ["done", "Fully played"], ["unstarted", "Not started"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={props.filterStatus === value}
+                className={`tab${props.filterStatus === value ? " tab--active" : ""}`}
+                onClick={() => props.onFilterStatusChange(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <SortFilterBar sort={props.sort} onSortChange={props.onSortChange} filterTag={props.filterTag} onFilterTagChange={props.onFilterTagChange} allTags={props.allTags} />
           {visible.length === 0
             ? <EmptyState title="No creators found">No authors match the current filters.</EmptyState>
             : <List height={LIST_HEIGHT} width="100%" itemCount={visible.length} itemSize={ROW_HEIGHT}>{Row}</List>}

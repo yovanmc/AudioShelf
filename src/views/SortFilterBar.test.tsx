@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SortFilterBar } from "./SortFilterBar";
-import type { AuthorSort, PlayedStatus } from "../lib/browse";
+import type { AuthorSort } from "../lib/browse";
 
 function baseProps(over: Partial<React.ComponentProps<typeof SortFilterBar>> = {}) {
   return {
@@ -10,19 +10,17 @@ function baseProps(over: Partial<React.ComponentProps<typeof SortFilterBar>> = {
     onSortChange: vi.fn(),
     filterTag: null as string | null,
     onFilterTagChange: vi.fn(),
-    filterStatus: "all" as PlayedStatus,
-    onFilterStatusChange: vi.fn(),
     allTags: [],
     ...over,
   };
 }
 
 describe("SortFilterBar", () => {
-  it("renders all three selects", () => {
+  it("renders sort and tag selects (status moved to tab bar in LibraryView)", () => {
     render(<SortFilterBar {...baseProps()} />);
     expect(screen.getByRole("combobox", { name: "Sort authors" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Filter by tag" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Filter by status" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Filter by status" })).not.toBeInTheDocument();
   });
 
   it("sort select has expected options", () => {
@@ -34,12 +32,11 @@ describe("SortFilterBar", () => {
     expect(screen.getByRole("option", { name: "Played %" })).toBeInTheDocument();
   });
 
-  it("status select has expected options", () => {
+  it("does not render status options (status filter moved to tab bar in LibraryView)", () => {
     render(<SortFilterBar {...baseProps()} />);
-    expect(screen.getByRole("option", { name: "All" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Has unlistened chapters" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Fully played" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Not started" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Has unlistened chapters" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Fully played" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Not started" })).not.toBeInTheDocument();
   });
 
   it("tag select shows 'All tags' plus provided tags", () => {
@@ -72,13 +69,8 @@ describe("SortFilterBar", () => {
     expect(onFilterTagChange).toHaveBeenCalledWith(null);
   });
 
-  it("changing status fires onFilterStatusChange with 'unplayed'", async () => {
-    const onFilterStatusChange = vi.fn();
-    render(<SortFilterBar {...baseProps({ onFilterStatusChange })} />);
-    await userEvent.selectOptions(
-      screen.getByRole("combobox", { name: "Filter by status" }),
-      "unplayed",
-    );
-    expect(onFilterStatusChange).toHaveBeenCalledWith("unplayed");
+  it("only two selects are rendered (sort + tag)", () => {
+    render(<SortFilterBar {...baseProps()} />);
+    expect(screen.getAllByRole("combobox")).toHaveLength(2);
   });
 });
