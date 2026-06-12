@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 export interface ScanResult { authors: number; works: number; chapters: number; }
 export interface AuthorRow {
   id: number; name: string; workCount: number; chapterCount: number; unplayedCount: number;
+  totalSecs: number; tags: string[];
 }
 export interface ChapterRow {
   id: number; title: string; chapterNo: number; format: string;

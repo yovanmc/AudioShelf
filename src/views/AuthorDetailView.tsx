@@ -2,12 +2,7 @@ import { useState } from "react";
 import type { AuthorDetail, ChapterRow, WorkRow } from "../lib/api";
 import { TagEditor } from "./TagEditor";
 import { Cover } from "../components/Cover";
-
-function formatDuration(secs: number): string {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
+import { formatDuration } from "../lib/time";
 
 function ChapterGroupingForm(props: {
   work: WorkRow;

@@ -5,8 +5,8 @@ import { LibraryView } from "./LibraryView";
 import type { AuthorRow, SearchResults } from "../lib/api";
 
 const authors: AuthorRow[] = [
-  { id: 1, name: "Alice", workCount: 1, chapterCount: 2, unplayedCount: 1 },
-  { id: 2, name: "Bob", workCount: 2, chapterCount: 4, unplayedCount: 0 },
+  { id: 1, name: "Alice", workCount: 1, chapterCount: 2, unplayedCount: 1, totalSecs: 0, tags: [] },
+  { id: 2, name: "Bob", workCount: 2, chapterCount: 4, unplayedCount: 0, totalSecs: 0, tags: [] },
 ];
 
 const emptyResults: SearchResults = { authors: [], works: [], chapters: [] };
@@ -56,6 +56,8 @@ describe("LibraryView", () => {
       workCount: 1,
       chapterCount: 1,
       unplayedCount: 0,
+      totalSecs: 0,
+      tags: [],
     }));
     render(<LibraryView {...baseProps({ authors: many })} />);
     // 3 toolbar buttons + at most a windowful of author rows — never 1000.

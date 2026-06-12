@@ -4,6 +4,7 @@ import type { AuthorRow } from "./api";
 
 const author: AuthorRow = {
   id: 1, name: "Jane Doe", workCount: 3, chapterCount: 7, unplayedCount: 2,
+  totalSecs: 0, tags: [],
 };
 
 describe("matchesSearch", () => {
