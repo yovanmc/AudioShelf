@@ -31,7 +31,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["browse", "player", "discovery", "rename", "grouping"] as const;
+export const walkthroughs = ["browse", "player", "discovery", "rename", "grouping", "settings"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -77,4 +77,15 @@ export function groupingSteps(nav: {
     { name: "merged", run: nav.mergeDemo },
     { name: "reset", run: nav.resetDemo },
   ];
+}
+
+/**
+ * Build the "settings" walkthrough: open the Settings screen (with the fixture
+ * library root already loaded) so the current-root + scan-summary state is
+ * captured. The OS folder picker is not driven headlessly.
+ */
+export function settingsSteps(nav: {
+  openSettings: () => Promise<void>;
+}): Step[] {
+  return [{ name: "settings", run: nav.openSettings }];
 }
