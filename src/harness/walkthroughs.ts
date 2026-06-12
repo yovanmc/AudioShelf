@@ -6,13 +6,15 @@ import type { Step } from "./types";
  * app on a distinct screen so the screenshot after it is meaningful.
  */
 export function browseSteps(nav: {
-  showScanResult: () => Promise<void>;
-  showLibrary: () => Promise<void>;
+  seed: () => Promise<void>;
+  showLibrarySorted: () => Promise<void>;
+  showLibraryFiltered: () => Promise<void>;
   openFirstAuthor: () => Promise<void>;
 }): Step[] {
   return [
-    { name: "scan-result", run: nav.showScanResult },
-    { name: "library", run: nav.showLibrary },
+    { name: "seed", run: nav.seed },
+    { name: "library-sorted", run: nav.showLibrarySorted },
+    { name: "library-filtered", run: nav.showLibraryFiltered },
     { name: "author-detail", run: nav.openFirstAuthor },
   ];
 }

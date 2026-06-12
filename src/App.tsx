@@ -19,6 +19,13 @@ import { PlayerBar } from "./player/PlayerBar";
 import { clampSeek } from "./player/playback";
 import { runSteps } from "./harness/runner";
 import { browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps } from "./harness/walkthroughs";
+import {
+  parseBrowsePrefs,
+  type BrowsePrefs,
+  type AuthorSort,
+  type PlayedStatus,
+  type WorkSort,
+} from "./lib/browse";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -68,6 +75,14 @@ export default function App() {
   // ---- library search (controlled; spans authors/works/chapters) ----
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults | null>(null);
+
+  // ---- browse prefs (sort / filter / work sort) ----
+  const [browsePrefs, setBrowsePrefs] = useState<BrowsePrefs>({
+    authorSort: "az",
+    filterTag: null,
+    filterStatus: "all",
+    workSort: "az",
+  });
 
   // ---- rename state ----
   const [renameItems, setRenameItems] = useState<RenameItem[]>([]);
@@ -149,6 +164,16 @@ export default function App() {
     setPickedTags(tags);
     setByTags(tags.length === 0 ? [] : await getDiscoveryByTags(tags));
   }
+
+  // ---- browse prefs persistence ----
+  const persistPrefs = (next: BrowsePrefs) => {
+    setBrowsePrefs(next);
+    void setSetting("browse_prefs", JSON.stringify(next));
+  };
+  const setAuthorSort = (s: AuthorSort) => persistPrefs({ ...browsePrefs, authorSort: s });
+  const setFilterTag = (t: string | null) => persistPrefs({ ...browsePrefs, filterTag: t });
+  const setFilterStatus = (s: PlayedStatus) => persistPrefs({ ...browsePrefs, filterStatus: s });
+  const setWorkSort = (s: WorkSort) => persistPrefs({ ...browsePrefs, workSort: s });
 
   // Persist the chosen root, scan it, and refresh the author list. Fails safe:
   // a bad/missing path leaves the user on Settings with an error, never crashes.
@@ -292,6 +317,8 @@ export default function App() {
         }
       }
 
+      setBrowsePrefs(parseBrowsePrefs(await getSetting("browse_prefs")));
+
       if (args.autostart && args.walkthrough) {
         const openFirstAuthor = async () => {
           const list = await getAuthors();
@@ -408,9 +435,31 @@ export default function App() {
                 },
               })
             : browseSteps({
-                showScanResult: async () => setRoute({ kind: "scan" }),
-                showLibrary: async () => setRoute({ kind: "library" }),
-                openFirstAuthor,
+                // Seed tags on a few authors + a played chapter so sort-by-length,
+                // played%, the tag filter, and the status filter all have signal.
+                seed: async () => {
+                  const list = await getAuthors();
+                  for (const a of list.slice(0, 3)) await setAuthorTags(a.id, ["cozy"]);
+                  if (list.length > 0) {
+                    const d = await getAuthorDetail(list[0].id);
+                    const ch = d.works[0]?.chapters[0];
+                    if (ch) await markChapterFinished(ch.id, Date.now());
+                  }
+                  await refreshTags();
+                  setAuthors(await getAuthors()); // refresh counts/tags after seeding
+                },
+                showLibrarySorted: async () => {
+                  setRoute({ kind: "library" });
+                  setAuthorSort("length");
+                },
+                showLibraryFiltered: async () => {
+                  setFilterTag("cozy");
+                  setFilterStatus("unplayed");
+                },
+                openFirstAuthor: async () => {
+                  const list = await getAuthors();
+                  if (list.length > 0) await openAuthor(list[0].id);
+                },
               });
         await runSteps(steps, args.shots, async (p) => {
           await settle();
@@ -460,6 +509,8 @@ export default function App() {
           onClearGrouping={clearGrouping}
           allTags={allTags}
           onBack={() => setRoute({ kind: "library" })}
+          workSort={browsePrefs.workSort}
+          onWorkSortChange={setWorkSort}
         />
       );
     }
@@ -512,6 +563,13 @@ export default function App() {
         onOpenDiscovery={openDiscovery}
         onOpenRename={openRename}
         onOpenSettings={openSettings}
+        sort={browsePrefs.authorSort}
+        onSortChange={setAuthorSort}
+        filterTag={browsePrefs.filterTag}
+        onFilterTagChange={setFilterTag}
+        filterStatus={browsePrefs.filterStatus}
+        onFilterStatusChange={setFilterStatus}
+        allTags={allTags}
       />
     );
   }
