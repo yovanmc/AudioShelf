@@ -1,6 +1,161 @@
+import { useState } from "react";
 import type { ScanResult } from "../lib/api";
 import { Button, Card, Notice, PageHeader } from "../components/ui";
 import { Icon } from "../components/Icon";
+import type { HomeShelf, ShelfKind } from "../lib/shelves";
+import type { PlayedStatus } from "../lib/browse";
+
+const STATUS_LABELS: Record<PlayedStatus, string> = {
+  all: "All",
+  unplayed: "Has unplayed",
+  done: "Fully played",
+  unstarted: "Not started",
+};
+
+function ShelfKindSummary({ shelf }: { shelf: HomeShelf }) {
+  if (shelf.kind === "tag") return <span className="muted">Tag: {shelf.tag ?? "—"}</span>;
+  if (shelf.kind === "creator") return <span className="muted">Creator shelf</span>;
+  if (shelf.kind === "status") return <span className="muted">Status: {shelf.status ? STATUS_LABELS[shelf.status] : "—"}</span>;
+  return null;
+}
+
+function AddShelfForm({
+  allTags,
+  authors,
+  onAddShelf,
+}: {
+  allTags: string[];
+  authors: { id: number; name: string }[];
+  onAddShelf: (shelf: Omit<HomeShelf, "id">) => void;
+}) {
+  const [kind, setKind] = useState<ShelfKind>("tag");
+  const [tag, setTag] = useState(allTags[0] ?? "");
+  const [authorId, setAuthorId] = useState<number>(authors[0]?.id ?? 0);
+  const [status, setStatus] = useState<PlayedStatus>("unplayed");
+  const [title, setTitle] = useState("");
+
+  // Derive a default title from the target when kind/target changes
+  function defaultTitle(k: ShelfKind, t: string, aId: number, st: PlayedStatus): string {
+    if (k === "tag") return t ? t.charAt(0).toUpperCase() + t.slice(1) : "";
+    if (k === "creator") return authors.find((a) => a.id === aId)?.name ?? "";
+    if (k === "status") return STATUS_LABELS[st] ?? "";
+    return "";
+  }
+
+  function handleKindChange(k: ShelfKind) {
+    setKind(k);
+    setTitle(defaultTitle(k, tag, authorId, status));
+  }
+  function handleTagChange(t: string) {
+    setTag(t);
+    if (kind === "tag") setTitle(defaultTitle("tag", t, authorId, status));
+  }
+  function handleAuthorChange(id: number) {
+    setAuthorId(id);
+    if (kind === "creator") setTitle(defaultTitle("creator", tag, id, status));
+  }
+  function handleStatusChange(st: PlayedStatus) {
+    setStatus(st);
+    if (kind === "status") setTitle(defaultTitle("status", tag, authorId, st));
+  }
+
+  function handleAdd() {
+    const effectiveTitle = title.trim() || defaultTitle(kind, tag, authorId, status);
+    if (!effectiveTitle) return;
+    const base = { kind, title: effectiveTitle };
+    if (kind === "tag") onAddShelf({ ...base, tag });
+    else if (kind === "creator") onAddShelf({ ...base, authorId });
+    else onAddShelf({ ...base, status });
+    // Reset
+    setTitle("");
+  }
+
+  return (
+    <div className="add-shelf-form" style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+      <h3 style={{ margin: 0 }}>Add a shelf</h3>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <label>
+          Kind
+          <select
+            value={kind}
+            onChange={(e) => handleKindChange(e.target.value as ShelfKind)}
+            aria-label="Shelf kind"
+            style={{ marginLeft: 6 }}
+          >
+            <option value="tag">Tag</option>
+            <option value="creator">Creator</option>
+            <option value="status">Played status</option>
+          </select>
+        </label>
+
+        {kind === "tag" && (
+          <label>
+            Tag
+            <select
+              value={tag}
+              onChange={(e) => handleTagChange(e.target.value)}
+              aria-label="Tag"
+              style={{ marginLeft: 6 }}
+            >
+              {allTags.length === 0
+                ? <option value="">— no tags —</option>
+                : allTags.map((t) => <option key={t} value={t}>{t}</option>)
+              }
+            </select>
+          </label>
+        )}
+
+        {kind === "creator" && (
+          <label>
+            Creator
+            <select
+              value={authorId}
+              onChange={(e) => handleAuthorChange(Number(e.target.value))}
+              aria-label="Creator"
+              style={{ marginLeft: 6 }}
+            >
+              {authors.length === 0
+                ? <option value={0}>— no creators —</option>
+                : authors.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)
+              }
+            </select>
+          </label>
+        )}
+
+        {kind === "status" && (
+          <label>
+            Status
+            <select
+              value={status}
+              onChange={(e) => handleStatusChange(e.target.value as PlayedStatus)}
+              aria-label="Status"
+              style={{ marginLeft: 6 }}
+            >
+              <option value="all">All</option>
+              <option value="unplayed">Has unplayed</option>
+              <option value="done">Fully played</option>
+              <option value="unstarted">Not started</option>
+            </select>
+          </label>
+        )}
+
+        <label>
+          Title
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={defaultTitle(kind, tag, authorId, status) || "Shelf title"}
+            aria-label="Shelf title"
+            style={{ marginLeft: 6 }}
+          />
+        </label>
+
+        <Button variant="primary" onClick={handleAdd}>Add</Button>
+      </div>
+    </div>
+  );
+}
 
 export function SettingsView(props: {
   root: string | null;
@@ -11,8 +166,20 @@ export function SettingsView(props: {
   onChooseFolder: () => void;
   onRescan: () => void;
   onBack?: () => void;
+  // Home shelves management (optional — existing tests omit these)
+  shelves?: HomeShelf[];
+  allTags?: string[];
+  authors?: { id: number; name: string }[];
+  onAddShelf?: (shelf: Omit<HomeShelf, "id">) => void;
+  onRemoveShelf?: (id: string) => void;
+  onMoveShelf?: (id: string, dir: -1 | 1) => void;
+  onRenameShelf?: (id: string, title: string) => void;
 }) {
   const { root, lastScan, scanError, busy, firstRun } = props;
+  const shelves = props.shelves ?? [];
+  const allTags = props.allTags ?? [];
+  const authors = props.authors ?? [];
+
   return (
     <main className={firstRun ? "settings" : "view settings"}>
       <PageHeader eyebrow={firstRun ? "Welcome to AudioShelf" : "Library preferences"} title={firstRun ? "Choose your audio library" : "Settings"} />
@@ -53,6 +220,64 @@ export function SettingsView(props: {
           Indexed {lastScan.authors} authors, {lastScan.works} works,{" "}
           {lastScan.chapters} chapters.
         </Notice>
+      )}
+
+      {!firstRun && (
+        <Card style={{ padding: 24, marginTop: 16 }}>
+          <h2>Home shelves</h2>
+          <p className="muted">
+            Add named rows to your Home screen. Each shelf is populated automatically
+            from your library — no sync needed.
+          </p>
+
+          {shelves.length === 0 && (
+            <p className="muted">No shelves yet. Add one below.</p>
+          )}
+
+          {shelves.map((shelf, index) => (
+            <div
+              key={shelf.id}
+              className="shelf-row card"
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", marginBottom: 6 }}
+            >
+              <span style={{ flex: 1 }}>
+                <strong>{shelf.title}</strong>{" "}
+                <ShelfKindSummary shelf={shelf} />
+              </span>
+              <Button
+                variant="secondary"
+                onClick={() => props.onMoveShelf?.(shelf.id, -1)}
+                disabled={index === 0}
+                aria-label={`Move ${shelf.title} up`}
+              >
+                ▲
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => props.onMoveShelf?.(shelf.id, 1)}
+                disabled={index === shelves.length - 1}
+                aria-label={`Move ${shelf.title} down`}
+              >
+                ▼
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => props.onRemoveShelf?.(shelf.id)}
+                aria-label={`Remove ${shelf.title}`}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+
+          {props.onAddShelf && (
+            <AddShelfForm
+              allTags={allTags}
+              authors={authors}
+              onAddShelf={props.onAddShelf}
+            />
+          )}
+        </Card>
       )}
     </main>
   );
