@@ -151,6 +151,6 @@ describe("LibraryView", () => {
       { id: 40, name: "Someone", workCount: 1, chapterCount: 1, unplayedCount: 1, totalSecs: 0, tags: [] },
     ];
     render(<LibraryView {...baseProps({ authors: noMatch, filterStatus: "done" })} />);
-    expect(screen.getByText("No authors match the current filter.")).toBeInTheDocument();
+    expect(screen.getByText("No authors match the current filters.")).toBeInTheDocument();
   });
 });

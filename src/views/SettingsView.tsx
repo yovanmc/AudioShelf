@@ -19,7 +19,7 @@ export function SettingsView(props: {
 
       {firstRun && (
         <p className="muted">
-          Welcome to AudioShelf. Choose the folder that holds your audio library
+          Choose the folder that holds your audio library
           (one subfolder per author) to get started.
         </p>
       )}

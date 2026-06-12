@@ -5,7 +5,7 @@ export function CreatorIdentity({ authorId, authorName, secondary, size = 32, on
   authorId: number; authorName: string; secondary?: ReactNode; size?: number; onOpen?: () => void;
 }) {
   const content = <>
-    <CreatorAvatar authorId={authorId} name={authorName} size={size} />
+    <CreatorAvatar authorId={authorId} name={authorName} size={size} decorative />
     <span className="creator-identity__copy">
       <span className="creator-identity__name">{authorName}</span>
       {secondary && <span className="muted">{secondary}</span>}

@@ -63,7 +63,14 @@ export function WorkArtwork({ workId, title, size = 72, className = "" }: { work
   return <Artwork kind="work" id={workId} name={title} size={size} className={`work-artwork ${className}`} />;
 }
 
-export function CreatorAvatar({ authorId, name, size = 36, className = "" }: { authorId: number; name: string; size?: number; className?: string }) {
+export function CreatorAvatar({ authorId, name, size = 36, className = "", decorative = false }: { authorId: number; name: string; size?: number; className?: string; decorative?: boolean }) {
+  if (decorative) {
+    return (
+      <span aria-hidden="true">
+        <Artwork kind="author" id={authorId} name={name} size={size} className={`creator-avatar ${className}`} />
+      </span>
+    );
+  }
   return <Artwork kind="author" id={authorId} name={name} size={size} className={`creator-avatar ${className}`} />;
 }
 
