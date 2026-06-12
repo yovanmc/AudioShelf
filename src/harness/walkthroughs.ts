@@ -31,7 +31,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["browse", "player", "discovery", "rename", "grouping", "settings"] as const;
+export const walkthroughs = ["browse", "player", "discovery", "rename", "grouping", "settings", "m7"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -88,4 +88,20 @@ export function settingsSteps(nav: {
   openSettings: () => Promise<void>;
 }): Step[] {
   return [{ name: "settings", run: nav.openSettings }];
+}
+
+/**
+ * Build the "m7" walkthrough: the virtualized author list (with cover swatches and
+ * enough filler authors to scroll), then two searches that prove cross-level matching
+ * — "cool" hits a work + its chapters, "sam" hits an author.
+ */
+export function m7Steps(nav: {
+  showLibrary: () => Promise<void>;
+  search: (q: string) => Promise<void>;
+}): Step[] {
+  return [
+    { name: "library", run: nav.showLibrary },
+    { name: "search-cool", run: () => nav.search("cool") },
+    { name: "search-sam", run: () => nav.search("sam") },
+  ];
 }

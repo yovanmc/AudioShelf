@@ -1,7 +1,7 @@
 //! Tauri commands and the shared DB state.
 
 use crate::db;
-use crate::model::{AuthorDetail, AuthorRow, ChapterRow, DiscoveryWork, MoreWork, RenameItem, RenameResult, ScanResult, UndoResult, WorkRow};
+use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterHit, ChapterRow, DiscoveryWork, MoreWork, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
 use crate::natsort::natural_cmp;
 use crate::regroup;
 use crate::rename;
@@ -219,6 +219,90 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
         .collect::<rusqlite::Result<_>>()?;
 
     Ok(AuthorDetail { id: author_id, name, tags, works })
+}
+
+const SEARCH_CAP: usize = 50;
+
+/// Escape LIKE wildcards in a user query and wrap it as a contains-pattern.
+/// Pairs with `... LIKE ?1 ESCAPE '\'` so a typed `%` or `_` is matched literally.
+fn like_contains(query: &str) -> String {
+    let escaped = query
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("%{escaped}%")
+}
+
+/// Case-insensitive substring search across active authors, works, and chapters.
+/// Each bucket is independently capped at `cap`. A blank query yields empty results.
+pub fn search(conn: &rusqlite::Connection, query: &str, cap: usize) -> rusqlite::Result<SearchResults> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(SearchResults::default());
+    }
+    let like = like_contains(q);
+
+    let mut astmt = conn.prepare(
+        "SELECT id, COALESCE(display_name, folder_name) AS name
+         FROM authors
+         WHERE status='active' AND COALESCE(display_name, folder_name) LIKE ?1 ESCAPE '\\'
+         ORDER BY name LIMIT ?2",
+    )?;
+    let authors: Vec<AuthorHit> = astmt
+        .query_map(params![like, cap as i64], |r| {
+            Ok(AuthorHit { author_id: r.get(0)?, author_name: r.get(1)? })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+
+    let mut wstmt = conn.prepare(
+        "SELECT w.id, w.base_title, a.id, COALESCE(a.display_name, a.folder_name)
+         FROM works w JOIN authors a ON w.author_id=a.id
+         WHERE w.status='active' AND a.status='active' AND w.base_title LIKE ?1 ESCAPE '\\'
+         ORDER BY w.base_title LIMIT ?2",
+    )?;
+    let works: Vec<WorkHit> = wstmt
+        .query_map(params![like, cap as i64], |r| {
+            Ok(WorkHit {
+                work_id: r.get(0)?,
+                base_title: r.get(1)?,
+                author_id: r.get(2)?,
+                author_name: r.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+
+    let mut cstmt = conn.prepare(
+        "SELECT c.id, c.raw_filename, w.id, w.base_title, a.id, COALESCE(a.display_name, a.folder_name)
+         FROM chapters c JOIN works w ON c.work_id=w.id JOIN authors a ON w.author_id=a.id
+         WHERE c.status='active' AND w.status='active' AND a.status='active'
+               AND c.raw_filename LIKE ?1 ESCAPE '\\'
+         ORDER BY c.raw_filename LIMIT ?2",
+    )?;
+    let chapters: Vec<ChapterHit> = cstmt
+        .query_map(params![like, cap as i64], |r| {
+            let raw: String = r.get(1)?;
+            let title = std::path::Path::new(&raw)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or(raw);
+            Ok(ChapterHit {
+                chapter_id: r.get(0)?,
+                title,
+                work_id: r.get(2)?,
+                base_title: r.get(3)?,
+                author_id: r.get(4)?,
+                author_name: r.get(5)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+
+    Ok(SearchResults { authors, works, chapters })
+}
+
+#[tauri::command]
+pub fn search_library(state: tauri::State<DbState>, query: String) -> Result<SearchResults, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    search(&conn, &query, SEARCH_CAP).map_err(|e| e.to_string())
 }
 
 /// Works (with unplayed chapters) by authors having any of `tags`, ranked by
@@ -633,5 +717,35 @@ mod tests {
         let res = super::discovery_for_you(&conn).unwrap();
         assert!(res.iter().any(|w| w.author_name == "Bob"));
         assert!(res.iter().all(|w| w.author_name != "Alice"));
+    }
+
+    #[test]
+    fn search_matches_authors_works_and_chapters() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let jane = root.join("Jane Doe");
+        touch(&jane.join("Cool Story.mp3"));
+        touch(&jane.join("Cool Story 2.mp3"));
+        touch(&root.join("Sam Smith").join("Night Walk.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+
+        // "cool" hits the work and its chapters (not the author).
+        let res = super::search(&conn, "cool", 50).unwrap();
+        assert!(res.works.iter().any(|w| w.base_title == "Cool Story"));
+        assert!(!res.chapters.is_empty());
+        assert!(res.chapters.iter().all(|c| c.title.to_lowercase().contains("cool")));
+
+        // "sam" hits the author.
+        let res = super::search(&conn, "sam", 50).unwrap();
+        assert!(res.authors.iter().any(|a| a.author_name == "Sam Smith"));
+
+        // Blank query -> all buckets empty.
+        let res = super::search(&conn, "   ", 50).unwrap();
+        assert!(res.authors.is_empty() && res.works.is_empty() && res.chapters.is_empty());
+
+        // Cap is honoured per bucket.
+        let res = super::search(&conn, "o", 1).unwrap();
+        assert!(res.authors.len() <= 1 && res.works.len() <= 1 && res.chapters.len() <= 1);
     }
 }

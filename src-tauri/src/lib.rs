@@ -50,7 +50,8 @@ pub fn run() {
             commands::apply_renames,
             commands::undo_renames,
             commands::set_grouping_override,
-            commands::clear_grouping_override
+            commands::clear_grouping_override,
+            commands::search_library
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

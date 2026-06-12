@@ -5,9 +5,9 @@ import {
   getAllTags, setAuthorTags, getDiscovery, getDiscoveryByTags,
   previewRenames, applyRenames, undoRenames,
   setGroupingOverride, clearGroupingOverride,
-  getSetting, setSetting, pickFolder,
+  getSetting, setSetting, pickFolder, searchLibrary,
   type AuthorRow, type AuthorDetail, type ChapterRow, type ScanResult, type DiscoveryWork,
-  type RenameItem, type RenameResult,
+  type RenameItem, type RenameResult, type SearchResults,
 } from "./lib/api";
 import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
@@ -18,7 +18,7 @@ import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
 import { clampSeek } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps } from "./harness/walkthroughs";
+import { browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps } from "./harness/walkthroughs";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -48,6 +48,10 @@ export default function App() {
   const [libraryRoot, setLibraryRoot] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // ---- library search (controlled; spans authors/works/chapters) ----
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResults | null>(null);
 
   // ---- rename state ----
   const [renameItems, setRenameItems] = useState<RenameItem[]>([]);
@@ -327,6 +331,17 @@ export default function App() {
                   if (merged) setDetail(await clearGroupingOverride(merged.id));
                 },
               })
+            : args.walkthrough === "m7"
+            ? m7Steps({
+                showLibrary: async () => setRoute({ kind: "library" }),
+                // Set the query AND fetch results synchronously here (bypassing the
+                // debounce) so the screenshot after this step is deterministic.
+                search: async (q: string) => {
+                  setRoute({ kind: "library" });
+                  setQuery(q);
+                  setResults(await searchLibrary(q));
+                },
+              })
             : args.walkthrough === "settings"
             ? settingsSteps({
                 openSettings: async () => setRoute({ kind: "settings", firstRun: false }),
@@ -344,6 +359,24 @@ export default function App() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Debounced backend search. Empty query clears results (list shows instead).
+  useEffect(() => {
+    const q = query.trim();
+    if (q === "") {
+      setResults(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const r = await searchLibrary(q);
+      if (!cancelled) setResults(r);
+    }, 150);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [query]);
 
   function routedView() {
     if (route.kind === "loading") return <div>Loading…</div>;
@@ -401,7 +434,18 @@ export default function App() {
         />
       );
     }
-    return <LibraryView authors={authors} onOpenAuthor={openAuthor} onOpenDiscovery={openDiscovery} onOpenRename={openRename} onOpenSettings={openSettings} />;
+    return (
+      <LibraryView
+        authors={authors}
+        query={query}
+        results={results}
+        onQueryChange={setQuery}
+        onOpenAuthor={openAuthor}
+        onOpenDiscovery={openDiscovery}
+        onOpenRename={openRename}
+        onOpenSettings={openSettings}
+      />
+    );
   }
 
   return (

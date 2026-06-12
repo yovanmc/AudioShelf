@@ -47,5 +47,16 @@ pub fn generate(root: &Path) -> std::io::Result<()> {
     let trap = root.join("Trap Author");
     write_silence(&trap.join("Area 51.wav"), 2)?;
 
+    // Filler authors so the virtualized author list has enough rows to scroll —
+    // this is what the `m7` walkthrough screenshots to prove virtualization.
+    // CRITICAL: they are named "Zz Sample Author NN" to sort AFTER the three real
+    // authors above, so walkthroughs that open the *first* author (player, grouping)
+    // keep opening "Jane Doe" and are unaffected. The base title is non-numbered so
+    // grouping treats each file as one standalone work.
+    for n in 1..=40 {
+        let dir = root.join(format!("Zz Sample Author {n:02}"));
+        write_silence(&dir.join("Quiet Hours.wav"), 1)?;
+    }
+
     Ok(())
 }
