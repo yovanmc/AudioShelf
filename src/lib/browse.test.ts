@@ -38,6 +38,7 @@ function makeWork(
     reEntryNote: "",
     completionRating: "",
     chapterSort: "",
+    metadata: [],
     chapters: chapters.map((c, i) => ({
       id: i + 1,
       title: `${baseTitle} ch${i + 1}`,
@@ -48,6 +49,7 @@ function makeWork(
       userSummary: "",
       takeaway: "",
       isFavorite: false,
+      metadata: [],
       ...c,
     })),
   };

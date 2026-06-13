@@ -8,6 +8,7 @@ mod insights;
 mod launch;
 mod model;
 mod natsort;
+mod metadata;
 mod query;
 mod regroup;
 mod scoped;
@@ -125,7 +126,15 @@ pub fn run() {
             commands::import_curation_json,
             commands::stage_db_restore,
             commands::open_mini_player,
-            commands::close_mini_player
+            commands::close_mini_player,
+            commands::create_metadata_term,
+            commands::list_metadata_terms,
+            commands::rename_metadata_term,
+            commands::delete_metadata_term,
+            commands::merge_metadata_terms,
+            commands::add_metadata_value,
+            commands::remove_metadata_value,
+            commands::get_discovery_by_metadata
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

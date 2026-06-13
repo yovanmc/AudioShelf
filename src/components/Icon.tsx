@@ -4,7 +4,7 @@ export type IconName =
   | "play" | "pause" | "back15" | "back30" | "forward15" | "forward30"
   | "volume" | "sleep" | "search" | "check" | "tag"
   | "expand" | "collapse" | "close" | "refresh" | "folder"
-  | "journal" | "insights" | "collections"
+  | "journal" | "insights" | "collections" | "voice"
   | "circle" | "circleHalf";
 
 type GlyphDef = { d: string; fill?: string };
@@ -39,6 +39,7 @@ const glyphs: Record<IconName, GlyphDef> = {
   journal:     { d: "M4 3h12l4 4v14H4zM4 3v18m8-18v5H8m4 0h4M8 12h8m-8 4h5" },
   insights:    { d: "M5 13v7m7-11v11m7-15v15M3 20h18" },
   collections: { d: "M3 7h18M3 12h18M3 17h18m-9-14v4m-6 0v4m12-4v4" },
+  voice:       { d: "M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" },
   /** Outline circle — "unstarted" / "not played" status indicator. */
   circle:      { d: "M12 4a8 8 0 1 0 0 16A8 8 0 0 0 12 4z" },
   /** Half-filled circle — "in progress" status indicator. */

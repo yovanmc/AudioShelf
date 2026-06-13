@@ -29,6 +29,7 @@ describe("Home progress", () => {
           userSummary: "",
           takeaway: "",
           isFavorite: false,
+          metadata: [],
         },
         remainingUnplayed: 2,
         totalChapters: 4,

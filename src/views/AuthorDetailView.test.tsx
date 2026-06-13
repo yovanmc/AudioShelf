@@ -8,6 +8,7 @@ const detail: AuthorDetail = {
   id: 1,
   name: "Jane Doe",
   tags: [],
+  metadata: [],
   works: [
     {
       id: 10,
@@ -16,9 +17,10 @@ const detail: AuthorDetail = {
       reEntryNote: "",
       completionRating: "",
       chapterSort: "",
+      metadata: [],
       chapters: [
-        { id: 100, title: "Cool Story", chapterNo: 1, format: "mp3", durationSecs: 65, filePath: "x/Cool Story.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
-        { id: 101, title: "Cool Story 2 the sequel", chapterNo: 2, format: "mp3", durationSecs: 130, filePath: "x/Cool Story 2 the sequel.mp3", played: true, tags: [], userSummary: "", takeaway: "", isFavorite: false },
+        { id: 100, title: "Cool Story", chapterNo: 1, format: "mp3", durationSecs: 65, filePath: "x/Cool Story.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [] },
+        { id: 101, title: "Cool Story 2 the sequel", chapterNo: 2, format: "mp3", durationSecs: 130, filePath: "x/Cool Story 2 the sequel.mp3", played: true, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [] },
       ],
     },
   ],
@@ -262,6 +264,7 @@ describe("AuthorDetailView", () => {
       id: 1,
       name: "Jane Doe",
       tags: [],
+      metadata: [],
       works: [
         {
           id: 10,
@@ -270,8 +273,9 @@ describe("AuthorDetailView", () => {
           reEntryNote: "",
           completionRating: "",
           chapterSort: "",
+          metadata: [],
           chapters: [
-            { id: 100, title: "Cool Chapter A", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
+            { id: 100, title: "Cool Chapter A", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [] },
           ],
         },
         {
@@ -281,8 +285,9 @@ describe("AuthorDetailView", () => {
           reEntryNote: "",
           completionRating: "",
           chapterSort: "",
+          metadata: [],
           chapters: [
-            { id: 200, title: "Other Chapter B", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/b.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
+            { id: 200, title: "Other Chapter B", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/b.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [] },
           ],
         },
       ],
@@ -321,6 +326,7 @@ describe("AuthorDetailView", () => {
       id: 1,
       name: "Jane Doe",
       tags: [],
+      metadata: [],
       works: [
         {
           id: 10,
@@ -329,8 +335,9 @@ describe("AuthorDetailView", () => {
           reEntryNote: "",
           completionRating: "",
           chapterSort: "",
+          metadata: [],
           chapters: [
-            { id: 100, title: "Alpha Ch1", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
+            { id: 100, title: "Alpha Ch1", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [] },
           ],
         },
         {
@@ -340,8 +347,9 @@ describe("AuthorDetailView", () => {
           reEntryNote: "",
           completionRating: "",
           chapterSort: "",
+          metadata: [],
           chapters: [
-            { id: 200, title: "Bravo Ch1", chapterNo: 1, format: "mp3", durationSecs: 300, filePath: "x/b.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
+            { id: 200, title: "Bravo Ch1", chapterNo: 1, format: "mp3", durationSecs: 300, filePath: "x/b.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [] },
           ],
         },
       ],
@@ -425,6 +433,7 @@ describe("AuthorDetailView", () => {
       id: 2,
       name: "Long Author",
       tags: [],
+      metadata: [],
       works: [
         {
           id: 30,
@@ -433,10 +442,11 @@ describe("AuthorDetailView", () => {
           reEntryNote: "",
           completionRating: "",
           chapterSort: "",
+          metadata: [],
           chapters: [
             // 2h 5m = 7500s
-            { id: 300, title: "Part 1", chapterNo: 1, format: "mp3", durationSecs: 3600, filePath: "x/1.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
-            { id: 301, title: "Part 2", chapterNo: 2, format: "mp3", durationSecs: 3900, filePath: "x/2.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
+            { id: 300, title: "Part 1", chapterNo: 1, format: "mp3", durationSecs: 3600, filePath: "x/1.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [] },
+            { id: 301, title: "Part 2", chapterNo: 2, format: "mp3", durationSecs: 3900, filePath: "x/2.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [] },
           ],
         },
       ],
@@ -453,6 +463,7 @@ describe("AuthorDetailView", () => {
       id: 2,
       name: "Long Author",
       tags: [],
+      metadata: [],
       works: [
         {
           id: 30,
@@ -461,9 +472,10 @@ describe("AuthorDetailView", () => {
           reEntryNote: "",
           completionRating: "",
           chapterSort: "",
+          metadata: [],
           chapters: [
-            { id: 300, title: "Part 1", chapterNo: 1, format: "mp3", durationSecs: 3600, filePath: "x/1.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
-            { id: 301, title: "Part 2", chapterNo: 2, format: "mp3", durationSecs: 3900, filePath: "x/2.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
+            { id: 300, title: "Part 1", chapterNo: 1, format: "mp3", durationSecs: 3600, filePath: "x/1.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [] },
+            { id: 301, title: "Part 2", chapterNo: 2, format: "mp3", durationSecs: 3900, filePath: "x/2.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [] },
           ],
         },
       ],

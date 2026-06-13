@@ -35,6 +35,16 @@ pub fn run_scoped_query(
         binds.push(tag.clone().into());
         binds.push(tag.clone().into());
     }
+    for mf in &p.meta {
+        sql.push_str(
+            " AND EXISTS (SELECT 1 FROM metadata_terms mt WHERE mt.facet=? AND mt.value=? AND (
+                 EXISTS (SELECT 1 FROM chapter_metadata cm JOIN chapters mc ON cm.chapter_id=mc.id
+                         WHERE mc.work_id=w.id AND cm.term_id=mt.id)
+                 OR EXISTS (SELECT 1 FROM author_metadata am WHERE am.author_id=a.id AND am.term_id=mt.id)))",
+        );
+        binds.push(mf.facet.clone().into());
+        binds.push(mf.value.clone().into());
+    }
     sql.push_str(" ORDER BY w.base_title");
 
     let mut stmt = conn.prepare(&sql)?;
@@ -157,5 +167,24 @@ mod tests {
         ).unwrap();
         let r = run_scoped_query(&conn, &parse_query("status:unplayed"), 50).unwrap();
         assert_eq!(r.iter().map(|w| w.work_id).collect::<Vec<_>>(), vec![3]);
+    }
+
+    #[test]
+    fn scoped_query_filters_by_narrator() {
+        let conn = crate::db::open_at_version(8).unwrap();
+        conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
+        // two works; only work 1's chapter carries the narrator.
+        for w in 1..=2 {
+            conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (?1,1,?2,?3,'active')",
+                rusqlite::params![w, format!("W{w}"), format!("w{w}")]).unwrap();
+            conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (?1,?1,?2,'x.wav',1,'wav',5,0,'active')",
+                rusqlite::params![w, format!("/{w}.wav")]).unwrap();
+        }
+        let t = crate::commands::attach_value(&conn, "chapter", 1, "narrator", "Roe").unwrap();
+        let _ = t;
+        let p = crate::query::parse_query("narrator:Roe");
+        let out = run_scoped_query(&conn, &p, 50).unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].work_id, 1);
     }
 }

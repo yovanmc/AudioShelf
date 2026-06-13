@@ -18,6 +18,7 @@ function props(overrides = {}) {
     onJournal: vi.fn(),
     onInsights: vi.fn(),
     onCollections: vi.fn(),
+    onNarrators: vi.fn(),
     density: "comfortable" as const,
     a11y: DEFAULT_A11Y,
     children: <main>Page</main>,

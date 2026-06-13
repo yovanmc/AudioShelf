@@ -5,6 +5,8 @@ import { Icon } from "../components/Icon";
 import type { HomeShelf, ShelfKind } from "../lib/shelves";
 import type { PlayedStatus } from "../lib/browse";
 import { TagManagerView } from "./TagManagerView";
+import { MetadataManagerView } from "./MetadataManagerView";
+import type { MetaTerm } from "../lib/api";
 import type { Density } from "../lib/density";
 import type { A11yPrefs, Theme, TextSize } from "../lib/a11y";
 
@@ -183,6 +185,12 @@ export function SettingsView(props: {
   onMergeTags?: (sources: string[], target: string) => void;
   onSetTagAlias?: (alias: string, canonical: string) => void;
   onClearTagAlias?: (alias: string) => void;
+  // Metadata vocabulary manager (optional — existing tests omit these)
+  metaTerms?: MetaTerm[];
+  onCreateMetaTerm?: (facet: string, value: string) => void;
+  onRenameMetaTerm?: (id: number, value: string) => void;
+  onDeleteMetaTerm?: (id: number) => void;
+  onMergeMetaTerms?: (sourceIds: number[], targetId: number) => void;
   // Smart collections (optional — existing tests omit these)
   collections?: Collection[];
   onCreateCollection?: (name: string, query: string) => void;
@@ -405,6 +413,22 @@ export function SettingsView(props: {
             onMerge={props.onMergeTags}
             onSetAlias={props.onSetTagAlias}
             onClearAlias={props.onClearTagAlias}
+          />
+        </Card>
+      )}
+
+      {!firstRun && props.metaTerms !== undefined && props.onCreateMetaTerm && props.onRenameMetaTerm && props.onDeleteMetaTerm && props.onMergeMetaTerms && (
+        <Card style={{ padding: 24, marginTop: 16 }}>
+          <h2>Metadata vocabulary</h2>
+          <p className="muted">
+            Create narrator, language, and mood values you can apply to files and creators.
+          </p>
+          <MetadataManagerView
+            terms={props.metaTerms}
+            onCreate={props.onCreateMetaTerm}
+            onRename={props.onRenameMetaTerm}
+            onDelete={props.onDeleteMetaTerm}
+            onMerge={props.onMergeMetaTerms}
           />
         </Card>
       )}

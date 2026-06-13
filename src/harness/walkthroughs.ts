@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -288,6 +288,30 @@ export function m20Steps(nav: {
     { name: "rtl-layout", run: nav.showRtlLayout },
     { name: "mini-player", run: nav.showMiniPlayer },
     { name: "a11y-settings", run: nav.showAccessibilitySettings },
+  ];
+}
+
+/**
+ * Build the "m21" walkthrough: five surfaces introduced in M21 (Metadata & Discovery) —
+ * runtime seed (narrator "Jane Roe" + mood "cozy" on first chapter, language "English" on
+ * first author), metadata vocabulary manager in Settings, the per-chapter MetadataEditor
+ * inside the "Edit tags" dialog, the Narrators browse view with Jane Roe selected, and
+ * the Discover facet picker showing works for mood "cozy".
+ * All data is seeded at runtime so on-disk fixtures stay 43/44/47.
+ */
+export function m21Steps(nav: {
+  seedMetadata: () => Promise<void>;
+  showMetadataManager: () => Promise<void>;
+  showChapterMetadataEditor: () => Promise<void>;
+  showNarratorsBrowse: () => Promise<void>;
+  showDiscoverByFacet: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "seed", run: nav.seedMetadata },
+    { name: "metadata-manager", run: nav.showMetadataManager },
+    { name: "chapter-metadata-edit", run: nav.showChapterMetadataEditor },
+    { name: "narrators-browse", run: nav.showNarratorsBrowse },
+    { name: "discover-by-facet", run: nav.showDiscoverByFacet },
   ];
 }
 

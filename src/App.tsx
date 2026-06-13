@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import {
   getLaunchArgs, scanLibrary, getAuthors, getAuthorDetail,
@@ -22,12 +22,14 @@ import {
   bulkSetWorkTags, setWorkChapterSort,
   exportCurationJson, exportDbSnapshot, importCurationJson, stageDbRestore, libraryHealthScan,
   openMiniPlayer,
+  listMetadataTerms, createMetadataTerm, renameMetadataTerm, deleteMetadataTerm, mergeMetadataTerms,
+  addMetadataValue, removeMetadataValue, getDiscoveryByMetadata,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
   type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
   type InsightsData, type ScopedResults, type SavedSearch, type Collection,
-  type ImportReport, type HealthReport,
+  type ImportReport, type HealthReport, type MetaTerm,
 } from "./lib/api";
 import { hasScopedTokens } from "./lib/query";
 import { buildRecapSvg } from "./lib/recap";
@@ -41,6 +43,7 @@ import { RenameView } from "./views/RenameView";
 import { MetadataView } from "./views/MetadataView";
 import { SettingsView } from "./views/SettingsView";
 import { ScanView } from "./views/ScanView";
+import { NarratorsView } from "./views/NarratorsView";
 import { CollectionsView } from "./components/CollectionsView";
 import { BulkTagDialog } from "./components/BulkTagDialog";
 import { PlayerBar } from "./player/PlayerBar";
@@ -50,7 +53,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -105,7 +108,8 @@ type Route =
   | { kind: "settings"; firstRun: boolean }
   | { kind: "journal" }
   | { kind: "insights" }
-  | { kind: "collections" };
+  | { kind: "collections" }
+  | { kind: "narrators" };
 
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
@@ -116,6 +120,7 @@ function shellRoute(route: Route): ShellRoute {
   if (route.kind === "journal") return "journal";
   if (route.kind === "insights") return "insights";
   if (route.kind === "collections") return "collections";
+  if (route.kind === "narrators") return "narrators";
   return "library";
 }
 
@@ -189,6 +194,17 @@ export default function App() {
   const [healthReport, setHealthReport] = useState<HealthReport | null>(null);
   const [restoreStaged, setRestoreStaged] = useState(false);
 
+  // ---- M21: metadata vocabulary terms ----
+  const [metaTerms, setMetaTerms] = useState<MetaTerm[]>([]);
+
+  // ---- M21: Narrators browse state ----
+  const [selectedNarrator, setSelectedNarrator] = useState<string | null>(null);
+  const [narratorWorks, setNarratorWorks] = useState<DiscoveryWork[]>([]);
+
+  // ---- M21: Discover facet picker state ----
+  const [pickedFacet, setPickedFacet] = useState<{ facet: string; value: string } | null>(null);
+  const [byFacet, setByFacet] = useState<DiscoveryWork[]>([]);
+
   // ---- command palette (Ctrl+K) ----
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -257,6 +273,9 @@ export default function App() {
   // ---- M17: chapter journal state ----
   const [openJournal, setOpenJournal] = useState<ChapterJournal | null>(null);
   const [journalChapterId, setJournalChapterId] = useState<number | null>(null);
+
+  // ---- M21: harness-only state to programmatically open the per-chapter "Edit tags" dialog ----
+  const [harnessTagsChapterId, setHarnessTagsChapterId] = useState<number | null>(null);
 
   // ---- M17: journal view state ----
   const [journal, setJournal] = useState<JournalResults | null>(null);
@@ -364,6 +383,53 @@ export default function App() {
     setAllTags(await getAllTags());
     setTagStats(await listTagsWithCounts());
   }
+
+  const loadMetaTerms = async () => setMetaTerms(await listMetadataTerms().catch(() => [] as MetaTerm[]));
+
+  const handleCreateMetaTerm = async (facet: string, value: string) => { await createMetadataTerm(facet, value); await loadMetaTerms(); };
+  const handleRenameMetaTerm = async (id: number, value: string) => { await renameMetadataTerm(id, value); await loadMetaTerms(); };
+  const handleDeleteMetaTerm = async (id: number) => { await deleteMetadataTerm(id); await loadMetaTerms(); };
+  const handleMergeMetaTerms = async (sourceIds: number[], targetId: number) => { await mergeMetadataTerms(sourceIds, targetId); await loadMetaTerms(); };
+
+  // Flat list of all known metadata values for the MetadataEditor datalist suggestions.
+  const metaSuggestions = useMemo(() => Array.from(new Set(metaTerms.map((t) => t.value))).sort(), [metaTerms]);
+
+  // Narrator terms for the Narrators browse view.
+  const narratorTerms = useMemo(() => metaTerms.filter((t) => t.facet === "narrator"), [metaTerms]);
+
+  // Facet option lists for the Discover facet picker.
+  const narratorOptions = useMemo(() => metaTerms.filter((t) => t.facet === "narrator").map((t) => t.value), [metaTerms]);
+  const languageOptions = useMemo(() => metaTerms.filter((t) => t.facet === "language").map((t) => t.value), [metaTerms]);
+  const moodOptions = useMemo(() => metaTerms.filter((t) => t.facet === "mood").map((t) => t.value), [metaTerms]);
+
+  const pickFacet = async (facet: string, value: string) => {
+    setPickedFacet({ facet, value });
+    setByFacet(await getDiscoveryByMetadata(facet, value));
+  };
+
+  const selectNarrator = async (value: string) => {
+    setSelectedNarrator(value);
+    setNarratorWorks(await getDiscoveryByMetadata("narrator", value));
+  };
+
+  const handleAddChapterMeta = async (chapterId: number, facet: string, value: string) => {
+    await addMetadataValue("chapter", chapterId, facet, value);
+    await loadMetaTerms();
+    if (detail) await openAuthor(detail.id);
+  };
+  const handleRemoveChapterMeta = async (chapterId: number, termId: number) => {
+    await removeMetadataValue("chapter", chapterId, termId);
+    if (detail) await openAuthor(detail.id);
+  };
+  const handleAddAuthorMeta = async (authorId: number, facet: string, value: string) => {
+    await addMetadataValue("author", authorId, facet, value);
+    await loadMetaTerms();
+    if (detail) await openAuthor(detail.id);
+  };
+  const handleRemoveAuthorMeta = async (authorId: number, termId: number) => {
+    await removeMetadataValue("author", authorId, termId);
+    if (detail) await openAuthor(detail.id);
+  };
 
   async function setTags(tags: string[]) {
     if (!detailRef.current) return;
@@ -602,6 +668,7 @@ export default function App() {
   async function openDiscovery() {
     setForYou(await getDiscovery());
     await refreshTags();
+    await loadMetaTerms();
     setByTags([]);
     setPickedTags([]);
     setRoute({ kind: "discovery" });
@@ -661,6 +728,7 @@ export default function App() {
       setScan(result);
       await loadAuthors();
       await refreshTags();
+      await loadMetaTerms();
       return true;
     } catch (e) {
       setScanError(String(e));
@@ -849,6 +917,8 @@ export default function App() {
     void listCollections().then(setCollections);
     setRoute({ kind: "collections" });
   }
+
+  const openNarrators = async () => { await loadMetaTerms(); setRoute({ kind: "narrators" }); };
 
   const onResolveCollection = (id: number) => {
     void resolveCollection(id).then((r) => setResolvedCollections((m) => ({ ...m, [id]: r })));
@@ -1746,6 +1816,73 @@ export default function App() {
                   await settle();
                 },
               })
+            : args.walkthrough === "m21"
+            ? m21Steps({
+                // Step 1: seed narrator "Jane Roe" + mood "cozy" on the first chapter
+                // of the first author ("Jane Doe"), and language "English" on the author.
+                // All via the real api — on-disk fixtures stay 43/44/47.
+                seedMetadata: async () => {
+                  const authors = await getAuthors();
+                  const jane = authors.find((a) => a.name === "Jane Doe") ?? authors[0];
+                  if (!jane) return;
+                  const d = await getAuthorDetail(jane.id);
+                  const firstChapter = d.works[0]?.chapters[0];
+                  if (firstChapter) {
+                    await addMetadataValue("chapter", firstChapter.id, "narrator", "Jane Roe");
+                    await addMetadataValue("chapter", firstChapter.id, "mood", "cozy");
+                  }
+                  // Also attach narrator "Jane Roe" to the first unplayed chapter of any work
+                  // so the Narrators browse page has ≥1 result even when works[0].chapters[0]
+                  // has been marked played by a prior walkthrough (e.g. m12).
+                  const unplayedWork = d.works.find((w) => w.chapters.some((c) => !c.played));
+                  const uc = unplayedWork?.chapters.find((c) => !c.played);
+                  if (uc) {
+                    await addMetadataValue("chapter", uc.id, "narrator", "Jane Roe");
+                  }
+                  await addMetadataValue("author", jane.id, "language", "English");
+                  await loadMetaTerms();
+                  await openAuthor(jane.id);
+                },
+                // Step 2: open Settings — the MetadataManagerView is there with seeded terms.
+                showMetadataManager: async () => {
+                  await loadMetaTerms();
+                  openSettings();
+                },
+                // Step 3: open the first author's detail, expand works so the first chapter
+                // is visible, then programmatically open the "Edit tags" dialog (which hosts
+                // the MetadataEditor) for the first chapter. Uses the same mechanism as the
+                // overflow-menu "Edit tags" action: setEditState({ mode: "tags", chapterId }).
+                // harnessTagsChapterId is passed as openTagsForChapterId to AuthorDetailView
+                // where a useEffect mirrors the journal useEffect pattern.
+                showChapterMetadataEditor: async () => {
+                  const authors = await getAuthors();
+                  const jane = authors.find((a) => a.name === "Jane Doe") ?? authors[0];
+                  if (!jane) return;
+                  const d = await getAuthorDetail(jane.id);
+                  const firstChapter = d.works[0]?.chapters[0];
+                  if (!firstChapter) return;
+                  setHarnessTagsChapterId(null);
+                  await openAuthor(jane.id);
+                  await settle();
+                  setHarnessTagsChapterId(firstChapter.id);
+                  await settle();
+                  await settle();
+                },
+                // Step 4: open the Narrators browse view with "Jane Roe" already selected
+                // so the works list is populated.
+                showNarratorsBrowse: async () => {
+                  await loadMetaTerms();
+                  await selectNarrator("Jane Roe");
+                  setRoute({ kind: "narrators" });
+                },
+                // Step 5: open the Discover view with the "mood: cozy" facet picked so
+                // the works list is populated.
+                showDiscoverByFacet: async () => {
+                  await loadMetaTerms();
+                  await pickFacet("mood", "cozy");
+                  openDiscovery();
+                },
+              })
             : browseSteps({
                 // Seed tags on a few authors + a played chapter so sort-by-length,
                 // played%, the tag filter, and the status filter all have signal.
@@ -2102,6 +2239,12 @@ export default function App() {
           onSetWorkReEntryNote={handleSetWorkReEntryNote}
           onSetWorkRating={handleSetWorkRating}
           onChapterSortChange={onChapterSortChange}
+          metaSuggestions={metaSuggestions}
+          onAddChapterMeta={handleAddChapterMeta}
+          onRemoveChapterMeta={handleRemoveChapterMeta}
+          onAddAuthorMeta={handleAddAuthorMeta}
+          onRemoveAuthorMeta={handleRemoveAuthorMeta}
+          openTagsForChapterId={harnessTagsChapterId ?? undefined}
         />
       );
     }
@@ -2115,6 +2258,12 @@ export default function App() {
           onPickTags={pickTags}
           onOpenAuthor={openAuthor}
           onPlayNextOfWork={playNextChapterOfWork}
+          narratorOptions={narratorOptions}
+          languageOptions={languageOptions}
+          moodOptions={moodOptions}
+          pickedFacet={pickedFacet}
+          byFacet={byFacet}
+          onPickFacet={pickFacet}
         />
       );
     }
@@ -2177,6 +2326,11 @@ export default function App() {
           importReport={importReport}
           healthReport={healthReport}
           restoreStaged={restoreStaged}
+          metaTerms={metaTerms}
+          onCreateMetaTerm={handleCreateMetaTerm}
+          onRenameMetaTerm={handleRenameMetaTerm}
+          onDeleteMetaTerm={handleDeleteMetaTerm}
+          onMergeMetaTerms={handleMergeMetaTerms}
         />
       );
     }
@@ -2197,6 +2351,18 @@ export default function App() {
           now={insightsNow}
           onExportRecap={handleExportRecap}
           recapStatus={recapStatus}
+        />
+      );
+    }
+    if (route.kind === "narrators") {
+      return (
+        <NarratorsView
+          narrators={narratorTerms}
+          selected={selectedNarrator}
+          works={narratorWorks}
+          onSelect={selectNarrator}
+          onOpenAuthor={openAuthor}
+          onPlayNextOfWork={playNextChapterOfWork}
         />
       );
     }
@@ -2323,6 +2489,7 @@ export default function App() {
           onJournal={openJournalView}
           onInsights={openInsights}
           onCollections={openCollections}
+          onNarrators={openNarrators}
           density={density}
           a11y={a11y}
           player={player}

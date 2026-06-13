@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 "#;
 
 /// The current schema version. Bump this constant whenever a new migration step is added.
-pub(crate) const LATEST: i64 = 7;
+pub(crate) const LATEST: i64 = 8;
 
 /// Open a file-backed connection and ensure the schema exists (idempotent).
 pub fn open(path: &str) -> rusqlite::Result<Connection> {
@@ -150,6 +150,32 @@ fn migration_v7_power_scale(conn: &Connection) -> rusqlite::Result<()> {
     )
 }
 
+/// Add the metadata_terms vocabulary + chapter_metadata / author_metadata attach
+/// tables (migration v8). Faceted user-defined metadata (narrator / language / mood)
+/// applied to files and creators. Additive only — no existing table touched.
+fn migration_v8_metadata(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS metadata_terms (
+           id    INTEGER PRIMARY KEY,
+           facet TEXT NOT NULL,
+           value TEXT NOT NULL,
+           UNIQUE(facet, value)
+         );
+         CREATE TABLE IF NOT EXISTS chapter_metadata (
+           chapter_id INTEGER NOT NULL REFERENCES chapters(id),
+           term_id    INTEGER NOT NULL REFERENCES metadata_terms(id),
+           PRIMARY KEY (chapter_id, term_id)
+         );
+         CREATE TABLE IF NOT EXISTS author_metadata (
+           author_id INTEGER NOT NULL REFERENCES authors(id),
+           term_id   INTEGER NOT NULL REFERENCES metadata_terms(id),
+           PRIMARY KEY (author_id, term_id)
+         );
+         CREATE INDEX IF NOT EXISTS idx_chapter_metadata_term ON chapter_metadata(term_id);
+         CREATE INDEX IF NOT EXISTS idx_author_metadata_term  ON author_metadata(term_id);",
+    )
+}
+
 /// Add the journal tables and columns introduced in migration v6.
 fn migration_v6_journal(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
@@ -204,6 +230,9 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     }
     if current < 7 {
         run_step(conn, 7, migration_v7_power_scale)?;
+    }
+    if current < 8 {
+        run_step(conn, 8, migration_v8_metadata)?;
     }
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES ('schema_version', ?1)",
@@ -265,6 +294,9 @@ pub fn open_at_version(version: i64) -> rusqlite::Result<Connection> {
     if version >= 7 {
         run_step(&conn, 7, migration_v7_power_scale)?;
     }
+    if version >= 8 {
+        run_step(&conn, 8, migration_v8_metadata)?;
+    }
     Ok(conn)
 }
 
@@ -300,18 +332,18 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 7);
+        assert_eq!(ver, 8);
     }
 
     #[test]
     fn migrate_from_v1_is_noop_when_current() {
         let conn = open_in_memory().unwrap();
-        // Running migrate a second time must leave user_version at 7 without error.
+        // Running migrate a second time must leave user_version at 8 without error.
         super::migrate(&conn).unwrap();
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 7);
+        assert_eq!(ver, 8);
     }
 
     #[test]
@@ -330,7 +362,7 @@ mod tests {
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 7);
+        assert_eq!(post, 8);
     }
 
     #[test]
@@ -363,7 +395,7 @@ mod tests {
     }
 
     #[test]
-    fn open_in_memory_has_v2_tables_and_user_version_7() {
+    fn open_in_memory_has_v2_tables_and_user_version_8() {
         let conn = open_in_memory().unwrap();
         let v2_count: i64 = conn
             .query_row(
@@ -377,23 +409,23 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 7);
+        assert_eq!(ver, 8);
     }
 
     #[test]
     fn upgrade_from_v1_to_v2() {
-        // Open at v1 (no tag_aliases/tag_parents), then run migrate to reach v5.
+        // Open at v1 (no tag_aliases/tag_parents), then run migrate to reach v8.
         let conn = open_at_version(1).unwrap();
         let pre: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(pre, 1);
-        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale.
+        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale, v8 metadata.
         super::migrate(&conn).unwrap();
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 7);
+        assert_eq!(post, 8);
         let v2_count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table'
@@ -423,10 +455,10 @@ mod tests {
             .unwrap();
         assert_eq!(has_col, 0, "metadata_source must not exist before v3 migration");
 
-        // Run the full migration to reach v7.
+        // Run the full migration to reach v8.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 7);
+        assert_eq!(post, 8);
 
         // Now both tables must have the column.
         let works_col: i64 = conn
@@ -481,10 +513,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist before v4 migration");
 
-        // Run the full migration to reach v7.
+        // Run the full migration to reach v8.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 7);
+        assert_eq!(post, 8);
 
         // Both tables must now exist.
         let series_count: i64 = conn.query_row(
@@ -544,7 +576,7 @@ mod tests {
         // Run the full migration.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 7);
+        assert_eq!(post, 8);
 
         // transcripts must now exist.
         let has_transcripts: i64 = conn
@@ -605,10 +637,40 @@ mod tests {
 
     #[test]
     fn legacy_db_upgrades_through_v6() {
-        // Open at v1 (legacy), run full migrate(), expect LATEST (v7) and journal columns present.
+        // Open at v1 (legacy), run full migrate(), expect LATEST (v8) and journal columns present.
         let conn = open_at_version(1).unwrap();
         migrate(&conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 7);
+        assert_eq!(v, 8);
+    }
+
+    #[test]
+    fn migration_v8_adds_metadata_tables_and_is_additive() {
+        // A DB migrated to v7 has no metadata tables; upgrading to v8 adds them and
+        // bumps user_version, leaving all earlier tables intact.
+        let conn = open_at_version(7).unwrap();
+        let v7: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v7, 7);
+        run_step(&conn, 8, migration_v8_metadata).unwrap();
+        let v8: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v8, 8);
+        // The three new tables exist and are empty.
+        for t in ["metadata_terms", "chapter_metadata", "author_metadata"] {
+            let n: i64 = conn
+                .query_row(&format!("SELECT count(*) FROM {t}"), [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(n, 0, "{t} should exist and be empty");
+        }
+        // Earlier tables still present (additive).
+        let _: i64 = conn.query_row("SELECT count(*) FROM works", [], |r| r.get(0)).unwrap();
+        let _: i64 = conn.query_row("SELECT count(*) FROM saved_searches", [], |r| r.get(0)).unwrap();
+    }
+
+    #[test]
+    fn open_at_version_8_reaches_latest() {
+        let conn = open_at_version(8).unwrap();
+        let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, 8);
+        assert_eq!(v, LATEST);
     }
 }

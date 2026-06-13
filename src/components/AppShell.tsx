@@ -4,9 +4,9 @@ import { IconButton } from "./ui";
 import type { Density } from "../lib/density";
 import { type A11yPrefs, a11yDataAttrs } from "../lib/a11y";
 
-export type ShellRoute = "home" | "library" | "discovery" | "rename" | "metadata" | "settings" | "journal" | "insights" | "collections";
+export type ShellRoute = "home" | "library" | "discovery" | "rename" | "metadata" | "settings" | "journal" | "insights" | "collections" | "narrators";
 
-export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onRename, onMetadata, onSettings, onJournal, onInsights, onCollections, density, a11y, children, player }: {
+export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onRename, onMetadata, onSettings, onJournal, onInsights, onCollections, onNarrators, density, a11y, children, player }: {
   active: ShellRoute;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
@@ -19,6 +19,7 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
   onJournal: () => void;
   onInsights: () => void;
   onCollections: () => void;
+  onNarrators: () => void;
   density: Density;
   a11y: A11yPrefs;
   children: ReactNode;
@@ -28,6 +29,7 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
     { key: "home", label: "Home", icon: "home", action: onHome },
     { key: "library", label: "Library", icon: "library", action: onLibrary },
     { key: "discovery", label: "Discover", icon: "discover", action: onDiscovery },
+    { key: "narrators", label: "Narrators", icon: "voice", action: onNarrators },
     { key: "rename", label: "Rename", icon: "rename", action: onRename },
     { key: "metadata", label: "Import tags", icon: "metadata", action: onMetadata },
     { key: "journal", label: "Journal", icon: "journal", action: onJournal },
