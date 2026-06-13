@@ -8,6 +8,7 @@ mod insights;
 mod launch;
 mod model;
 mod natsort;
+mod metadata;
 mod query;
 mod regroup;
 mod scoped;
