@@ -1831,6 +1831,14 @@ export default function App() {
                     await addMetadataValue("chapter", firstChapter.id, "narrator", "Jane Roe");
                     await addMetadataValue("chapter", firstChapter.id, "mood", "cozy");
                   }
+                  // Also attach narrator "Jane Roe" to the first unplayed chapter of any work
+                  // so the Narrators browse page has ≥1 result even when works[0].chapters[0]
+                  // has been marked played by a prior walkthrough (e.g. m12).
+                  const unplayedWork = d.works.find((w) => w.chapters.some((c) => !c.played));
+                  const uc = unplayedWork?.chapters.find((c) => !c.played);
+                  if (uc) {
+                    await addMetadataValue("chapter", uc.id, "narrator", "Jane Roe");
+                  }
                   await addMetadataValue("author", jane.id, "language", "English");
                   await loadMetaTerms();
                   await openAuthor(jane.id);
