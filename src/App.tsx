@@ -37,6 +37,7 @@ import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
 import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
+import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
 import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps } from "./harness/walkthroughs";
@@ -148,6 +149,11 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults | null>(null);
   const [transcriptResults, setTranscriptResults] = useState<TranscriptHit[] | null>(null);
+
+  // ---- command palette (Ctrl+K) ----
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState("");
+  const [paletteResults, setPaletteResults] = useState<SearchResults | null>(null);
 
   // ---- now-playing transcript (fetched per chapter) ----
   const [currentTranscript, setCurrentTranscript] = useState<string | null>(null);
@@ -1355,6 +1361,29 @@ export default function App() {
     return () => { cancelled = true; };
   }, [homeShelves]);
 
+  // Global Ctrl+K / Cmd+K to open the command palette.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Debounced command palette search (mirrors the 150ms library search pattern).
+  useEffect(() => {
+    if (!paletteOpen) return;
+    const q = paletteQuery;
+    const t = setTimeout(() => {
+      if (q.trim() === "") { setPaletteResults({ authors: [], works: [], chapters: [] }); return; }
+      void searchLibrary(q).then(setPaletteResults).catch(() => setPaletteResults(null));
+    }, 150);
+    return () => clearTimeout(t);
+  }, [paletteQuery, paletteOpen]);
+
   // Debounced backend search. Empty query clears results (list shows instead).
   useEffect(() => {
     const q = query.trim();
@@ -1600,6 +1629,16 @@ export default function App() {
           {view}
         </AppShell>
       )}
+      <CommandPalette
+        open={paletteOpen}
+        results={paletteResults}
+        query={paletteQuery}
+        onQueryChange={setPaletteQuery}
+        onClose={() => { setPaletteOpen(false); setPaletteQuery(""); setPaletteResults(null); }}
+        onOpenAuthor={(id) => { void openAuthor(id); }}
+        onOpenWorkAuthor={(authorId) => { void openAuthor(authorId); }}
+        onPlayChapter={(id) => { void playChapterById(id); }}
+      />
       {current && playerExpanded && (
         <NowPlayingPanel
           context={current}
