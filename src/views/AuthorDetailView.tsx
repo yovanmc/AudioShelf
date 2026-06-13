@@ -235,8 +235,9 @@ export function AuthorDetailView(props: {
           {allCollapsed ? "Expand all" : "Collapse all"}
         </Button>
       </div>
+      <div role="tree" aria-label="Works and chapters">
       {works.map((w) => (
-        <section key={w.id} className="work card view-section" style={{ padding: 20 }}>
+        <section key={w.id} className="work card view-section" style={{ padding: 20 }} role="treeitem" aria-expanded={!collapsed.has(w.id)} aria-level={1}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <button
               aria-label={`${collapsed.has(w.id) ? "Expand" : "Collapse"} '${w.baseTitle}'`}
@@ -308,9 +309,9 @@ export function AuthorDetailView(props: {
             </div>
           )}
           {!collapsed.has(w.id) && (
-          <ul className="recent-list">
+          <ul className="recent-list" role="group">
             {w.chapters.map((c) => (
-              <li className="recent-row" key={c.id} data-played={c.played ? "true" : "false"}>
+              <li className="recent-row" key={c.id} data-played={c.played ? "true" : "false"} role="treeitem" aria-level={2}>
                 <button className="icon-button" aria-label={`Play '${c.title}'`} onClick={() => props.onPlayChapter({
                   chapter: c,
                   authorId: detail.id,
@@ -343,6 +344,7 @@ export function AuthorDetailView(props: {
           )}
         </section>
       ))}
+      </div>
       {editState && editChapterInfo && editState.mode === "grouping" && (
         <Dialog label="Edit grouping" onClose={() => setEditState(null)}>
           <ChapterGroupingForm
