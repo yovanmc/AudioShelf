@@ -22,12 +22,13 @@ import {
   bulkSetWorkTags, setWorkChapterSort,
   exportCurationJson, exportDbSnapshot, importCurationJson, stageDbRestore, libraryHealthScan,
   openMiniPlayer,
+  listMetadataTerms, createMetadataTerm, renameMetadataTerm, deleteMetadataTerm, mergeMetadataTerms,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
   type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
   type InsightsData, type ScopedResults, type SavedSearch, type Collection,
-  type ImportReport, type HealthReport,
+  type ImportReport, type HealthReport, type MetaTerm,
 } from "./lib/api";
 import { hasScopedTokens } from "./lib/query";
 import { buildRecapSvg } from "./lib/recap";
@@ -190,6 +191,9 @@ export default function App() {
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [healthReport, setHealthReport] = useState<HealthReport | null>(null);
   const [restoreStaged, setRestoreStaged] = useState(false);
+
+  // ---- M21: metadata vocabulary terms ----
+  const [metaTerms, setMetaTerms] = useState<MetaTerm[]>([]);
 
   // ---- command palette (Ctrl+K) ----
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -366,6 +370,13 @@ export default function App() {
     setAllTags(await getAllTags());
     setTagStats(await listTagsWithCounts());
   }
+
+  const loadMetaTerms = async () => setMetaTerms(await listMetadataTerms().catch(() => [] as MetaTerm[]));
+
+  const handleCreateMetaTerm = async (facet: string, value: string) => { await createMetadataTerm(facet, value); await loadMetaTerms(); };
+  const handleRenameMetaTerm = async (id: number, value: string) => { await renameMetadataTerm(id, value); await loadMetaTerms(); };
+  const handleDeleteMetaTerm = async (id: number) => { await deleteMetadataTerm(id); await loadMetaTerms(); };
+  const handleMergeMetaTerms = async (sourceIds: number[], targetId: number) => { await mergeMetadataTerms(sourceIds, targetId); await loadMetaTerms(); };
 
   async function setTags(tags: string[]) {
     if (!detailRef.current) return;
@@ -663,6 +674,7 @@ export default function App() {
       setScan(result);
       await loadAuthors();
       await refreshTags();
+      await loadMetaTerms();
       return true;
     } catch (e) {
       setScanError(String(e));
@@ -2181,6 +2193,11 @@ export default function App() {
           importReport={importReport}
           healthReport={healthReport}
           restoreStaged={restoreStaged}
+          metaTerms={metaTerms}
+          onCreateMetaTerm={handleCreateMetaTerm}
+          onRenameMetaTerm={handleRenameMetaTerm}
+          onDeleteMetaTerm={handleDeleteMetaTerm}
+          onMergeMetaTerms={handleMergeMetaTerms}
         />
       );
     }
