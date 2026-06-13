@@ -114,7 +114,8 @@ pub fn run() {
             commands::delete_collection,
             commands::reorder_collections,
             commands::resolve_collection,
-            commands::bulk_set_work_tags
+            commands::bulk_set_work_tags,
+            commands::set_work_chapter_sort
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

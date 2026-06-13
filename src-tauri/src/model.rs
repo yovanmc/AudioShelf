@@ -47,6 +47,7 @@ pub struct WorkRow {
     pub chapters: Vec<ChapterRow>,
     pub re_entry_note: String,
     pub completion_rating: String,
+    pub chapter_sort: String,   // NEW: per-work chapter ordering preference
 }
 
 #[derive(Serialize, Debug, PartialEq)]
