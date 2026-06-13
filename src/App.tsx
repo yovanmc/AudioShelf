@@ -1243,8 +1243,11 @@ export default function App() {
                   await resetPlayHistory();
                   await loadInsights(Date.UTC(2026, 5, 12, 18, 0, 0));
                   setRoute({ kind: "insights" });
+                  document.querySelector(".app-main")?.scrollTo({ top: 0 });
+                  await settle();
                 },
-                showInsightsPopulated: async () => {
+                showInsightsOverview: async () => {
+                  // Seed ~120 + streak events (same deterministic spread used previously).
                   const NOW = Date.UTC(2026, 5, 12, 18, 0, 0);
                   const DAY = 86_400_000;
                   const authors = await getAuthors();
@@ -1270,12 +1273,31 @@ export default function App() {
                   await seedPlayEvents(events);
                   await loadInsights(NOW);
                   setRoute({ kind: "insights" });
+                  // Scroll to top: stats + heatmap + month-vs-last are at the top.
+                  document.querySelector(".app-main")?.scrollTo({ top: 0 });
+                  await settle();
+                },
+                showInsightsTrends: async () => {
+                  // Relies on the seeded state from showInsightsOverview — do NOT reset.
+                  await loadInsights(Date.UTC(2026, 5, 12, 18, 0, 0));
+                  setRoute({ kind: "insights" });
+                  await settle();
+                  // Scroll the first bar-chart's parent Card into view at the top of the
+                  // viewport so all three bar-chart cards (time-of-day, day-of-week, rhythm)
+                  // are visible.
+                  const firstBarChart = document.querySelector(".bar-chart");
+                  const barCard = firstBarChart?.closest(".card") ?? firstBarChart;
+                  (barCard as HTMLElement | null)?.scrollIntoView({ block: "start" });
                   await settle();
                 },
                 showInsightsRecap: async () => {
-                  // Same seeded state; just re-render Insights (the recap card is in-view).
+                  // Relies on the seeded state from showInsightsOverview — do NOT reset.
                   await loadInsights(Date.UTC(2026, 5, 12, 18, 0, 0));
                   setRoute({ kind: "insights" });
+                  await settle();
+                  // Scroll the recap card to the bottom of the viewport so the breakdowns
+                  // above it are visible and the Export PNG button is in frame.
+                  document.querySelector(".recap-card")?.scrollIntoView({ block: "end" });
                   await settle();
                 },
               })

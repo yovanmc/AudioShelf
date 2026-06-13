@@ -209,12 +209,14 @@ export function journalSteps(nav: {
 
 export function insightsSteps(nav: {
   showInsightsEmpty: () => Promise<void>;
-  showInsightsPopulated: () => Promise<void>;
+  showInsightsOverview: () => Promise<void>;
+  showInsightsTrends: () => Promise<void>;
   showInsightsRecap: () => Promise<void>;
 }): Step[] {
   return [
     { name: "insights-empty", run: nav.showInsightsEmpty },
-    { name: "insights-populated", run: nav.showInsightsPopulated },
+    { name: "insights-overview", run: nav.showInsightsOverview },
+    { name: "insights-trends", run: nav.showInsightsTrends },
     { name: "insights-recap", run: nav.showInsightsRecap },
   ];
 }

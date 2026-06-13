@@ -84,15 +84,17 @@ describe("journalSteps", () => {
 });
 
 describe("insightsSteps", () => {
-  it("captures the three M18 insights surfaces in order", () => {
+  it("captures the four M18 insights surfaces in order", () => {
     const noop = async () => {};
     expect(insightsSteps({
       showInsightsEmpty: noop,
-      showInsightsPopulated: noop,
+      showInsightsOverview: noop,
+      showInsightsTrends: noop,
       showInsightsRecap: noop,
     }).map((step) => step.name)).toEqual([
       "insights-empty",
-      "insights-populated",
+      "insights-overview",
+      "insights-trends",
       "insights-recap",
     ]);
   });
