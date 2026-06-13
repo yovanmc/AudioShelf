@@ -201,6 +201,10 @@ export default function App() {
   const [selectedNarrator, setSelectedNarrator] = useState<string | null>(null);
   const [narratorWorks, setNarratorWorks] = useState<DiscoveryWork[]>([]);
 
+  // ---- M21: Discover facet picker state ----
+  const [pickedFacet, setPickedFacet] = useState<{ facet: string; value: string } | null>(null);
+  const [byFacet, setByFacet] = useState<DiscoveryWork[]>([]);
+
   // ---- command palette (Ctrl+K) ----
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -389,6 +393,16 @@ export default function App() {
 
   // Narrator terms for the Narrators browse view.
   const narratorTerms = useMemo(() => metaTerms.filter((t) => t.facet === "narrator"), [metaTerms]);
+
+  // Facet option lists for the Discover facet picker.
+  const narratorOptions = useMemo(() => metaTerms.filter((t) => t.facet === "narrator").map((t) => t.value), [metaTerms]);
+  const languageOptions = useMemo(() => metaTerms.filter((t) => t.facet === "language").map((t) => t.value), [metaTerms]);
+  const moodOptions = useMemo(() => metaTerms.filter((t) => t.facet === "mood").map((t) => t.value), [metaTerms]);
+
+  const pickFacet = async (facet: string, value: string) => {
+    setPickedFacet({ facet, value });
+    setByFacet(await getDiscoveryByMetadata(facet, value));
+  };
 
   const selectNarrator = async (value: string) => {
     setSelectedNarrator(value);
@@ -651,6 +665,7 @@ export default function App() {
   async function openDiscovery() {
     setForYou(await getDiscovery());
     await refreshTags();
+    await loadMetaTerms();
     setByTags([]);
     setPickedTags([]);
     setRoute({ kind: "discovery" });
@@ -2172,6 +2187,12 @@ export default function App() {
           onPickTags={pickTags}
           onOpenAuthor={openAuthor}
           onPlayNextOfWork={playNextChapterOfWork}
+          narratorOptions={narratorOptions}
+          languageOptions={languageOptions}
+          moodOptions={moodOptions}
+          pickedFacet={pickedFacet}
+          byFacet={byFacet}
+          onPickFacet={pickFacet}
         />
       );
     }

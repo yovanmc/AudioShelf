@@ -28,6 +28,10 @@ export function DiscoveryView(props: {
   forYou: DiscoveryWork[]; allTags: string[]; byTags: DiscoveryWork[]; picked: string[];
   onPickTags: (tags: string[]) => void; onOpenAuthor: (id: number) => void; onBack?: () => void;
   onPlayNextOfWork?: (workId: number, authorId: number) => void;
+  narratorOptions: string[]; languageOptions: string[]; moodOptions: string[];
+  pickedFacet: { facet: string; value: string } | null;
+  byFacet: DiscoveryWork[];
+  onPickFacet: (facet: string, value: string) => void;
 }) {
   const toggleTag = (tag: string) => props.onPickTags(
     props.picked.includes(tag) ? props.picked.filter((item) => item !== tag) : [...props.picked, tag],
@@ -52,6 +56,26 @@ export function DiscoveryView(props: {
           })}
         </div>
         {props.picked.length > 0 && <WorkList works={props.byTags} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} />}
+      </section>
+      <section className="view-section">
+        <SectionHeading title="By narrator, language, or mood" />
+        <div className="toolbar card" style={{ padding: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {([["narrator", props.narratorOptions], ["language", props.languageOptions], ["mood", props.moodOptions]] as const).flatMap(([facet, opts]) =>
+            opts.map((value) => {
+              const on = props.pickedFacet?.facet === facet && props.pickedFacet?.value === value;
+              return (
+                <button
+                  key={`${facet}:${value}`}
+                  type="button"
+                  className={`chip chip--toggle${on ? " chip--on" : ""}`}
+                  aria-pressed={on}
+                  onClick={() => props.onPickFacet(facet, value)}
+                >{value}</button>
+              );
+            }),
+          )}
+        </div>
+        {props.pickedFacet && <WorkList works={props.byFacet} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} />}
       </section>
       <section className="view-section">
         <SectionHeading title="For You" />

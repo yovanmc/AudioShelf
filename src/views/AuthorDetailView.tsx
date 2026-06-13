@@ -276,6 +276,9 @@ export function AuthorDetailView(props: {
               onChange={(t) => props.onSetWorkTags(w.id, t)}
               suggestions={workTagSuggestions[w.id]}
             />
+            {w.metadata.map((m) => (
+              <span key={`m-${m.termId}`} className="chip chip--meta" title={m.facet}>{m.value}</span>
+            ))}
             {props.onRequestMoreLikeThis && (
               <button
                 type="button"
