@@ -260,6 +260,7 @@ export default function App() {
   // ---- M17: pending seek ref for jump-to-bookmark ----
   const pendingSeekRef = useRef<number | null>(null);
 
+
   useEffect(() => {
     const ctx = current;
     if (!ctx) { setCurrentWorkChapters([]); return; }
@@ -1461,10 +1462,14 @@ export default function App() {
                 },
                 // Step 2: scoped search with a duration token — chips are rendered for
                 // the parsed filter and the results grid shows matched works.
+                // Explicitly reset density to "comfortable" so this shot is always at
+                // the default density (providing a clear contrast with step 6 spacious).
                 showScopedSearch: async () => {
                   setPaletteOpen(false);
                   setPaletteQuery("");
                   setPaletteResults(null);
+                  setDensity("comfortable");
+                  void setSetting("library_density", "comfortable");
                   const q = "duration:<15m";
                   setQuery(q);
                   const sr = await advancedSearch(q);
