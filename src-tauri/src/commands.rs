@@ -1194,6 +1194,213 @@ pub fn apply_metadata_proposals(
 // `undo_metadata` is DEFERRED — the feature is low-value without persistent manifests
 // (proposals are ephemeral; user can re-scan and re-preview). Not implemented in Task 4.
 
+// ---- series / reading-order detection (M16 Task 6) ------------------------------------
+
+/// A proposed member of a detected series.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesMemberProposal {
+    pub work_id: i64,
+    pub base_title: String,
+    pub position: i64,
+}
+
+/// A detected series proposal (not yet persisted).
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesProposal {
+    pub title: String,
+    pub members: Vec<SeriesMemberProposal>,
+}
+
+/// One member's view with progress, as returned by `get_author_series`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesMemberView {
+    pub work_id: i64,
+    pub base_title: String,
+    pub position: i64,
+    pub played_chapters: i64,
+    pub total_chapters: i64,
+}
+
+/// A persisted series with ordered members, as returned by `get_author_series`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesView {
+    pub id: i64,
+    pub title: String,
+    pub members: Vec<SeriesMemberView>,
+}
+
+/// Detect series proposals for an author by grouping works whose `base_title`
+/// shares a common stem after stripping trailing numerics (via `grouping::parse_stem`).
+/// Returns only groups with ≥2 members. Does NOT write to the DB.
+pub fn detect_series_for_author(
+    conn: &rusqlite::Connection,
+    author_id: i64,
+) -> rusqlite::Result<Vec<SeriesProposal>> {
+    use crate::grouping::parse_stem;
+
+    // Load all active works for this author.
+    let mut stmt = conn.prepare(
+        "SELECT id, base_title FROM works WHERE author_id=?1 AND status='active'",
+    )?;
+    let works: Vec<(i64, String)> = stmt
+        .query_map(params![author_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+
+    // Group works by the stem of their `base_title` using `parse_stem`.
+    // If the base_title itself ends in a number, parse_stem strips it to give the stem.
+    use std::collections::BTreeMap;
+    // Map: stem -> Vec<(work_id, base_title, numeric position extracted from title)>
+    let mut groups: BTreeMap<String, Vec<(i64, String, i64)>> = BTreeMap::new();
+
+    for (work_id, base_title) in &works {
+        let parsed = parse_stem(base_title);
+        // Only group when there's actually a trailing number (had_number == true), or when
+        // the title is "exactly the stem" (position 1 of a numbered series).
+        // Strategy: use the parsed stem as the group key; use chapter_no as position.
+        // For a title like "Cool Story" with no trailing number, parse_stem returns
+        //   base="Cool Story", chapter_no=1, had_number=false.
+        // For "Cool Story 2" it returns base="Cool Story", chapter_no=2, had_number=true.
+        // We group ALL works under the same stem. If had_number is false, position = 1.
+        let stem = parsed.base.clone();
+        let position = parsed.chapter_no as i64;
+        groups.entry(stem).or_default().push((work_id.clone(), base_title.clone(), position));
+    }
+
+    let mut proposals = Vec::new();
+    for (stem, mut members) in groups {
+        if members.len() < 2 {
+            continue; // only propose groups with ≥2 members
+        }
+        // Sort members by position.
+        members.sort_by_key(|(_, _, pos)| *pos);
+        proposals.push(SeriesProposal {
+            title: stem,
+            members: members
+                .into_iter()
+                .map(|(work_id, base_title, position)| SeriesMemberProposal {
+                    work_id,
+                    base_title,
+                    position,
+                })
+                .collect(),
+        });
+    }
+
+    Ok(proposals)
+}
+
+#[tauri::command]
+pub fn detect_series(
+    state: tauri::State<DbState>,
+    author_id: i64,
+) -> Result<Vec<SeriesProposal>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    detect_series_for_author(&conn, author_id).map_err(|e| e.to_string())
+}
+
+/// Persist series proposals: INSERT (OR IGNORE on UNIQUE) each series row, then
+/// INSERT OR REPLACE the membership rows. One transaction.
+pub fn apply_series_proposals(
+    conn: &rusqlite::Connection,
+    author_id: i64,
+    proposals: &[SeriesProposal],
+) -> rusqlite::Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    for proposal in proposals {
+        let sort_key = proposal.title.to_lowercase();
+        // Insert series (UNIQUE on author_id+title — ignore if already exists).
+        tx.execute(
+            "INSERT OR IGNORE INTO series(author_id, title, sort_key) VALUES (?1, ?2, ?3)",
+            params![author_id, proposal.title, sort_key],
+        )?;
+        let series_id: i64 = tx.query_row(
+            "SELECT id FROM series WHERE author_id=?1 AND title=?2",
+            params![author_id, proposal.title],
+            |r| r.get(0),
+        )?;
+        for member in &proposal.members {
+            tx.execute(
+                "INSERT OR REPLACE INTO work_series_membership(work_id, series_id, position)
+                 VALUES (?1, ?2, ?3)",
+                params![member.work_id, series_id, member.position],
+            )?;
+        }
+    }
+    tx.commit()
+}
+
+#[tauri::command]
+pub fn apply_series(
+    state: tauri::State<DbState>,
+    author_id: i64,
+    proposals: Vec<SeriesProposal>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    apply_series_proposals(&conn, author_id, &proposals).map_err(|e| e.to_string())
+}
+
+/// Fetch the persisted series for an author, with per-member progress.
+pub fn query_author_series(
+    conn: &rusqlite::Connection,
+    author_id: i64,
+) -> rusqlite::Result<Vec<SeriesView>> {
+    let mut sstmt = conn.prepare(
+        "SELECT id, title FROM series WHERE author_id=?1 ORDER BY sort_key",
+    )?;
+    let series_rows: Vec<(i64, String)> = sstmt
+        .query_map(params![author_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+
+    let mut result = Vec::new();
+    for (series_id, title) in series_rows {
+        let mut mstmt = conn.prepare(
+            "SELECT wsm.work_id, w.base_title, wsm.position
+             FROM work_series_membership wsm
+             JOIN works w ON wsm.work_id = w.id
+             WHERE wsm.series_id=?1
+             ORDER BY wsm.position",
+        )?;
+        let raw_members: Vec<(i64, String, i64)> = mstmt
+            .query_map(params![series_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+
+        let mut members = Vec::new();
+        for (work_id, base_title, position) in raw_members {
+            // Per-member progress: count total and played chapters.
+            let (total_chapters, played_chapters): (i64, i64) = conn.query_row(
+                "SELECT
+                    count(*),
+                    sum(CASE WHEN played=1 THEN 1 ELSE 0 END)
+                 FROM chapters WHERE work_id=?1 AND status='active'",
+                params![work_id],
+                |r| Ok((r.get(0)?, r.get::<_, Option<i64>>(1)?.unwrap_or(0))),
+            )?;
+            members.push(SeriesMemberView {
+                work_id,
+                base_title,
+                position,
+                played_chapters,
+                total_chapters,
+            });
+        }
+        result.push(SeriesView { id: series_id, title, members });
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn get_author_series(
+    state: tauri::State<DbState>,
+    author_id: i64,
+) -> Result<Vec<SeriesView>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    query_author_series(&conn, author_id).map_err(|e| e.to_string())
+}
+
 // ---- tag taxonomy commands (M16 Task 2) -----------------------------------------------
 
 /// Resolve each tag through `tag_aliases` (alias→canonical), deduplicating the result.
@@ -1733,7 +1940,7 @@ mod tests {
         // The pre-seeded schema_version key reflects the latest migration version.
         assert_eq!(
             get_setting_value(&conn, "schema_version").unwrap(),
-            Some("3".to_string())
+            Some("4".to_string())
         );
     }
 
@@ -2101,7 +2308,7 @@ mod tests {
         ).unwrap();
         assert_eq!(full_count, 2, "full open must have both taxonomy tables");
         let ver: i64 = full_conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(ver, 3);
+        assert_eq!(ver, 4);
     }
 
     #[test]
@@ -2268,7 +2475,7 @@ mod tests {
         // Upgrade to latest via open_in_memory pattern (open_at_version then migrate).
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 3);
+        assert_eq!(full_ver, 4);
 
         let col3: i64 = full.query_row(
             "SELECT count(*) FROM pragma_table_info('works') WHERE name='metadata_source'",
@@ -2281,6 +2488,132 @@ mod tests {
             [], |r| r.get(0),
         ).unwrap();
         assert_eq!(col3c, 1, "metadata_source must exist on chapters at v3");
+    }
+
+    // ---- series / reading-order tests (M16 Task 6) ------------------------------------
+
+    fn seed_series_author(conn: &rusqlite::Connection) -> i64 {
+        conn.execute(
+            "INSERT INTO authors(folder_name, status) VALUES ('Series Author', 'active')",
+            [],
+        ).unwrap();
+        conn.query_row("SELECT id FROM authors WHERE folder_name='Series Author'", [], |r| r.get(0)).unwrap()
+    }
+
+    fn insert_work(conn: &rusqlite::Connection, author_id: i64, title: &str) -> i64 {
+        conn.execute(
+            "INSERT INTO works(author_id, base_title, sort_key, status) VALUES (?1, ?2, lower(?2), 'active')",
+            params![author_id, title],
+        ).unwrap();
+        conn.query_row("SELECT id FROM works WHERE author_id=?1 AND base_title=?2", params![author_id, title], |r| r.get(0)).unwrap()
+    }
+
+    fn insert_chapter(conn: &rusqlite::Connection, work_id: i64, chapter_no: i64, played: bool) -> i64 {
+        let path = format!("fake/{}/{}.mp3", work_id, chapter_no);
+        conn.execute(
+            "INSERT INTO chapters(work_id, file_path, raw_filename, chapter_no, format, played, status)
+             VALUES (?1, ?2, ?2, ?3, 'mp3', ?4, 'active')",
+            params![work_id, path, chapter_no, played as i64],
+        ).unwrap();
+        conn.query_row("SELECT id FROM chapters WHERE file_path=?1", params![path], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn detect_series_proposes_group_of_three() {
+        let conn = open_in_memory().unwrap();
+        let author_id = seed_series_author(&conn);
+        insert_work(&conn, author_id, "Cool Story");
+        insert_work(&conn, author_id, "Cool Story 2");
+        insert_work(&conn, author_id, "Cool Story 3");
+
+        let proposals = super::detect_series_for_author(&conn, author_id).unwrap();
+        assert_eq!(proposals.len(), 1, "should detect exactly one series");
+        let p = &proposals[0];
+        assert_eq!(p.title, "Cool Story");
+        assert_eq!(p.members.len(), 3);
+        // Members ordered by position (numeric extracted from title).
+        let positions: Vec<i64> = p.members.iter().map(|m| m.position).collect();
+        assert_eq!(positions, vec![1, 2, 3], "members must be in order by position");
+        let titles: Vec<&str> = p.members.iter().map(|m| m.base_title.as_str()).collect();
+        assert_eq!(titles, vec!["Cool Story", "Cool Story 2", "Cool Story 3"]);
+    }
+
+    #[test]
+    fn detect_series_standalone_yields_no_proposal() {
+        let conn = open_in_memory().unwrap();
+        let author_id = seed_series_author(&conn);
+        insert_work(&conn, author_id, "Standalone Work");
+
+        let proposals = super::detect_series_for_author(&conn, author_id).unwrap();
+        assert!(proposals.is_empty(), "single work must not produce a series proposal");
+    }
+
+    #[test]
+    fn apply_series_writes_membership_and_get_returns_ordered_members_with_progress() {
+        let conn = open_in_memory().unwrap();
+        let author_id = seed_series_author(&conn);
+        let w1 = insert_work(&conn, author_id, "Cool Story");
+        let w2 = insert_work(&conn, author_id, "Cool Story 2");
+        let w3 = insert_work(&conn, author_id, "Cool Story 3");
+
+        // Seed chapters: w1 has 2 (both played), w2 has 1 (unplayed), w3 has 1 (unplayed).
+        insert_chapter(&conn, w1, 1, true);
+        insert_chapter(&conn, w1, 2, true);
+        insert_chapter(&conn, w2, 1, false);
+        insert_chapter(&conn, w3, 1, false);
+
+        // Detect, then apply.
+        let proposals = super::detect_series_for_author(&conn, author_id).unwrap();
+        assert_eq!(proposals.len(), 1);
+        super::apply_series_proposals(&conn, author_id, &proposals).unwrap();
+
+        // get_author_series should return the series with 3 ordered members and correct progress.
+        let series = super::query_author_series(&conn, author_id).unwrap();
+        assert_eq!(series.len(), 1);
+        let s = &series[0];
+        assert_eq!(s.title, "Cool Story");
+        assert_eq!(s.members.len(), 3);
+
+        // Ordered by position.
+        assert_eq!(s.members[0].work_id, w1);
+        assert_eq!(s.members[0].position, 1);
+        assert_eq!(s.members[0].total_chapters, 2);
+        assert_eq!(s.members[0].played_chapters, 2);
+
+        assert_eq!(s.members[1].work_id, w2);
+        assert_eq!(s.members[1].position, 2);
+        assert_eq!(s.members[1].total_chapters, 1);
+        assert_eq!(s.members[1].played_chapters, 0);
+
+        assert_eq!(s.members[2].work_id, w3);
+        assert_eq!(s.members[2].position, 3);
+        assert_eq!(s.members[2].total_chapters, 1);
+        assert_eq!(s.members[2].played_chapters, 0);
+    }
+
+    #[test]
+    fn migration_v3_lacks_series_then_v4_adds_them() {
+        // open_at_version(3) must not have series or work_series_membership.
+        let conn = crate::db::open_at_version(3).unwrap();
+        let ver: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(ver, 3);
+
+        let no_series: i64 = conn.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(no_series, 0, "series tables must not exist at v3");
+
+        // After a full open (which runs migrate), both tables must exist and version is 4.
+        let full = crate::db::open_in_memory().unwrap();
+        let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(full_ver, 4);
+
+        let series_count: i64 = full.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(series_count, 2, "both series tables must exist after v4 migration");
     }
 
     #[test]

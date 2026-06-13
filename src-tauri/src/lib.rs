@@ -76,7 +76,10 @@ pub fn run() {
             commands::set_tag_parent,
             commands::clear_tag_parent,
             commands::preview_metadata,
-            commands::apply_metadata
+            commands::apply_metadata,
+            commands::detect_series,
+            commands::apply_series,
+            commands::get_author_series
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -84,7 +87,7 @@ pub fn run() {
 
 // Exposed for integration tests.
 pub mod testing {
-    pub use crate::commands::{apply_metadata_proposals, build_metadata_proposals, query_author_detail, query_authors};
+    pub use crate::commands::{apply_metadata_proposals, apply_series_proposals, build_metadata_proposals, detect_series_for_author, query_author_detail, query_author_series, query_authors, SeriesMemberProposal, SeriesProposal, SeriesView};
     pub use crate::covers::{
         cover_cache_for_chapter, find_folder_image, make_thumbnail_png, read_embedded_picture,
         CoverPriority,

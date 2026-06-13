@@ -96,11 +96,29 @@ fn migration_v3_metadata_source(conn: &Connection) -> rusqlite::Result<()> {
     )
 }
 
+/// Add series/reading-order tables introduced in migration v4.
+fn migration_v4_series(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS series (
+          id        INTEGER PRIMARY KEY,
+          author_id INTEGER NOT NULL REFERENCES authors(id),
+          title     TEXT NOT NULL,
+          sort_key  TEXT NOT NULL,
+          UNIQUE(author_id, title)
+        );
+        CREATE TABLE IF NOT EXISTS work_series_membership (
+          work_id   INTEGER PRIMARY KEY REFERENCES works(id),
+          series_id INTEGER NOT NULL REFERENCES series(id),
+          position  INTEGER NOT NULL
+        );",
+    )
+}
+
 /// Ordered, idempotent migration runner. Each step bumps user_version inside its own
 /// transaction so a crash mid-migration leaves the DB at the last fully-applied version.
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    const LATEST: i64 = 3; // bump as later tasks add steps
+    const LATEST: i64 = 4; // bump as later tasks add steps
     if current < 1 {
         run_step(conn, 1, |c| {
             c.execute_batch(SCHEMA_V1)?;
@@ -112,6 +130,9 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     }
     if current < 3 {
         run_step(conn, 3, migration_v3_metadata_source)?;
+    }
+    if current < 4 {
+        run_step(conn, 4, migration_v4_series)?;
     }
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES ('schema_version', ?1)",
@@ -161,6 +182,9 @@ pub fn open_at_version(version: i64) -> rusqlite::Result<Connection> {
     if version >= 3 {
         run_step(&conn, 3, migration_v3_metadata_source)?;
     }
+    if version >= 4 {
+        run_step(&conn, 4, migration_v4_series)?;
+    }
     Ok(conn)
 }
 
@@ -175,12 +199,12 @@ mod tests {
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN
                  ('authors','works','chapters','author_tags','play_events','grouping_overrides','settings',
-                  'tag_aliases','tag_parents')",
+                  'tag_aliases','tag_parents','series','work_series_membership')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(count, 9);
+        assert_eq!(count, 11);
     }
 
     #[test]
@@ -196,18 +220,18 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 3);
+        assert_eq!(ver, 4);
     }
 
     #[test]
     fn migrate_from_v1_is_noop_when_current() {
         let conn = open_in_memory().unwrap();
-        // Running migrate a second time must leave user_version at 3 without error.
+        // Running migrate a second time must leave user_version at 4 without error.
         super::migrate(&conn).unwrap();
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 3);
+        assert_eq!(ver, 4);
     }
 
     #[test]
@@ -226,7 +250,7 @@ mod tests {
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 3);
+        assert_eq!(post, 4);
     }
 
     #[test]
@@ -259,7 +283,7 @@ mod tests {
     }
 
     #[test]
-    fn open_in_memory_has_v2_tables_and_user_version_3() {
+    fn open_in_memory_has_v2_tables_and_user_version_4() {
         let conn = open_in_memory().unwrap();
         let v2_count: i64 = conn
             .query_row(
@@ -273,23 +297,23 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 3);
+        assert_eq!(ver, 4);
     }
 
     #[test]
     fn upgrade_from_v1_to_v2() {
-        // Open at v1 (no tag_aliases/tag_parents), then run migrate to reach v3.
+        // Open at v1 (no tag_aliases/tag_parents), then run migrate to reach v4.
         let conn = open_at_version(1).unwrap();
         let pre: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(pre, 1);
-        // Run full migration — should add v2 tables and v3 columns.
+        // Run full migration — should add v2 tables, v3 columns, and v4 series tables.
         super::migrate(&conn).unwrap();
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 3);
+        assert_eq!(post, 4);
         let v2_count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table'
@@ -319,10 +343,10 @@ mod tests {
             .unwrap();
         assert_eq!(has_col, 0, "metadata_source must not exist before v3 migration");
 
-        // Run the full migration to reach v3.
+        // Run the full migration to reach v4.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 3);
+        assert_eq!(post, 4);
 
         // Now both tables must have the column.
         let works_col: i64 = conn
@@ -361,5 +385,45 @@ mod tests {
             .query_row("SELECT metadata_source FROM works WHERE base_title='Test Work'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(src, "filename");
+    }
+
+    #[test]
+    fn upgrade_from_v3() {
+        // Open at v3 (no series tables), then upgrade to v4 and confirm the tables exist.
+        let conn = open_at_version(3).unwrap();
+        let pre: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(pre, 3);
+
+        // series / work_series_membership must NOT exist yet at v3.
+        let no_series: i64 = conn.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(no_series, 0, "series tables must not exist before v4 migration");
+
+        // Run the full migration to reach v4.
+        super::migrate(&conn).unwrap();
+        let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(post, 4);
+
+        // Both tables must now exist.
+        let series_count: i64 = conn.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(series_count, 2, "both series tables must exist after v4");
+    }
+
+    #[test]
+    fn open_at_version_3_lacks_series_tables() {
+        let conn = open_at_version(3).unwrap();
+        let ver: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(ver, 3);
+
+        let count: i64 = conn.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(count, 0, "series tables must not exist at v3");
     }
 }
