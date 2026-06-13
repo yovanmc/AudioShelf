@@ -272,6 +272,20 @@ describe("SettingsView — Library tools", () => {
   });
 });
 
+describe("SettingsView — Settings group headings", () => {
+  it("shows Curation and Maintenance group headings on non-first-run", () => {
+    render(<SettingsView {...baseSettingsProps()} />);
+    expect(screen.getByText("Curation")).toBeInTheDocument();
+    expect(screen.getByText("Maintenance")).toBeInTheDocument();
+  });
+
+  it("does not show group headings on first run", () => {
+    render(<SettingsView {...baseSettingsProps({ firstRun: true })} />);
+    expect(screen.queryByText("Curation")).toBeNull();
+    expect(screen.queryByText("Maintenance")).toBeNull();
+  });
+});
+
 describe("SettingsView — Accessibility section", () => {
   it("renders the Accessibility section when onA11yChange is provided", () => {
     render(<SettingsView {...baseSettingsProps()} />);

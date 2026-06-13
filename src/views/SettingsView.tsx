@@ -231,6 +231,8 @@ export function SettingsView(props: {
         </p>
       )}
 
+      {!firstRun && <h2 className="settings-group">Library</h2>}
+
       <Card className="settings-root" style={{ padding: 24 }}>
         <h2>Library folder</h2>
         {root ? <p className="current-root">{root}</p> : <p>No library folder chosen yet.</p>}
@@ -272,6 +274,8 @@ export function SettingsView(props: {
           {lastScan.chapters} chapters.
         </Notice>
       )}
+
+      {!firstRun && <h2 className="settings-group">Display</h2>}
 
       {!firstRun && props.onDensityChange && (
         <Card style={{ padding: 24, marginTop: 16 }}>
@@ -414,6 +418,8 @@ export function SettingsView(props: {
         </Card>
       )}
 
+      {!firstRun && <h2 className="settings-group">Curation</h2>}
+
       {!firstRun && props.tagStats !== undefined && props.onRenameTag && props.onMergeTags && props.onSetTagAlias && props.onClearTagAlias && (
         <Card style={{ padding: 24, marginTop: 16 }}>
           <h2>Tag manager</h2>
@@ -455,6 +461,8 @@ export function SettingsView(props: {
           onReorderCollections={props.onReorderCollections}
         />
       )}
+
+      {!firstRun && <h2 className="settings-group">Maintenance</h2>}
 
       {!firstRun && (props.onExportJson || props.onExportSnapshot || props.onImportJson || props.onRestoreSnapshot || props.onHealthScan) && (
         <Card className="backup-maintenance" style={{ padding: 24, marginTop: 16 }}>
