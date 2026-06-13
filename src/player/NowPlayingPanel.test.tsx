@@ -119,6 +119,18 @@ describe("NowPlayingPanel", () => {
     expect(currentBtn).toHaveAttribute("aria-current", "true");
   });
 
+  it("shows 'Not played' visually-hidden label for unplayed chapters", () => {
+    const chapters: import("../lib/api").ChapterRow[] = [
+      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
+      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [], userSummary: "", takeaway: "", isFavorite: false },
+    ];
+    render(<NowPlayingPanel {...props({ chapters })} />);
+    // Unplayed chapter has a "Not played" SR label in the dot
+    expect(screen.getByText("Not played")).toBeInTheDocument();
+    // Played chapter has a "Played" SR label in the dot
+    expect(screen.getByText("Played")).toBeInTheDocument();
+  });
+
   it("clicking a chapter calls onJumpToChapter with that chapter", async () => {
     const chapters: import("../lib/api").ChapterRow[] = [
       { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },

@@ -1,7 +1,13 @@
-import { WorkCard } from "./WorkCard";
+import { WorkCard, type WorkPlayStatus } from "./WorkCard";
 import { CreatorIdentity } from "./CreatorIdentity";
 import { SectionHeading } from "./ui";
 import type { HomeShelf, ShelfItem } from "../lib/shelves";
+
+function dormantStatus(playedFraction: number): WorkPlayStatus {
+  if (playedFraction >= 1) return "done";
+  if (playedFraction <= 0) return "unstarted";
+  return "in-progress";
+}
 
 export function Shelf({
   shelf, items, onOpenAuthor, onPlayNextOfWork,
@@ -26,6 +32,7 @@ export function Shelf({
               authorName={item.authorName}
               tags={item.tags}
               meta={item.unplayedCount > 0 ? `${item.unplayedCount} unplayed` : "All played"}
+              playStatus={item.unplayedCount === 0 ? "done" : "in-progress"}
               onOpenAuthor={() => onOpenAuthor(item.authorId)}
               onPlay={onPlayNextOfWork ? () => onPlayNextOfWork(item.workId, item.authorId) : undefined}
             />
@@ -38,6 +45,7 @@ export function Shelf({
               authorName={item.authorName}
               progress={Math.round(item.playedFraction * 100)}
               meta={`${Math.round(item.playedFraction * 100)}% played`}
+              playStatus={dormantStatus(item.playedFraction)}
               onOpenAuthor={() => onOpenAuthor(item.authorId)}
               onPlay={onPlayNextOfWork ? () => onPlayNextOfWork(item.workId, item.authorId) : undefined}
             />

@@ -41,13 +41,13 @@ export function PlayerBar(props: PlayerBarProps) {
   const context = props.context;
   if (!context) return null;
   return (
-    <div className="player-bar">
+    <div className="player-bar" role="region" aria-label="Audio player">
       <div className="player-bar__track">
         <WorkArtwork workId={context.workId} title={context.workTitle} size={58} />
-        <div>
+        <div role="region" aria-label="Now playing" aria-live="polite">
           <CreatorIdentity authorId={context.authorId} authorName={context.authorName} size={26} onOpen={() => props.onOpenAuthor(context.authorId)} />
-          <div><strong>{context.workTitle}</strong></div>
-          <div className="muted">{context.chapter.title} · <span className="player-bar__chapter-pos">Chapter {context.chapter.chapterNo} of {context.workTotalChapters}</span></div>
+          <div><strong dir="auto">{context.workTitle}</strong></div>
+          <div className="muted"><span dir="auto">{context.chapter.title}</span> · <span className="player-bar__chapter-pos">Chapter {context.chapter.chapterNo} of {context.workTotalChapters}</span></div>
         </div>
       </div>
       <div>

@@ -1,11 +1,17 @@
 import type { DormantWork, HomeData, PlaybackContext } from "../lib/api";
-import { WorkCard } from "../components/WorkCard";
+import { WorkCard, type WorkPlayStatus } from "../components/WorkCard";
 import { Button, EmptyState, PageHeader, SectionHeading, StatCard } from "../components/ui";
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { Shelf } from "../components/Shelf";
 import { keepListeningPercent, recommendationPercent } from "../lib/home";
 import { formatLong, formatRelative } from "../lib/time";
 import type { HomeShelf, ShelfItem } from "../lib/shelves";
+
+function workPlayStatus(totalChapters: number, unplayedCount: number): WorkPlayStatus {
+  if (unplayedCount === 0) return "done";
+  if (unplayedCount >= totalChapters) return "unstarted";
+  return "in-progress";
+}
 
 export function HomeView(props: {
   home: HomeData | null;
@@ -70,6 +76,7 @@ export function HomeView(props: {
             onOpenAuthor={() => props.onOpenAuthor(keepListening.authorId)}
             menuItems={[{ label: "View creator", onSelect: () => props.onOpenAuthor(keepListening.authorId) }]}
             menuOpen={props.featureMenuOpen}
+            playStatus="in-progress"
           />
         </section>
       )}
@@ -117,6 +124,7 @@ export function HomeView(props: {
                 onAction={() => props.onOpenAuthor(work.authorId)}
                 onOpenAuthor={() => props.onOpenAuthor(work.authorId)}
                 onPlay={props.onPlayNextOfWork ? () => props.onPlayNextOfWork!(work.workId, work.authorId) : undefined}
+                playStatus={workPlayStatus(work.totalChapters, work.unplayedCount)}
               />
             ))}
           </div>

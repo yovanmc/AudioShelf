@@ -6,9 +6,11 @@ body {
     radial-gradient(circle at 75% -15%, rgb(33 139 255 / 14%), transparent 36%),
     var(--color-bg);
   color: var(--color-text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 15px;
-  line-height: 1.5;
+  font-family: var(--font-family);
+  font-size: calc(16px * var(--font-scale));
+  letter-spacing: var(--letter-spacing);
+  word-spacing: var(--word-spacing);
+  line-height: var(--line-height);
 }
 button, input, select, textarea { color: inherit; font: inherit; }
 button { cursor: pointer; }
@@ -31,10 +33,16 @@ input, select, textarea {
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 1ms !important;
+    animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
   .work-card:hover, .work-card:hover .work-artwork { transform: none !important; }
+}
+[data-reduced-motion="true"] *, [data-reduced-motion="true"] *::before, [data-reduced-motion="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
 }

@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SettingsView } from "./SettingsView";
 import type { HomeShelf } from "../lib/shelves";
+import { DEFAULT_A11Y } from "../lib/a11y";
 
 describe("SettingsView", () => {
   it("shows the current root and last scan counts when a library is set", () => {
@@ -16,6 +17,8 @@ describe("SettingsView", () => {
         onChooseFolder={vi.fn()}
         onRescan={vi.fn()}
         onBack={vi.fn()}
+        a11y={DEFAULT_A11Y}
+        onA11yChange={() => {}}
       />,
     );
     expect(screen.getByText("C:/Audio/Library")).toBeInTheDocument();
@@ -35,6 +38,8 @@ describe("SettingsView", () => {
         onChooseFolder={onChooseFolder}
         onRescan={vi.fn()}
         onBack={vi.fn()}
+        a11y={DEFAULT_A11Y}
+        onA11yChange={() => {}}
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: /choose .*folder/i }));
@@ -52,6 +57,8 @@ describe("SettingsView", () => {
         onChooseFolder={vi.fn()}
         onRescan={vi.fn()}
         onBack={vi.fn()}
+        a11y={DEFAULT_A11Y}
+        onA11yChange={() => {}}
       />,
     );
     expect(screen.getByText(/welcome to audioshelf/i)).toBeInTheDocument();
@@ -71,6 +78,8 @@ describe("SettingsView", () => {
         onChooseFolder={vi.fn()}
         onRescan={vi.fn()}
         onBack={vi.fn()}
+        a11y={DEFAULT_A11Y}
+        onA11yChange={() => {}}
       />,
     );
     expect(screen.getByText(/scanning…/i)).toBeInTheDocument();
@@ -89,6 +98,8 @@ describe("SettingsView", () => {
         onChooseFolder={vi.fn()}
         onRescan={vi.fn()}
         onBack={vi.fn()}
+        a11y={DEFAULT_A11Y}
+        onA11yChange={() => {}}
       />,
     );
     expect(screen.getByText(/cannot find the path/i)).toBeInTheDocument();
@@ -104,6 +115,8 @@ function baseSettingsProps(over: Partial<React.ComponentProps<typeof SettingsVie
     firstRun: false,
     onChooseFolder: vi.fn(),
     onRescan: vi.fn(),
+    a11y: DEFAULT_A11Y,
+    onA11yChange: vi.fn(),
     ...over,
   };
 }
@@ -224,5 +237,51 @@ describe("SettingsView — Home shelves", () => {
       />,
     );
     expect(screen.getByText(/no shelves yet/i)).toBeInTheDocument();
+  });
+});
+
+describe("SettingsView — Accessibility section", () => {
+  it("renders the Accessibility section when onA11yChange is provided", () => {
+    render(<SettingsView {...baseSettingsProps()} />);
+    expect(screen.getByText(/^Accessibility$/i)).toBeInTheDocument();
+  });
+
+  it("shows theme buttons with the active theme pressed", () => {
+    render(<SettingsView {...baseSettingsProps({ a11y: { ...DEFAULT_A11Y, theme: "light" } })} />);
+    expect(screen.getByRole("button", { name: /^Light$/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /^Dark$/ })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("calls onA11yChange with updated theme when a theme button is clicked", async () => {
+    const onA11yChange = vi.fn();
+    render(<SettingsView {...baseSettingsProps({ onA11yChange })} />);
+    await userEvent.click(screen.getByRole("button", { name: /^Light$/ }));
+    expect(onA11yChange).toHaveBeenCalledWith(expect.objectContaining({ theme: "light" }));
+  });
+
+  it("calls onA11yChange with updated textSize when a text size button is clicked", async () => {
+    const onA11yChange = vi.fn();
+    render(<SettingsView {...baseSettingsProps({ onA11yChange })} />);
+    await userEvent.click(screen.getByRole("button", { name: /^Large$/ }));
+    expect(onA11yChange).toHaveBeenCalledWith(expect.objectContaining({ textSize: "large" }));
+  });
+
+  it("calls onA11yChange toggling dyslexiaFont when the checkbox is clicked", async () => {
+    const onA11yChange = vi.fn();
+    render(<SettingsView {...baseSettingsProps({ onA11yChange })} />);
+    await userEvent.click(screen.getByLabelText(/dyslexia-friendly font/i));
+    expect(onA11yChange).toHaveBeenCalledWith(expect.objectContaining({ dyslexiaFont: true }));
+  });
+
+  it("calls onA11yChange toggling reducedMotion when the checkbox is clicked", async () => {
+    const onA11yChange = vi.fn();
+    render(<SettingsView {...baseSettingsProps({ onA11yChange })} />);
+    await userEvent.click(screen.getByLabelText(/reduce motion/i));
+    expect(onA11yChange).toHaveBeenCalledWith(expect.objectContaining({ reducedMotion: true }));
+  });
+
+  it("does not render the Accessibility section on first run", () => {
+    render(<SettingsView {...baseSettingsProps({ firstRun: true })} />);
+    expect(screen.queryByText(/^Accessibility$/i)).toBeNull();
   });
 });

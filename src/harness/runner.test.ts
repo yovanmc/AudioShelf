@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -110,6 +110,22 @@ describe("m19Steps", () => {
     }).map((s) => s.name)).toEqual([
       "command-palette", "scoped-search", "saved-searches", "collections",
       "bulk-select", "density-spacious", "chapter-sort", "backup-maintenance", "health-report",
+    ]);
+  });
+});
+
+describe("m20Steps", () => {
+  it("captures the eleven M20 accessibility surfaces in order", () => {
+    const noop = async () => {};
+    expect(m20Steps({
+      showThemeLight: noop, showThemeHighContrast: noop, showTextLarge: noop,
+      showDyslexiaFont: noop, showReducedMotion: noop, showColorblindStatus: noop,
+      showSkipLinkFocus: noop, showSrTree: noop, showRtlLayout: noop,
+      showMiniPlayer: noop, showAccessibilitySettings: noop,
+    }).map((s) => s.name)).toEqual([
+      "theme-light", "theme-high-contrast", "text-large", "dyslexia-font",
+      "reduced-motion", "colorblind-status", "skip-link-focus", "sr-tree",
+      "rtl-layout", "mini-player", "a11y-settings",
     ]);
   });
 });

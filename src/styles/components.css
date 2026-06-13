@@ -29,14 +29,16 @@
 .work-card__art .work-artwork { width: 100% !important; height: 100% !important; transition: transform var(--motion-slow) var(--ease-standard); }
 .work-card:hover .work-artwork { transform: scale(1.035); }
 .work-card__title { margin: 0; font-size: 1.15rem; }
-.work-card__reason { font-size: .88rem; font-weight: 650; }
+.work-card__reason { display: flex; align-items: center; gap: var(--space-1); font-size: .88rem; font-weight: 650; }
 .work-card__reason--affinity { color: var(--color-accent); }
 .work-card__reason--progress { color: var(--color-text-muted); }
+.work-card__status-icon { display: inline-flex; align-items: center; flex: none; }
+.work-card__status-icon-svg { width: 14px; height: 14px; }
 .work-card__actions { display: flex; align-items: center; gap: var(--space-2); margin-top: auto; }
 .creator-identity { display: inline-flex; min-width: 0; align-items: center; gap: var(--space-2); color: var(--color-text-muted); }
 .creator-identity__copy { display: flex; min-width: 0; flex-direction: column; }
 .creator-identity__name { overflow: hidden; color: var(--color-text); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-button.creator-identity { border: 0; padding: 0; background: none; text-align: left; }
+button.creator-identity { border: 0; padding: 0; background: none; text-align: start; }
 .artwork {
   display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center;
   overflow: hidden; background: var(--color-surface-raised); color: #fff; font-weight: 750;
@@ -52,7 +54,7 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 .badge-ok { background: var(--color-accent); color: #fff; }
 .progress { overflow: hidden; height: 6px; border-radius: 99px; background: var(--color-surface-hover); }
 .progress__value { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--color-accent), #66c5ff); transition: width var(--motion-slow) var(--ease-standard); }
-.stat-card { padding: var(--space-4); text-align: left; }
+.stat-card { padding: var(--space-4); text-align: start; }
 .stat-card__value { font-size: 1.7rem; font-weight: 780; }
 .stat-card__label { color: var(--color-text-muted); font-size: .82rem; }
 .empty-state, .notice { padding: var(--space-5); }
@@ -61,25 +63,25 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 .notice--success { border-color: rgb(57 184 160 / 55%); }
 .menu { position: relative; display: inline-flex; }
 .menu__popover {
-  position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; min-width: 190px;
+  position: absolute; z-index: 40; top: calc(100% + 6px); inset-inline-end: 0; min-width: 190px;
   border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); padding: 5px;
   background: var(--color-surface-raised); box-shadow: var(--shadow-overlay);
 }
-.menu__item { width: 100%; border: 0; border-radius: 6px; padding: 9px 10px; background: none; text-align: left; }
+.menu__item { width: 100%; border: 0; border-radius: 6px; padding: 9px 10px; background: none; text-align: start; }
 .menu__item:hover, .menu__item:focus { background: var(--color-surface-hover); }
 .view-section { margin-bottom: var(--space-6); }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); }
 .data-table { width: 100%; border-collapse: collapse; }
-.data-table th, .data-table td { border-bottom: 1px solid var(--color-border); padding: 10px 12px; text-align: left; }
+.data-table th, .data-table td { border-bottom: 1px solid var(--color-border); padding: 10px 12px; text-align: start; }
 .settings-root { max-width: 640px; }
 .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .chips--end { margin-inline-start: auto; justify-content: flex-end; }
 .dialog { position: relative; }
-.dialog__close { position: absolute; top: var(--space-3); right: var(--space-3); }
+.dialog__close { position: absolute; top: var(--space-3); inset-inline-end: var(--space-3); }
 .chip--toggle { cursor: pointer; }
 .chip--on { background: var(--color-accent); color: #fff; }
-.player-bar__utility { gap: var(--space-3); border-left: 1px solid var(--color-border); padding-left: var(--space-4); }
+.player-bar__utility { gap: var(--space-3); border-inline-start: 1px solid var(--color-border); padding-inline-start: var(--space-4); }
 .player-bar__chapter-pos { font-size: 0.82em; }
 .now-playing__work-link h1 { cursor: pointer; }
 .now-playing__work-link h1:hover { color: var(--color-accent-hover); }
@@ -90,14 +92,27 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 .chapter-jump:hover { background: var(--color-surface-hover); }
 .chapter-jump--current { background: var(--color-accent-soft); }
 .chapter-jump__title { flex: 1; }
-.chapter-jump__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-border-strong); flex: none; }
-.chapter-jump__dot--played { background: var(--color-accent); }
+/* chapter-jump status indicator: shape-distinct so colorblind users can tell
+   played vs unplayed without relying on color alone.
+   - Unplayed: a hollow ring (circle icon, muted border color, no fill)
+   - Played:   a solid check icon (accent color, high contrast)
+   The icon IS the indicator; no solid disc background is used. */
+.chapter-jump__dot { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex: none; color: var(--color-text-muted); }
+.chapter-jump__dot--played { color: var(--color-accent); }
+.chapter-jump__dot-icon { width: 18px; height: 18px; }
 .button:focus-visible, .icon-button:focus-visible, .chip--toggle:focus-visible,
 .sidebar__item:focus-visible, input:focus-visible, [role="menuitem"]:focus-visible,
-.time-label:focus-visible {
+.time-label:focus-visible, a:focus-visible, select:focus-visible,
+[role="treeitem"]:focus-visible, [tabindex="0"]:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
+.skip-link {
+  position: absolute; inset-inline-start: var(--space-3); top: -48px; z-index: 1000;
+  background: var(--color-accent); color: #fff; padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm); transition: top var(--motion-fast) var(--ease-standard);
+}
+.skip-link:focus { top: var(--space-3); }
 .card-row { display: flex; gap: var(--space-4); overflow-x: auto; padding-bottom: var(--space-2); scroll-snap-type: x proximity; }
 .card-row > * { flex: 0 0 220px; scroll-snap-align: start; }
 .shelf-creator { display: flex; align-items: center; padding: var(--space-3); }
@@ -117,7 +132,7 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 .palette__empty { padding: 14px; color: var(--color-text-muted); text-align: center; }
 /* ---- Scoped search (M19) ---- */
 .scoped-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); }
-.scoped-count { font-size: .82rem; color: var(--color-text-muted); margin-left: auto; }
+.scoped-count { font-size: .82rem; color: var(--color-text-muted); margin-inline-start: auto; }
 .work-card--selected { border-color: var(--color-accent); background-color: var(--color-accent-soft); }
 .work-card__check { font-size: 1.1rem; margin-bottom: var(--space-1); }
 .work-card__sub { font-size: .85rem; color: var(--color-text-muted); }
@@ -142,10 +157,31 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 [data-density="spacious"]    .card-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 /* ---- Smart collections (M19) ---- */
 .collection-list { list-style: none; margin: var(--space-4) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
-.collection-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); width: 100%; padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; text-align: left; color: inherit; }
+.collection-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); width: 100%; padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; text-align: start; color: inherit; }
 .collection-row:hover { background: var(--color-surface-hover); }
 .collection-row__name { font-weight: 600; color: var(--color-text); }
 .collection-row__query { font-size: 0.85rem; color: var(--color-text-muted); background: transparent; padding: 0; }
 /* ---- Backup & maintenance / health report (M19) ---- */
 .backup-maintenance { scroll-margin-top: var(--space-4); }
 .health-report { scroll-margin-top: var(--space-4); }
+/* ---- Mini player (M20 Task 11) ---- */
+.mini-player {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3); height: 100%; box-sizing: border-box;
+  background: var(--color-surface); overflow: hidden; user-select: none;
+  -webkit-app-region: drag;
+}
+.mini-player__art {
+  flex: 0 0 56px; width: 56px; height: 56px; border-radius: var(--radius-sm);
+  overflow: hidden; background: var(--color-surface-raised); display: flex;
+  align-items: center; justify-content: center; color: var(--color-text-muted);
+  font-size: 1.4rem; -webkit-app-region: no-drag;
+}
+.mini-player__art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.mini-player__meta { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mini-player__title { font-size: 0.82rem; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-player__author { font-size: 0.75rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-player__progress { height: 2px; border-radius: 99px; background: var(--color-surface-hover); margin-top: var(--space-1); }
+.mini-player__progress-fill { height: 100%; border-radius: inherit; background: var(--color-accent); transition: width 0.5s linear; }
+.mini-player__controls { display: flex; align-items: center; gap: var(--space-1); flex: none; -webkit-app-region: no-drag; }
+.mini-player__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted); font-size: 0.85rem; background: var(--color-surface); }

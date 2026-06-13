@@ -1,7 +1,8 @@
 import type { PlaybackContext, ChapterRow, ChapterJournal, ChapterBookmark } from "../lib/api";
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
-import { Button, Dialog, ProgressBar } from "../components/ui";
+import { Button, Dialog, IconButton, ProgressBar } from "../components/ui";
+import { Icon } from "../components/Icon";
 import { formatTime, timeLabel, type TimeLabelMode } from "./playback";
 import { PlaybackButtons, type PlayerControls } from "./PlayerBar";
 
@@ -32,6 +33,8 @@ export function NowPlayingPanel(props: PlayerControls & {
   onToggleFavorite?: (isFavorite: boolean) => void;
   /** Jump to a bookmark (seek or load-then-seek). */
   onJumpToBookmark?: (b: ChapterBookmark) => void;
+  /** Open the always-on-top mini player window. */
+  onPopOut?: () => void;
 }) {
   const { context } = props;
   const progress = context.workTotalChapters > 0
@@ -53,15 +56,20 @@ export function NowPlayingPanel(props: PlayerControls & {
             onClick={() => props.onOpenAuthor(context.authorId)}
             style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer" }}
           >
-            <h1 style={{ margin: 0 }}>{context.workTitle}</h1>
+            <h1 style={{ margin: 0 }} dir="auto">{context.workTitle}</h1>
           </button>
           <CreatorIdentity authorId={context.authorId} authorName={context.authorName} size={44} onOpen={() => props.onOpenAuthor(context.authorId)} />
-          <p>{context.chapter.title} · Chapter {context.chapter.chapterNo}</p>
+          <p><span dir="auto">{context.chapter.title}</span> · Chapter {context.chapter.chapterNo}</p>
           <p className="muted" style={{ fontSize: "0.9rem", margin: 0 }}>
             Chapter {context.chapter.chapterNo} of {context.workTotalChapters}
           </p>
           <ProgressBar value={progress} label="Work progress" />
           <PlaybackButtons {...props} />
+          {props.onPopOut && (
+            <div style={{ marginTop: "var(--space-2)" }}>
+              <IconButton icon="expand" label="Open mini player" onClick={props.onPopOut} />
+            </div>
+          )}
           <div className="player-bar__seek">
             <button type="button" className="time-label" title="Toggle time display" onClick={props.onCycleTimeLabel}>
               {timeLabel(props.timeLabelMode ?? "elapsed", props.currentTime, props.duration)}
@@ -84,9 +92,12 @@ export function NowPlayingPanel(props: PlayerControls & {
                         className={`chapter-jump${isCurrent ? " chapter-jump--current" : ""}`}
                         aria-current={isCurrent ? "true" : undefined}
                         onClick={() => props.onJumpToChapter?.(c)}>
-                        <span className={`chapter-jump__dot${c.played ? " chapter-jump__dot--played" : ""}`} aria-hidden />
-                        <span className="chapter-jump__title">Ch {c.chapterNo} — {c.title}</span>
-                        {c.played ? <span className="muted">played</span> : null}
+                        <span className={`chapter-jump__dot${c.played ? " chapter-jump__dot--played" : ""}`}>
+                          <Icon name={c.played ? "check" : "circle"} className="chapter-jump__dot-icon" />
+                          <span className="visually-hidden">{c.played ? "Played" : "Not played"}</span>
+                        </span>
+                        <span className="chapter-jump__title" dir="auto">Ch {c.chapterNo} — {c.title}</span>
+                        {c.played ? <span className="muted" aria-hidden="true">played</span> : null}
                       </button>
                     </li>
                   );

@@ -381,6 +381,9 @@ export const exportDbSnapshot = (path: string) => invoke("export_db_snapshot", {
 export const importCurationJson = (path: string) => invoke<ImportReport>("import_curation_json", { path });
 export const stageDbRestore = (src: string) => invoke("stage_db_restore", { src });
 
+export const openMiniPlayer = () => invoke("open_mini_player");
+export const closeMiniPlayer = () => invoke("close_mini_player");
+
 /**
  * Open the OS folder picker. Resolves to the chosen absolute path, or `null` if
  * the user cancelled. `directory: true` + default `multiple: false` yields a

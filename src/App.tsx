@@ -21,6 +21,7 @@ import {
   listCollections, createCollection, deleteCollection, reorderCollections, resolveCollection,
   bulkSetWorkTags, setWorkChapterSort,
   exportCurationJson, exportDbSnapshot, importCurationJson, stageDbRestore, libraryHealthScan,
+  openMiniPlayer,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
@@ -43,12 +44,13 @@ import { ScanView } from "./views/ScanView";
 import { CollectionsView } from "./components/CollectionsView";
 import { BulkTagDialog } from "./components/BulkTagDialog";
 import { PlayerBar } from "./player/PlayerBar";
+import { MiniPlayer } from "./player/MiniPlayer";
 import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -57,6 +59,7 @@ import {
   type WorkSort,
 } from "./lib/browse";
 import { parseDensity, type Density } from "./lib/density";
+import { parseA11yPrefs, DEFAULT_A11Y, type A11yPrefs } from "./lib/a11y";
 import {
   parseHomeShelves,
   serializeHomeShelves,
@@ -64,6 +67,8 @@ import {
   type HomeShelf,
   type ShelfItem,
 } from "./lib/shelves";
+import { applyMediaSession, updatePosition, type NowPlayingMeta } from "./lib/mediaSession";
+import { emit, listen } from "@tauri-apps/api/event";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -156,6 +161,7 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(false);
   const [harnessMenuOpen, setHarnessMenuOpen] = useState(false);
   const [density, setDensity] = useState<Density>("comfortable");
+  const [a11y, setA11y] = useState<A11yPrefs>(DEFAULT_A11Y);
 
   // ---- library search (controlled; spans authors/works/chapters) ----
   const [query, setQuery] = useState("");
@@ -240,6 +246,9 @@ export default function App() {
   const routeRef = useRef<Route>(route);
   routeRef.current = route;
 
+  // ---- M20: harness-only mini-player overlay ----
+  const [harnessMiniPlayer, setHarnessMiniPlayer] = useState(false);
+
   // ---- M16 Task 11: intelligence UI state ----
   const [dormantWorks, setDormantWorks] = useState<DormantWork[]>([]);
   const [moreLikeThisMap, setMoreLikeThisMap] = useState<Record<number, DiscoveryWork[]>>({});
@@ -293,6 +302,8 @@ export default function App() {
     setDensity(d);
     void setSetting("library_density", d);
   }
+
+  const updateA11y = (next: A11yPrefs) => { setA11y(next); void setSetting("a11y_prefs", JSON.stringify(next)); };
 
   async function loadHome() {
     const now = Date.now();
@@ -912,6 +923,7 @@ export default function App() {
       setSidebarCollapsedState((await getSetting("sidebar_collapsed")) === "true");
       setHomeShelves(parseHomeShelves(await getSetting("home_shelves")).shelves);
       setDensity(parseDensity(await getSetting("library_density")));
+      setA11y(parseA11yPrefs(await getSetting("a11y_prefs")));
 
       if (args.autostart && args.walkthrough) {
         const openFirstAuthor = async () => {
@@ -1616,6 +1628,124 @@ export default function App() {
                   await settle();
                 },
               })
+            : args.walkthrough === "m20"
+            ? m20Steps({
+                // Step 1: force-reset a11y to known baseline, then switch to light theme.
+                // Also reset dir to LTR in case any prior run left it as RTL.
+                showThemeLight: async () => {
+                  document.documentElement.dir = "ltr";
+                  setA11y({ ...DEFAULT_A11Y, theme: "light" });
+                  setHarnessMiniPlayer(false);
+                  await loadHome();
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
+                // Step 2: high-contrast theme.
+                showThemeHighContrast: async () => {
+                  setA11y({ ...DEFAULT_A11Y, theme: "high-contrast" });
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
+                // Step 3: XLarge text size (most visible diff).
+                showTextLarge: async () => {
+                  setA11y({ ...DEFAULT_A11Y, textSize: "xlarge" });
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
+                // Step 4: dyslexia font — navigate to Settings so the multi-line
+                // card descriptions (section h2 + muted paragraphs) render in the
+                // wider Verdana face with visibly looser letter-spacing and taller
+                // line-height across several wrapped text rows.
+                showDyslexiaFont: async () => {
+                  setPlayerExpanded(false);
+                  setA11y({ ...DEFAULT_A11Y, dyslexiaFont: true });
+                  setRoute({ kind: "settings", firstRun: false });
+                  await settle();
+                },
+                // Step 5: reduced-motion on; navigate to Settings so the toggle is visibly ON.
+                showReducedMotion: async () => {
+                  setA11y({ ...DEFAULT_A11Y, reducedMotion: true });
+                  setRoute({ kind: "settings", firstRun: false });
+                  await settle();
+                  document.querySelector(".a11y-section")?.scrollIntoView({ block: "start" });
+                  await settle();
+                },
+                // Step 6: colorblind-safe status icons — open the NowPlayingPanel "In
+                // this work" chapter list, which uses explicit check/circle shape icons
+                // (not color alone) for played vs. unplayed status.
+                showColorblindStatus: async () => {
+                  setA11y({ ...DEFAULT_A11Y });
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  // Pick the work with the most chapters so the list is populated.
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  setDetail(creator);
+                  setRoute({ kind: "author" });
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((item) => item.played).length,
+                  });
+                  setPlayerExpanded(true);
+                  await settle(); // let currentWorkChapters fetch resolve
+                },
+                // Step 7: focus the skip link so it slides into view (top: var(--space-3)).
+                // Close the Now Playing panel opened by step 6 before navigating.
+                showSkipLinkFocus: async () => {
+                  setPlayerExpanded(false);
+                  setA11y({ ...DEFAULT_A11Y });
+                  await loadHome();
+                  setRoute({ kind: "home" });
+                  await settle();
+                  document.querySelector<HTMLElement>(".skip-link")?.focus();
+                  await settle();
+                },
+                // Step 8: navigate to Author/Creator Detail — the role="tree" work/chapter
+                // browse tree is rendered there. Close the Now Playing panel first.
+                showSrTree: async () => {
+                  setPlayerExpanded(false);
+                  setA11y({ ...DEFAULT_A11Y });
+                  const list = await getAuthors();
+                  if (list.length > 0) await openAuthor(list[0].id);
+                  await settle();
+                },
+                // Step 9: RTL layout — proves nothing collapses under RTL.
+                showRtlLayout: async () => {
+                  setA11y({ ...DEFAULT_A11Y });
+                  document.documentElement.dir = "rtl";
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
+                // Step 10: show the inline MiniPlayer overlay, then restore dir + a11y.
+                showMiniPlayer: async () => {
+                  document.documentElement.dir = "ltr";
+                  setA11y({ ...DEFAULT_A11Y });
+                  setRoute({ kind: "home" });
+                  setHarnessMiniPlayer(true);
+                  await settle();
+                },
+                // Step 11: Accessibility settings section. Reset a11y to defaults first,
+                // then show Settings so controls render in their default state.
+                // Set harnessMiniPlayer false to remove the overlay.
+                showAccessibilitySettings: async () => {
+                  setHarnessMiniPlayer(false);
+                  setA11y({ ...DEFAULT_A11Y });
+                  setRoute({ kind: "settings", firstRun: false });
+                  await settle();
+                  document.querySelector(".a11y-section")?.scrollIntoView({ block: "start" });
+                  await settle();
+                },
+              })
             : browseSteps({
                 // Seed tags on a few authors + a played chapter so sort-by-length,
                 // played%, the tag filter, and the status filter all have signal.
@@ -1680,6 +1810,183 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Global playback keyboard shortcuts (Space = toggle, ArrowLeft/Right = skip).
+  // Uses refs so the empty-deps effect always sees the current values.
+  const toggleRef = useRef(toggle);
+  toggleRef.current = toggle;
+  const skipRef = useRef(skip);
+  skipRef.current = skip;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!currentRef.current) return;
+      // Space natively activates buttons/links/interactive-role elements — don't hijack it from them.
+      const role = t?.getAttribute("role");
+      const activatable = !!t && (t.tagName === "BUTTON" || t.tagName === "A" ||
+        role === "button" || role === "menuitem" || role === "tab" || role === "treeitem" || role === "option");
+      if (e.key === " ") {
+        if (activatable) return;          // let the focused control handle Space
+        e.preventDefault(); toggleRef.current();
+      } else if (e.key === "ArrowLeft")  { e.preventDefault(); skipRef.current(e.shiftKey ? -30 : -15); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); skipRef.current(e.shiftKey ?  30 :  15); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Media Session API — SMTC now-playing card + hardware media keys.
+  // currentWorkChaptersRef keeps the chapter list stable across renders so the
+  // prev/next handlers always see the current list without being in the dep array.
+  const currentWorkChaptersRef = useRef<typeof currentWorkChapters>(currentWorkChapters);
+  currentWorkChaptersRef.current = currentWorkChapters;
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
+
+  // Stable refs for prev/next chapter — shared by Media Session and mini-player command listener.
+  const playPrevChapterRef = useRef(() => {
+    const ctx = currentRef.current;
+    const chapters = currentWorkChaptersRef.current;
+    if (!ctx || chapters.length === 0) return;
+    const idx = chapters.findIndex((c) => c.id === ctx.chapter.id);
+    const prev = idx > 0 ? chapters[idx - 1] : chapters[0];
+    if (prev) {
+      playChapter({
+        chapter: prev,
+        authorId: ctx.authorId, authorName: ctx.authorName,
+        workId: ctx.workId, workTitle: ctx.workTitle,
+        workTotalChapters: chapters.length,
+        workPlayedChapters: chapters.filter((c) => c.played).length,
+      });
+    }
+  });
+  const playNextChapterRef = useRef(() => {
+    const ctx = currentRef.current;
+    const chapters = currentWorkChaptersRef.current;
+    if (!ctx || chapters.length === 0) return;
+    const idx = chapters.findIndex((c) => c.id === ctx.chapter.id);
+    const next = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1] : null;
+    if (next) {
+      playChapter({
+        chapter: next,
+        authorId: ctx.authorId, authorName: ctx.authorName,
+        workId: ctx.workId, workTitle: ctx.workTitle,
+        workTotalChapters: chapters.length,
+        workPlayedChapters: chapters.filter((c) => c.played).length,
+      });
+    }
+  });
+  // Keep the refs current each render so they always close over the latest playChapter.
+  playPrevChapterRef.current = () => {
+    const ctx = currentRef.current;
+    const chapters = currentWorkChaptersRef.current;
+    if (!ctx || chapters.length === 0) return;
+    const idx = chapters.findIndex((c) => c.id === ctx.chapter.id);
+    const prev = idx > 0 ? chapters[idx - 1] : chapters[0];
+    if (prev) {
+      playChapter({
+        chapter: prev,
+        authorId: ctx.authorId, authorName: ctx.authorName,
+        workId: ctx.workId, workTitle: ctx.workTitle,
+        workTotalChapters: chapters.length,
+        workPlayedChapters: chapters.filter((c) => c.played).length,
+      });
+    }
+  };
+  playNextChapterRef.current = () => {
+    const ctx = currentRef.current;
+    const chapters = currentWorkChaptersRef.current;
+    if (!ctx || chapters.length === 0) return;
+    const idx = chapters.findIndex((c) => c.id === ctx.chapter.id);
+    const next = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1] : null;
+    if (next) {
+      playChapter({
+        chapter: next,
+        authorId: ctx.authorId, authorName: ctx.authorName,
+        workId: ctx.workId, workTitle: ctx.workTitle,
+        workTotalChapters: chapters.length,
+        workPlayedChapters: chapters.filter((c) => c.played).length,
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    if (!current) {
+      applyMediaSession(
+        navigator.mediaSession as unknown as Parameters<typeof applyMediaSession>[0],
+        null, false,
+        { onPlay: () => {}, onPause: () => {}, onPrevChapter: () => {}, onNextChapter: () => {},
+          onSeekBackward: () => {}, onSeekForward: () => {}, onSeekTo: () => {} },
+      );
+      return;
+    }
+    const nowPlayingMeta: NowPlayingMeta = {
+      title: current.chapter.title,
+      author: current.authorName,
+      work: current.workTitle,
+      // artwork omitted: resolving cover URL requires an async fetch not suitable here.
+    };
+    applyMediaSession(
+      navigator.mediaSession as unknown as Parameters<typeof applyMediaSession>[0],
+      nowPlayingMeta,
+      isPlaying,
+      {
+        onPlay: () => { if (!isPlayingRef.current) toggleRef.current(); },
+        onPause: () => { if (isPlayingRef.current) toggleRef.current(); },
+        onPrevChapter: () => playPrevChapterRef.current(),
+        onNextChapter: () => playNextChapterRef.current(),
+        onSeekBackward: (s) => skipRef.current(-s),
+        onSeekForward: (s) => skipRef.current(s),
+        onSeekTo: (pos) => { if (audioRef.current) audioRef.current.currentTime = pos; },
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, isPlaying]);
+
+  // Mini-player: emit playback:state to the mini window.
+  // Immediate emit on track/play-state change; throttled (~1/sec) position update.
+  useEffect(() => {
+    const payload = currentRef.current ? {
+      title: currentRef.current.chapter.title,
+      author: currentRef.current.authorName,
+      artworkUrl: "",
+      isPlaying: isPlayingRef.current,
+      position: audioRef.current?.currentTime ?? 0,
+      duration: audioRef.current?.duration ?? 0,
+    } : null;
+    void emit("playback:state", payload);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, isPlaying]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const ctx = currentRef.current;
+      if (!ctx) return;
+      void emit("playback:state", {
+        title: ctx.chapter.title,
+        author: ctx.authorName,
+        artworkUrl: "",
+        isPlaying: isPlayingRef.current,
+        position: audioRef.current?.currentTime ?? 0,
+        duration: audioRef.current?.duration ?? 0,
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Mini-player: receive commands from the mini window.
+  useEffect(() => {
+    const un = listen<{ action: "toggle" | "prev" | "next" }>("miniplayer:command", (e) => {
+      const a = e.payload.action;
+      if (a === "toggle") toggleRef.current();
+      else if (a === "prev") playPrevChapterRef.current();
+      else if (a === "next") playNextChapterRef.current();
+    });
+    return () => { void un.then((f) => f()); };
   }, []);
 
   // Debounced command palette search (mirrors the 150ms library search pattern).
@@ -1860,6 +2167,8 @@ export default function App() {
           onReorderCollections={handleReorderCollections}
           density={density}
           onDensityChange={onDensityChange}
+          a11y={a11y}
+          onA11yChange={updateA11y}
           onExportJson={onExportJson}
           onExportSnapshot={onExportSnapshot}
           onImportJson={onImportJson}
@@ -1980,7 +2289,17 @@ export default function App() {
         ref={audioRef}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
-        onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+        onTimeUpdate={(e) => {
+          const t = e.currentTarget.currentTime;
+          setCurrentTime(t);
+          if ("mediaSession" in navigator) {
+            updatePosition(
+              navigator.mediaSession as unknown as Parameters<typeof updatePosition>[0],
+              e.currentTarget.duration || 0,
+              t,
+            );
+          }
+        }}
         onLoadedMetadata={(e) => {
           setDuration(e.currentTarget.duration || 0);
           if (pendingSeekRef.current != null) {
@@ -2005,6 +2324,7 @@ export default function App() {
           onInsights={openInsights}
           onCollections={openCollections}
           density={density}
+          a11y={a11y}
           player={player}
         >
           {view}
@@ -2020,6 +2340,20 @@ export default function App() {
         onOpenWorkAuthor={(authorId) => { void openAuthor(authorId); }}
         onPlayChapter={(id) => { void playChapterById(id); }}
       />
+      {harnessMiniPlayer && (
+        <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, background: "rgba(0,0,0,0.6)" }}>
+          <MiniPlayer
+            title="Chapter 3 — The Arrival"
+            author="Jane Doe"
+            isPlaying={true}
+            position={72}
+            duration={300}
+            onToggle={() => {}}
+            onPrev={() => {}}
+            onNext={() => {}}
+          />
+        </div>
+      )}
       {current && playerExpanded && (
         <NowPlayingPanel
           context={current}
@@ -2048,6 +2382,7 @@ export default function App() {
           onAddBookmarkHere={handleAddBookmarkHere}
           onToggleFavorite={handleToggleCurrentFavorite}
           onJumpToBookmark={jumpToBookmark}
+          onPopOut={() => { void openMiniPlayer(); }}
         />
       )}
     </div>

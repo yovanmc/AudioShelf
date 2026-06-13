@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AppShell } from "./AppShell";
+import { DEFAULT_A11Y } from "../lib/a11y";
 
 function props(overrides = {}) {
   return {
@@ -18,6 +19,7 @@ function props(overrides = {}) {
     onInsights: vi.fn(),
     onCollections: vi.fn(),
     density: "comfortable" as const,
+    a11y: DEFAULT_A11Y,
     children: <main>Page</main>,
     player: null,
     ...overrides,

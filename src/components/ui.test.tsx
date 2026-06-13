@@ -83,4 +83,37 @@ describe("Dialog", () => {
     );
     expect(screen.getByRole("button", { name: "Close Edit chapter" })).toBeInTheDocument();
   });
+
+  it("Tab wraps focus from last focusable to first", async () => {
+    const user = userEvent.setup();
+    render(
+      <Dialog label="Trap test" onClose={vi.fn()}>
+        <button>First</button>
+        <button>Second</button>
+      </Dialog>,
+    );
+    // The close button is first in DOM; "First" and "Second" follow.
+    const buttons = screen.getAllByRole("button");
+    // Focus the last button, then Tab → should wrap to first.
+    buttons[buttons.length - 1].focus();
+    expect(document.activeElement).toBe(buttons[buttons.length - 1]);
+    await user.tab();
+    expect(document.activeElement).toBe(buttons[0]);
+  });
+
+  it("Shift+Tab wraps focus from first focusable to last", async () => {
+    const user = userEvent.setup();
+    render(
+      <Dialog label="Trap test" onClose={vi.fn()}>
+        <button>First</button>
+        <button>Second</button>
+      </Dialog>,
+    );
+    const buttons = screen.getAllByRole("button");
+    // Focus the first button, then Shift+Tab → should wrap to last.
+    buttons[0].focus();
+    expect(document.activeElement).toBe(buttons[0]);
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(buttons[buttons.length - 1]);
+  });
 });

@@ -4428,3 +4428,31 @@ pub fn import_curation_json(state: tauri::State<DbState>, path: String) -> Resul
 pub fn stage_db_restore(db_path: tauri::State<DbPathState>, src: String) -> Result<(), String> {
     crate::backup::stage_db_restore(&db_path.0, &src)
 }
+
+#[tauri::command]
+pub fn open_mini_player(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+    if let Some(w) = app.get_webview_window("miniplayer") {
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, "miniplayer", WebviewUrl::App("index.html?miniplayer=1".into()))
+        .title("AudioShelf — Mini player")
+        .inner_size(340.0, 132.0)
+        .min_inner_size(280.0, 120.0)
+        .resizable(false)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn close_mini_player(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("miniplayer") { w.close().map_err(|e| e.to_string())?; }
+    Ok(())
+}
