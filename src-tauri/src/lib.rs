@@ -104,7 +104,16 @@ pub fn run() {
             commands::query_journal,
             commands::export_journal,
             commands::export_recap_png,
-            commands::advanced_search
+            commands::advanced_search,
+            commands::create_saved_search,
+            commands::list_saved_searches,
+            commands::delete_saved_search,
+            commands::create_collection,
+            commands::list_collections,
+            commands::update_collection,
+            commands::delete_collection,
+            commands::reorder_collections,
+            commands::resolve_collection
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

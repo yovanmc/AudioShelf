@@ -397,3 +397,11 @@ pub struct ScopedResults {
     pub duration_label: String,      // human label e.g. "≤ 15m" or "" if none
     pub status_label: String,        // "Unstarted" | "In progress" | "Done" | ""
 }
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSearch { pub id: i64, pub name: String, pub query: String }
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Collection { pub id: i64, pub name: String, pub query: String, pub position: i64 }

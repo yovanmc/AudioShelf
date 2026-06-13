@@ -1,7 +1,7 @@
 //! Tauri commands and the shared DB state.
 
 use crate::db;
-use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterBookmark, ChapterHit, ChapterJournal, ChapterNote, ChapterRow, ContinueItem, DiscoveryWork, DormantWork, HomeData, JournalEntry, JournalExportReport, JournalResults, ListeningStats, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
+use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterBookmark, ChapterHit, ChapterJournal, ChapterNote, ChapterRow, Collection, ContinueItem, DiscoveryWork, DormantWork, HomeData, JournalEntry, JournalExportReport, JournalResults, ListeningStats, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SavedSearch, SearchResults, UndoResult, WorkHit, WorkRow};
 use crate::natsort::natural_cmp;
 use crate::regroup;
 use crate::rename;
@@ -453,6 +453,15 @@ fn duration_label(d: &crate::query::DurationFilter) -> String {
     format!("{op} {n}{unit}")
 }
 
+fn status_label_of(s: Option<crate::query::StatusFilter>) -> String {
+    match s {
+        Some(crate::query::StatusFilter::Unstarted) => "Unstarted",
+        Some(crate::query::StatusFilter::InProgress) => "In progress",
+        Some(crate::query::StatusFilter::Done) => "Done",
+        None => "",
+    }.to_string()
+}
+
 #[tauri::command]
 pub fn advanced_search(state: tauri::State<DbState>, query: String) -> Result<crate::model::ScopedResults, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
@@ -463,13 +472,100 @@ pub fn advanced_search(state: tauri::State<DbState>, query: String) -> Result<cr
         tags: parsed.tags.clone(),
         text: parsed.text.clone(),
         duration_label: parsed.duration.as_ref().map(duration_label).unwrap_or_default(),
-        status_label: match parsed.status {
-            Some(crate::query::StatusFilter::Unstarted) => "Unstarted",
-            Some(crate::query::StatusFilter::InProgress) => "In progress",
-            Some(crate::query::StatusFilter::Done) => "Done",
-            None => "",
-        }.to_string(),
+        status_label: status_label_of(parsed.status),
     })
+}
+
+// ---- saved searches ----
+
+pub(crate) fn create_saved_search_row(conn: &rusqlite::Connection, name: &str, query: &str, created_at: i64) -> rusqlite::Result<i64> {
+    conn.execute("INSERT INTO saved_searches(name, query, created_at) VALUES (?1,?2,?3)", params![name, query, created_at])?;
+    Ok(conn.last_insert_rowid())
+}
+pub(crate) fn list_saved_searches_rows(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<SavedSearch>> {
+    let mut s = conn.prepare("SELECT id, name, query FROM saved_searches ORDER BY name")?;
+    let rows = s.query_map([], |r| Ok(SavedSearch { id: r.get(0)?, name: r.get(1)?, query: r.get(2)? }))?.collect();
+    rows
+}
+pub(crate) fn delete_saved_search_row(conn: &rusqlite::Connection, id: i64) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM saved_searches WHERE id=?1", params![id])?; Ok(())
+}
+
+#[tauri::command]
+pub fn create_saved_search(state: tauri::State<DbState>, name: String, query: String, created_at: i64) -> Result<i64, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_saved_search_row(&conn, name.trim(), query.trim(), created_at).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn list_saved_searches(state: tauri::State<DbState>) -> Result<Vec<SavedSearch>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_saved_searches_rows(&conn).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn delete_saved_search(state: tauri::State<DbState>, id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    delete_saved_search_row(&conn, id).map_err(|e| e.to_string())
+}
+
+// ---- smart collections ----
+
+pub(crate) fn create_collection_row(conn: &rusqlite::Connection, name: &str, query: &str, created_at: i64) -> rusqlite::Result<i64> {
+    let next_pos: i64 = conn.query_row("SELECT COALESCE(MAX(position),-1)+1 FROM smart_collections", [], |r| r.get(0))?;
+    conn.execute("INSERT INTO smart_collections(name, query, position, created_at) VALUES (?1,?2,?3,?4)", params![name, query, next_pos, created_at])?;
+    Ok(conn.last_insert_rowid())
+}
+pub(crate) fn list_collections_rows(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<Collection>> {
+    let mut s = conn.prepare("SELECT id, name, query, position FROM smart_collections ORDER BY position, name")?;
+    let rows = s.query_map([], |r| Ok(Collection { id: r.get(0)?, name: r.get(1)?, query: r.get(2)?, position: r.get(3)? }))?.collect();
+    rows
+}
+pub(crate) fn update_collection_row(conn: &rusqlite::Connection, id: i64, name: &str, query: &str) -> rusqlite::Result<()> {
+    conn.execute("UPDATE smart_collections SET name=?2, query=?3 WHERE id=?1", params![id, name, query])?; Ok(())
+}
+pub(crate) fn delete_collection_row(conn: &rusqlite::Connection, id: i64) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM smart_collections WHERE id=?1", params![id])?; Ok(())
+}
+pub(crate) fn reorder_collections_rows(conn: &rusqlite::Connection, ids: &[i64]) -> rusqlite::Result<()> {
+    for (pos, id) in ids.iter().enumerate() {
+        conn.execute("UPDATE smart_collections SET position=?2 WHERE id=?1", params![id, pos as i64])?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn create_collection(state: tauri::State<DbState>, name: String, query: String, created_at: i64) -> Result<i64, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_collection_row(&conn, name.trim(), query.trim(), created_at).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn list_collections(state: tauri::State<DbState>) -> Result<Vec<Collection>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_collections_rows(&conn).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn update_collection(state: tauri::State<DbState>, id: i64, name: String, query: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    update_collection_row(&conn, id, name.trim(), query.trim()).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn delete_collection(state: tauri::State<DbState>, id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    delete_collection_row(&conn, id).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn reorder_collections(state: tauri::State<DbState>, ids: Vec<i64>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    reorder_collections_rows(&conn, &ids).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn resolve_collection(state: tauri::State<DbState>, id: i64) -> Result<crate::model::ScopedResults, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let query: String = conn.query_row("SELECT query FROM smart_collections WHERE id=?1", params![id], |r| r.get(0)).map_err(|e| e.to_string())?;
+    let parsed = crate::query::parse_query(&query);
+    let works = crate::scoped::run_scoped_query(&conn, &parsed, SEARCH_CAP).map_err(|e| e.to_string())?;
+    Ok(crate::model::ScopedResults { works, tags: parsed.tags.clone(), text: parsed.text.clone(),
+        duration_label: parsed.duration.as_ref().map(duration_label).unwrap_or_default(),
+        status_label: status_label_of(parsed.status) })
 }
 
 /// Works (with unplayed chapters) whose author OR the work itself carries any of
@@ -4001,6 +4097,30 @@ mod tests {
         let read = std::fs::read(&path).unwrap();
         assert_eq!(read, bytes);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ---- M19 Task 4: saved-search + smart-collection CRUD tests -----------------------
+
+    #[test]
+    fn saved_search_crud_roundtrip() {
+        let conn = crate::db::open_at_version(7).unwrap();
+        let id = super::create_saved_search_row(&conn, "Cozy shorts", "tag:cozy duration:<15m", 1_700_000_000).unwrap();
+        let all = super::list_saved_searches_rows(&conn).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].name, "Cozy shorts");
+        assert_eq!(all[0].query, "tag:cozy duration:<15m");
+        super::delete_saved_search_row(&conn, id).unwrap();
+        assert!(super::list_saved_searches_rows(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn collection_crud_and_reorder() {
+        let conn = crate::db::open_at_version(7).unwrap();
+        let a = super::create_collection_row(&conn, "A", "tag:a", 1).unwrap();
+        let b = super::create_collection_row(&conn, "B", "tag:b", 1).unwrap();
+        super::reorder_collections_rows(&conn, &[b, a]).unwrap();
+        let names: Vec<String> = super::list_collections_rows(&conn).unwrap().into_iter().map(|c| c.name).collect();
+        assert_eq!(names, vec!["B".to_string(), "A".to_string()]);
     }
 }
 
