@@ -95,7 +95,9 @@ pub fn run() {
             commands::add_chapter_note,
             commands::delete_chapter_note,
             commands::add_bookmark,
-            commands::delete_bookmark
+            commands::delete_bookmark,
+            commands::query_journal,
+            commands::export_journal
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

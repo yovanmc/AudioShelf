@@ -1,7 +1,7 @@
 //! Tauri commands and the shared DB state.
 
 use crate::db;
-use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterBookmark, ChapterHit, ChapterJournal, ChapterNote, ChapterRow, ContinueItem, DiscoveryWork, DormantWork, HomeData, ListeningStats, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
+use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterBookmark, ChapterHit, ChapterJournal, ChapterNote, ChapterRow, ContinueItem, DiscoveryWork, DormantWork, HomeData, JournalEntry, JournalExportReport, JournalResults, ListeningStats, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
 use crate::natsort::natural_cmp;
 use crate::regroup;
 use crate::rename;
@@ -2060,6 +2060,283 @@ pub fn delete_bookmark(state: tauri::State<DbState>, bookmark_id: i64) -> Result
     conn.execute("DELETE FROM chapter_bookmarks WHERE id=?1", params![bookmark_id]).map(|_| ()).map_err(|e| e.to_string())
 }
 
+// ---- M17 Phase 4: unified journal query + Markdown/JSON export -----------------------
+
+/// Strip extension from a raw_filename, matching the convention used by ChapterRow.title
+/// (same as: std::path::Path::new(&raw).file_stem()...).
+fn strip_ext(raw: String) -> String {
+    std::path::Path::new(&raw)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or(raw)
+}
+
+/// Format an integer seconds value as "m:ss".
+fn fmt_pos(secs: i64) -> String {
+    let m = secs / 60;
+    let s = secs % 60;
+    format!("{m}:{s:02}")
+}
+
+/// Gather every journal artifact across the library into a flat Vec<JournalEntry>,
+/// joined to author/work/chapter context. Sorted by (author_name, work_title, chapter_id, position_secs).
+pub(crate) fn collect_journal(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<JournalEntry>> {
+    let mut out: Vec<JournalEntry> = Vec::new();
+
+    // notes
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title, c.id, c.raw_filename,
+                    n.position_secs, n.body, n.created_at
+               FROM chapter_notes n
+               JOIN chapters c ON c.id=n.chapter_id
+               JOIN works    w ON w.id=c.work_id
+               JOIN authors  a ON a.id=w.author_id")?;
+        let rows = s.query_map([], |r| Ok(JournalEntry {
+            kind: "note".into(),
+            author_id: r.get(0)?, author_name: r.get(1)?,
+            work_id: r.get(2)?, work_title: r.get(3)?,
+            chapter_id: Some(r.get(4)?), chapter_title: Some(strip_ext(r.get::<_, String>(5)?)),
+            position_secs: Some(r.get(6)?), body: r.get(7)?, created_at: Some(r.get(8)?),
+        }))?;
+        for e in rows { out.push(e?); }
+    }
+
+    // bookmarks
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title, c.id, c.raw_filename,
+                    b.position_secs, b.label, b.created_at
+               FROM chapter_bookmarks b
+               JOIN chapters c ON c.id=b.chapter_id
+               JOIN works    w ON w.id=c.work_id
+               JOIN authors  a ON a.id=w.author_id")?;
+        let rows = s.query_map([], |r| Ok(JournalEntry {
+            kind: "bookmark".into(),
+            author_id: r.get(0)?, author_name: r.get(1)?,
+            work_id: r.get(2)?, work_title: r.get(3)?,
+            chapter_id: Some(r.get(4)?), chapter_title: Some(strip_ext(r.get::<_, String>(5)?)),
+            position_secs: Some(r.get(6)?), body: r.get(7)?, created_at: Some(r.get(8)?),
+        }))?;
+        for e in rows { out.push(e?); }
+    }
+
+    // summaries (non-empty user_summary on chapters)
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title, c.id, c.raw_filename,
+                    c.user_summary
+               FROM chapters c
+               JOIN works   w ON w.id=c.work_id
+               JOIN authors a ON a.id=w.author_id
+              WHERE c.user_summary != '' AND c.status='active' AND w.status='active' AND a.status='active'")?;
+        let rows = s.query_map([], |r| Ok(JournalEntry {
+            kind: "summary".into(),
+            author_id: r.get(0)?, author_name: r.get(1)?,
+            work_id: r.get(2)?, work_title: r.get(3)?,
+            chapter_id: Some(r.get(4)?), chapter_title: Some(strip_ext(r.get::<_, String>(5)?)),
+            position_secs: None, body: r.get(6)?, created_at: None,
+        }))?;
+        for e in rows { out.push(e?); }
+    }
+
+    // takeaways (non-empty takeaway on chapters)
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title, c.id, c.raw_filename,
+                    c.takeaway
+               FROM chapters c
+               JOIN works   w ON w.id=c.work_id
+               JOIN authors a ON a.id=w.author_id
+              WHERE c.takeaway != '' AND c.status='active' AND w.status='active' AND a.status='active'")?;
+        let rows = s.query_map([], |r| Ok(JournalEntry {
+            kind: "takeaway".into(),
+            author_id: r.get(0)?, author_name: r.get(1)?,
+            work_id: r.get(2)?, work_title: r.get(3)?,
+            chapter_id: Some(r.get(4)?), chapter_title: Some(strip_ext(r.get::<_, String>(5)?)),
+            position_secs: None, body: r.get(6)?, created_at: None,
+        }))?;
+        for e in rows { out.push(e?); }
+    }
+
+    // favorites (is_favorite = 1 on chapters; body = chapter title)
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title, c.id, c.raw_filename
+               FROM chapters c
+               JOIN works   w ON w.id=c.work_id
+               JOIN authors a ON a.id=w.author_id
+              WHERE c.is_favorite=1 AND c.status='active' AND w.status='active' AND a.status='active'")?;
+        let rows = s.query_map([], |r| {
+            let raw: String = r.get(5)?;
+            let title = strip_ext(raw);
+            Ok(JournalEntry {
+                kind: "favorite".into(),
+                author_id: r.get(0)?, author_name: r.get(1)?,
+                work_id: r.get(2)?, work_title: r.get(3)?,
+                chapter_id: Some(r.get(4)?), chapter_title: Some(title.clone()),
+                position_secs: None, body: title, created_at: None,
+            })
+        })?;
+        for e in rows { out.push(e?); }
+    }
+
+    // re_entry notes (non-empty re_entry_note on works; no chapter)
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title,
+                    w.re_entry_note
+               FROM works   w
+               JOIN authors a ON a.id=w.author_id
+              WHERE w.re_entry_note != '' AND w.status='active' AND a.status='active'")?;
+        let rows = s.query_map([], |r| Ok(JournalEntry {
+            kind: "re_entry".into(),
+            author_id: r.get(0)?, author_name: r.get(1)?,
+            work_id: r.get(2)?, work_title: r.get(3)?,
+            chapter_id: None, chapter_title: None,
+            position_secs: None, body: r.get(4)?, created_at: None,
+        }))?;
+        for e in rows { out.push(e?); }
+    }
+
+    // ratings (non-empty completion_rating on works; no chapter)
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title,
+                    w.completion_rating
+               FROM works   w
+               JOIN authors a ON a.id=w.author_id
+              WHERE w.completion_rating != '' AND w.status='active' AND a.status='active'")?;
+        let rows = s.query_map([], |r| Ok(JournalEntry {
+            kind: "rating".into(),
+            author_id: r.get(0)?, author_name: r.get(1)?,
+            work_id: r.get(2)?, work_title: r.get(3)?,
+            chapter_id: None, chapter_title: None,
+            position_secs: None, body: r.get(4)?, created_at: None,
+        }))?;
+        for e in rows { out.push(e?); }
+    }
+
+    out.sort_by(|x, y| (&x.author_name, &x.work_title, x.chapter_id, x.position_secs)
+        .cmp(&(&y.author_name, &y.work_title, y.chapter_id, y.position_secs)));
+    Ok(out)
+}
+
+#[tauri::command]
+pub fn query_journal(state: tauri::State<DbState>, query: String) -> Result<JournalResults, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let all = collect_journal(&conn).map_err(|e| e.to_string())?;
+    let q = query.trim().to_lowercase();
+    let entries = if q.is_empty() {
+        all
+    } else {
+        all.into_iter().filter(|e| {
+            e.body.to_lowercase().contains(&q)
+                || e.work_title.to_lowercase().contains(&q)
+                || e.author_name.to_lowercase().contains(&q)
+                || e.chapter_title.as_deref().map_or(false, |t| t.to_lowercase().contains(&q))
+        }).collect()
+    };
+    Ok(JournalResults { entries })
+}
+
+/// Build a Markdown export of all journal entries, grouped by author → work.
+pub(crate) fn build_journal_markdown(entries: &[JournalEntry]) -> String {
+    use std::collections::BTreeMap;
+
+    // Group: author_name → work_title → Vec<&JournalEntry>
+    // Use BTreeMap so output is deterministic (entries are pre-sorted).
+    let mut by_author: BTreeMap<&str, BTreeMap<&str, Vec<&JournalEntry>>> = BTreeMap::new();
+    for e in entries {
+        by_author
+            .entry(&e.author_name)
+            .or_default()
+            .entry(&e.work_title)
+            .or_default()
+            .push(e);
+    }
+
+    let mut md = String::from("# AudioShelf — Listening Journal\n");
+
+    for (author_name, works) in &by_author {
+        md.push('\n');
+        md.push_str(&format!("## {author_name}\n"));
+
+        for (work_title, work_entries) in works {
+            // Find rating for this work (if any).
+            let rating = work_entries.iter()
+                .find(|e| e.kind == "rating")
+                .map(|e| e.body.as_str())
+                .unwrap_or("");
+            // Find re_entry note for this work (if any).
+            let re_entry = work_entries.iter()
+                .find(|e| e.kind == "re_entry")
+                .map(|e| e.body.as_str())
+                .unwrap_or("");
+
+            let heading = if rating.is_empty() {
+                format!("### {work_title}\n")
+            } else {
+                format!("### {work_title}  [rating: {rating}]\n")
+            };
+            md.push('\n');
+            md.push_str(&heading);
+
+            if !re_entry.is_empty() {
+                md.push_str(&format!("_Where I left off:_ {re_entry}\n\n"));
+            }
+
+            // Chapter-level entries (all kinds except re_entry and rating).
+            for e in work_entries.iter().filter(|e| e.kind != "re_entry" && e.kind != "rating") {
+                let ch = e.chapter_title.as_deref().unwrap_or("");
+                let line = match e.kind.as_str() {
+                    "note" => {
+                        let pos = e.position_secs.map(fmt_pos).unwrap_or_default();
+                        format!("- **Note** (Ch {ch} @ {pos}): {}\n", e.body)
+                    }
+                    "bookmark" => {
+                        let pos = e.position_secs.map(fmt_pos).unwrap_or_default();
+                        let label = if e.body.is_empty() { String::new() } else { format!(": {}", e.body) };
+                        format!("- **Bookmark** (Ch {ch} @ {pos}){label}\n")
+                    }
+                    "summary" => {
+                        format!("- **Summary** (Ch {ch}): {}\n", e.body)
+                    }
+                    "takeaway" => {
+                        format!("- **Takeaway** (Ch {ch}): {}\n", e.body)
+                    }
+                    "favorite" => {
+                        format!("- **★ Favorite**: {ch}\n")
+                    }
+                    other => {
+                        format!("- **{other}**: {}\n", e.body)
+                    }
+                };
+                md.push_str(&line);
+            }
+        }
+    }
+
+    md
+}
+
+pub(crate) fn build_journal_json(entries: &[JournalEntry]) -> Result<String, String> {
+    serde_json::to_string_pretty(entries).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn export_journal(state: tauri::State<DbState>, path: String, format: String) -> Result<JournalExportReport, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let entries = collect_journal(&conn).map_err(|e| e.to_string())?;
+    let contents = match format.as_str() {
+        "markdown" => build_journal_markdown(&entries),
+        "json" => build_journal_json(&entries)?,
+        other => return Err(format!("unknown export format: {other}")),
+    };
+    std::fs::write(&path, contents).map_err(|e| format!("write failed: {e}"))?;
+    Ok(JournalExportReport { path, format, entry_count: entries.len() })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3508,6 +3785,139 @@ mod tests {
         assert_eq!(bm.position_secs, 77);
         assert_eq!(bm.label, "key idea");
         assert_eq!(bm.created_at, 8888);
+    }
+
+    // ---- M17 Phase 4: unified journal query + export tests ----------------------------
+
+    #[test]
+    fn collect_journal_returns_all_7_kinds() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (author_id, work_id, chapter_id) = seed_journal_author(&conn);
+        let _ = (author_id,); // suppress unused warning
+
+        // Seed all 7 kinds.
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1, 15, 'my note body', 1000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chapter_bookmarks(chapter_id, position_secs, label, created_at) VALUES (?1, 30, 'key idea', 2000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute("UPDATE chapters SET user_summary='great summary' WHERE id=?1", params![chapter_id]).unwrap();
+        conn.execute("UPDATE chapters SET takeaway='key takeaway' WHERE id=?1", params![chapter_id]).unwrap();
+        conn.execute("UPDATE chapters SET is_favorite=1 WHERE id=?1", params![chapter_id]).unwrap();
+        conn.execute("UPDATE works SET re_entry_note='start here' WHERE id=?1", params![work_id]).unwrap();
+        conn.execute("UPDATE works SET completion_rating='amazing' WHERE id=?1", params![work_id]).unwrap();
+
+        let entries = super::collect_journal(&conn).unwrap();
+        let kinds: Vec<&str> = entries.iter().map(|e| e.kind.as_str()).collect();
+
+        assert!(kinds.contains(&"note"), "missing note");
+        assert!(kinds.contains(&"bookmark"), "missing bookmark");
+        assert!(kinds.contains(&"summary"), "missing summary");
+        assert!(kinds.contains(&"takeaway"), "missing takeaway");
+        assert!(kinds.contains(&"favorite"), "missing favorite");
+        assert!(kinds.contains(&"re_entry"), "missing re_entry");
+        assert!(kinds.contains(&"rating"), "missing rating");
+        assert_eq!(entries.len(), 7, "expected exactly 7 entries");
+    }
+
+    #[test]
+    fn query_journal_empty_query_returns_all_then_filter_narrows() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (_author_id, work_id, chapter_id) = seed_journal_author(&conn);
+
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1, 15, 'unique_searchword here', 1000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chapter_bookmarks(chapter_id, position_secs, label, created_at) VALUES (?1, 30, 'other label', 2000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute("UPDATE works SET re_entry_note='start here' WHERE id=?1", params![work_id]).unwrap();
+
+        let all = super::collect_journal(&conn).unwrap();
+        assert_eq!(all.len(), 3, "should have 3 total entries");
+
+        // Filter to only the note.
+        let filtered: Vec<_> = all.iter().filter(|e| {
+            let q = "unique_searchword";
+            e.body.to_lowercase().contains(q)
+                || e.work_title.to_lowercase().contains(q)
+                || e.author_name.to_lowercase().contains(q)
+                || e.chapter_title.as_deref().map_or(false, |t| t.to_lowercase().contains(q))
+        }).collect();
+        assert_eq!(filtered.len(), 1, "should narrow to 1 note");
+        assert_eq!(filtered[0].kind, "note");
+        assert!(filtered[0].body.contains("unique_searchword"));
+    }
+
+    #[test]
+    fn build_journal_json_round_trips_via_serde() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (_author_id, _work_id, chapter_id) = seed_journal_author(&conn);
+
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1, 10, 'round trip note', 5000)",
+            params![chapter_id],
+        ).unwrap();
+
+        let entries = super::collect_journal(&conn).unwrap();
+        let json = super::build_journal_json(&entries).unwrap();
+        let parsed: Vec<crate::model::JournalEntry> = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.len(), entries.len());
+        assert_eq!(parsed[0].kind, entries[0].kind);
+        assert_eq!(parsed[0].body, entries[0].body);
+    }
+
+    #[test]
+    fn build_journal_markdown_contains_headings_and_kind_markers() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (_author_id, work_id, chapter_id) = seed_journal_author(&conn);
+
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1, 15, 'note text', 1000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chapter_bookmarks(chapter_id, position_secs, label, created_at) VALUES (?1, 30, 'key idea', 2000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute("UPDATE chapters SET user_summary='great summary' WHERE id=?1", params![chapter_id]).unwrap();
+        conn.execute("UPDATE chapters SET takeaway='key takeaway' WHERE id=?1", params![chapter_id]).unwrap();
+        conn.execute("UPDATE chapters SET is_favorite=1 WHERE id=?1", params![chapter_id]).unwrap();
+        conn.execute("UPDATE works SET re_entry_note='start here' WHERE id=?1", params![work_id]).unwrap();
+        conn.execute("UPDATE works SET completion_rating='amazing' WHERE id=?1", params![work_id]).unwrap();
+
+        let entries = super::collect_journal(&conn).unwrap();
+        let md = super::build_journal_markdown(&entries);
+
+        // Should have the top-level heading.
+        assert!(md.contains("# AudioShelf — Listening Journal"), "missing top heading");
+        // Author heading.
+        assert!(md.contains("## Journal Author"), "missing author heading");
+        // Work heading with rating.
+        assert!(md.contains("### Journal Work"), "missing work heading");
+        assert!(md.contains("amazing"), "missing rating word");
+        // Re-entry note.
+        assert!(md.contains("_Where I left off:_"), "missing re-entry label");
+        assert!(md.contains("start here"), "missing re-entry text");
+        // Note marker with position.
+        assert!(md.contains("**Note**"), "missing note marker");
+        assert!(md.contains("0:15"), "missing note position");
+        // Bookmark marker.
+        assert!(md.contains("**Bookmark**"), "missing bookmark marker");
+        assert!(md.contains("0:30"), "missing bookmark position");
+        // Summary.
+        assert!(md.contains("**Summary**"), "missing summary marker");
+        assert!(md.contains("great summary"), "missing summary text");
+        // Takeaway.
+        assert!(md.contains("**Takeaway**"), "missing takeaway marker");
+        assert!(md.contains("key takeaway"), "missing takeaway text");
+        // Favorite star.
+        assert!(md.contains("★ Favorite"), "missing favorite marker");
     }
 }
 

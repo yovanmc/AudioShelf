@@ -239,6 +239,35 @@ pub struct ChapterJournal {
     pub bookmarks: Vec<ChapterBookmark>,
 }
 
+#[derive(Serialize, serde::Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalEntry {
+    pub kind: String,            // "note" | "bookmark" | "summary" | "takeaway" | "favorite" | "re_entry" | "rating"
+    pub author_id: i64,
+    pub author_name: String,
+    pub work_id: i64,
+    pub work_title: String,
+    pub chapter_id: Option<i64>,
+    pub chapter_title: Option<String>,
+    pub position_secs: Option<i64>,
+    pub body: String,            // note/summary/takeaway text, bookmark label, rating word, etc.
+    pub created_at: Option<i64>,
+}
+
+#[derive(Serialize, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalResults {
+    pub entries: Vec<JournalEntry>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalExportReport {
+    pub path: String,
+    pub format: String,
+    pub entry_count: usize,
+}
+
 /// One field proposed to change based on embedded audio metadata.
 /// `field` is one of: "title" (work base_title), "order" (chapter_no), "tag" (genre).
 #[derive(Serialize, serde::Deserialize, Debug, PartialEq, Clone)]
