@@ -9,6 +9,7 @@ mod natsort;
 mod regroup;
 mod rename;
 mod scan;
+mod transcripts;
 
 use commands::DbState;
 use launch::LaunchArgs;
@@ -79,7 +80,9 @@ pub fn run() {
             commands::apply_metadata,
             commands::detect_series,
             commands::apply_series,
-            commands::get_author_series
+            commands::get_author_series,
+            commands::search_transcripts,
+            commands::get_chapter_transcript
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -87,7 +90,7 @@ pub fn run() {
 
 // Exposed for integration tests.
 pub mod testing {
-    pub use crate::commands::{apply_metadata_proposals, apply_series_proposals, build_metadata_proposals, detect_series_for_author, query_author_detail, query_author_series, query_authors, SeriesMemberProposal, SeriesProposal, SeriesView};
+    pub use crate::commands::{apply_metadata_proposals, apply_series_proposals, build_metadata_proposals, detect_series_for_author, get_chapter_transcript_inner, query_author_detail, query_author_series, query_authors, search_transcripts_inner, SeriesMemberProposal, SeriesProposal, SeriesView, TranscriptHit};
     pub use crate::covers::{
         cover_cache_for_chapter, find_folder_image, make_thumbnail_png, read_embedded_picture,
         CoverPriority,
@@ -97,4 +100,5 @@ pub mod testing {
     pub use crate::regroup::regroup_author;
     pub use crate::rename::{build_plan, execute, undo, ItemStatus};
     pub use crate::scan::scan_into;
+    pub use crate::transcripts::parse_srt_vtt;
 }

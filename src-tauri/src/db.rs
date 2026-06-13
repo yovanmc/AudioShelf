@@ -114,11 +114,22 @@ fn migration_v4_series(conn: &Connection) -> rusqlite::Result<()> {
     )
 }
 
+/// Add the transcripts table introduced in migration v5.
+fn migration_v5_transcripts(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS transcripts (
+          chapter_id  INTEGER PRIMARY KEY REFERENCES chapters(id),
+          source_path TEXT NOT NULL,
+          content     TEXT NOT NULL
+        );",
+    )
+}
+
 /// Ordered, idempotent migration runner. Each step bumps user_version inside its own
 /// transaction so a crash mid-migration leaves the DB at the last fully-applied version.
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    const LATEST: i64 = 4; // bump as later tasks add steps
+    const LATEST: i64 = 5; // bump as later tasks add steps
     if current < 1 {
         run_step(conn, 1, |c| {
             c.execute_batch(SCHEMA_V1)?;
@@ -133,6 +144,9 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     }
     if current < 4 {
         run_step(conn, 4, migration_v4_series)?;
+    }
+    if current < 5 {
+        run_step(conn, 5, migration_v5_transcripts)?;
     }
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES ('schema_version', ?1)",
@@ -185,6 +199,9 @@ pub fn open_at_version(version: i64) -> rusqlite::Result<Connection> {
     if version >= 4 {
         run_step(&conn, 4, migration_v4_series)?;
     }
+    if version >= 5 {
+        run_step(&conn, 5, migration_v5_transcripts)?;
+    }
     Ok(conn)
 }
 
@@ -220,18 +237,18 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 4);
+        assert_eq!(ver, 5);
     }
 
     #[test]
     fn migrate_from_v1_is_noop_when_current() {
         let conn = open_in_memory().unwrap();
-        // Running migrate a second time must leave user_version at 4 without error.
+        // Running migrate a second time must leave user_version at 5 without error.
         super::migrate(&conn).unwrap();
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 4);
+        assert_eq!(ver, 5);
     }
 
     #[test]
@@ -250,7 +267,7 @@ mod tests {
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 4);
+        assert_eq!(post, 5);
     }
 
     #[test]
@@ -283,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn open_in_memory_has_v2_tables_and_user_version_4() {
+    fn open_in_memory_has_v2_tables_and_user_version_5() {
         let conn = open_in_memory().unwrap();
         let v2_count: i64 = conn
             .query_row(
@@ -297,23 +314,23 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 4);
+        assert_eq!(ver, 5);
     }
 
     #[test]
     fn upgrade_from_v1_to_v2() {
-        // Open at v1 (no tag_aliases/tag_parents), then run migrate to reach v4.
+        // Open at v1 (no tag_aliases/tag_parents), then run migrate to reach v5.
         let conn = open_at_version(1).unwrap();
         let pre: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(pre, 1);
-        // Run full migration — should add v2 tables, v3 columns, and v4 series tables.
+        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts.
         super::migrate(&conn).unwrap();
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 4);
+        assert_eq!(post, 5);
         let v2_count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table'
@@ -343,10 +360,10 @@ mod tests {
             .unwrap();
         assert_eq!(has_col, 0, "metadata_source must not exist before v3 migration");
 
-        // Run the full migration to reach v4.
+        // Run the full migration to reach v5.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 4);
+        assert_eq!(post, 5);
 
         // Now both tables must have the column.
         let works_col: i64 = conn
@@ -401,10 +418,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist before v4 migration");
 
-        // Run the full migration to reach v4.
+        // Run the full migration to reach v5.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 4);
+        assert_eq!(post, 5);
 
         // Both tables must now exist.
         let series_count: i64 = conn.query_row(
@@ -425,5 +442,70 @@ mod tests {
             [], |r| r.get(0),
         ).unwrap();
         assert_eq!(count, 0, "series tables must not exist at v3");
+    }
+
+    // ---- v5 migration tests --------------------------------------------------------
+
+    #[test]
+    fn open_at_version_4_lacks_transcripts_table() {
+        let conn = open_at_version(4).unwrap();
+        let ver: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(ver, 4);
+        let count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='transcripts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "transcripts must not exist before v5 migration");
+    }
+
+    #[test]
+    fn upgrade_from_v4() {
+        // Open at v4 (no transcripts table), then migrate to v5.
+        let conn = open_at_version(4).unwrap();
+        let pre: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(pre, 4);
+
+        // transcripts must NOT exist yet.
+        let no_transcripts: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='transcripts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(no_transcripts, 0, "transcripts must not exist before v5 migration");
+
+        // Run the full migration.
+        super::migrate(&conn).unwrap();
+        let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(post, 5);
+
+        // transcripts must now exist.
+        let has_transcripts: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='transcripts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_transcripts, 1, "transcripts must exist after v5 migration");
+    }
+
+    #[test]
+    fn schema_creates_all_tables_including_transcripts() {
+        let conn = open_in_memory().unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN
+                 ('authors','works','chapters','author_tags','play_events','grouping_overrides','settings',
+                  'tag_aliases','tag_parents','series','work_series_membership','transcripts')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 12);
     }
 }
