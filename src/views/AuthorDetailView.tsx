@@ -226,14 +226,18 @@ export function AuthorDetailView(props: {
           <div className="muted">Creator</div>
           <h1 dir="auto">{detail.name}</h1>
           <p className="muted">{works.length} works · {chapters.length} chapters · {formatLong(totalSecs)} · {progress}% played</p>
+          <p className="muted field-hint">Tags — your own free-form labels (e.g. "cozy", "re-listen").</p>
           <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
           {props.onAddAuthorMeta && props.onRemoveAuthorMeta && (
-            <MetadataEditor
-              applied={detail.metadata}
-              suggestions={props.metaSuggestions ?? []}
-              onAdd={(facet, value) => props.onAddAuthorMeta!(detail.id, facet, value)}
-              onRemove={(termId) => props.onRemoveAuthorMeta!(detail.id, termId)}
-            />
+            <>
+              <p className="muted field-hint">Narrator, language &amp; mood — shared values you can browse and filter by in Discover.</p>
+              <MetadataEditor
+                applied={detail.metadata}
+                suggestions={props.metaSuggestions ?? []}
+                onAdd={(facet, value) => props.onAddAuthorMeta!(detail.id, facet, value)}
+                onRemove={(termId) => props.onRemoveAuthorMeta!(detail.id, termId)}
+              />
+            </>
           )}
           {firstUnplayed && <Button variant="primary" onClick={() => props.onPlayChapter({
             chapter: firstUnplayed.chapter,
