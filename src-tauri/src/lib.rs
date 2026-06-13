@@ -67,7 +67,14 @@ pub fn run() {
             commands::search_library,
             commands::get_work_cover,
             commands::get_author_cover,
-            commands::reset_play_history
+            commands::reset_play_history,
+            commands::list_tags_with_counts,
+            commands::rename_tag,
+            commands::merge_tags,
+            commands::set_tag_alias,
+            commands::clear_tag_alias,
+            commands::set_tag_parent,
+            commands::clear_tag_parent
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

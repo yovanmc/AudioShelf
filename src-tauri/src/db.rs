@@ -74,18 +74,34 @@ pub fn open_in_memory() -> rusqlite::Result<Connection> {
     Ok(conn)
 }
 
+/// Create the tag taxonomy tables introduced in migration v2.
+fn migration_v2_tag_taxonomy(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS tag_aliases (
+          alias     TEXT PRIMARY KEY,
+          canonical TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS tag_parents (
+          child  TEXT PRIMARY KEY,
+          parent TEXT NOT NULL
+        );",
+    )
+}
+
 /// Ordered, idempotent migration runner. Each step bumps user_version inside its own
 /// transaction so a crash mid-migration leaves the DB at the last fully-applied version.
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    const LATEST: i64 = 1; // bump as later tasks add steps
+    const LATEST: i64 = 2; // bump as later tasks add steps
     if current < 1 {
         run_step(conn, 1, |c| {
             c.execute_batch(SCHEMA_V1)?;
             Ok(())
         })?;
     }
-    // Later M16 tasks will add: if current < 2 { run_step(conn, 2, migration_v2_tag_taxonomy)?; } etc.
+    if current < 2 {
+        run_step(conn, 2, migration_v2_tag_taxonomy)?;
+    }
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES ('schema_version', ?1)",
         [LATEST.to_string()],
@@ -128,7 +144,9 @@ pub fn open_at_version(version: i64) -> rusqlite::Result<Connection> {
             Ok(())
         })?;
     }
-    // Later M16 tasks will add: if version >= 2 { run_step(&conn, 2, ...)?; }
+    if version >= 2 {
+        run_step(&conn, 2, migration_v2_tag_taxonomy)?;
+    }
     Ok(conn)
 }
 
@@ -142,12 +160,13 @@ mod tests {
         let count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN
-                 ('authors','works','chapters','author_tags','play_events','grouping_overrides','settings')",
+                 ('authors','works','chapters','author_tags','play_events','grouping_overrides','settings',
+                  'tag_aliases','tag_parents')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(count, 7);
+        assert_eq!(count, 9);
     }
 
     #[test]
@@ -163,18 +182,18 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 1);
+        assert_eq!(ver, 2);
     }
 
     #[test]
     fn migrate_from_v1_is_noop_when_current() {
         let conn = open_in_memory().unwrap();
-        // Running migrate a second time must leave user_version at 1 without error.
+        // Running migrate a second time must leave user_version at 2 without error.
         super::migrate(&conn).unwrap();
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 1);
+        assert_eq!(ver, 2);
     }
 
     #[test]
@@ -193,11 +212,11 @@ mod tests {
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 1);
+        assert_eq!(post, 2);
     }
 
     #[test]
-    fn open_at_version_1_has_v1_tables() {
+    fn open_at_version_1_has_v1_tables_but_no_v2_tables() {
         let conn = open_at_version(1).unwrap();
         // settings table must exist.
         let count: i64 = conn
@@ -213,5 +232,58 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(ver, 1);
+        // v2 tables must NOT exist yet.
+        let v2_count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table'
+                 AND name IN ('tag_aliases', 'tag_parents')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(v2_count, 0);
+    }
+
+    #[test]
+    fn open_in_memory_has_v2_tables_and_user_version_2() {
+        let conn = open_in_memory().unwrap();
+        let v2_count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table'
+                 AND name IN ('tag_aliases', 'tag_parents')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(v2_count, 2);
+        let ver: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(ver, 2);
+    }
+
+    #[test]
+    fn upgrade_from_v1_to_v2() {
+        // Open at v1 (no tag_aliases/tag_parents), then run migrate to reach v2.
+        let conn = open_at_version(1).unwrap();
+        let pre: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(pre, 1);
+        // Run full migration — should add v2 tables.
+        super::migrate(&conn).unwrap();
+        let post: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(post, 2);
+        let v2_count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table'
+                 AND name IN ('tag_aliases', 'tag_parents')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(v2_count, 2);
     }
 }
