@@ -1550,7 +1550,11 @@ export default function App() {
                 showDensitySpacious: async () => {
                   setSelectMode(false);
                   setSelectedWorkIds([]);
-                  onDensityChange("spacious");
+                  // Set density synchronously first and flush it to the DOM before
+                  // the advancedSearch await, so data-density="spacious" is committed
+                  // on the AppShell root before the card-grid re-renders.
+                  setDensity("spacious");
+                  void setSetting("library_density", "spacious");
                   // Run a scoped search so the card-grid (work cards) is rendered —
                   // the author list doesn't use card-grid so density changes aren't visible there.
                   const q = "duration:<15m";
