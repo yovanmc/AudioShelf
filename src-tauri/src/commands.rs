@@ -4391,3 +4391,19 @@ pub fn library_health_scan(state: tauri::State<DbState>) -> Result<crate::model:
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     library_health_scan_rows(&conn).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn export_curation_json(state: tauri::State<DbState>, path: String, exported_at: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let v = crate::backup::build_curation_export(&conn, exported_at).map_err(|e| e.to_string())?;
+    let text = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn export_db_snapshot(state: tauri::State<DbState>, path: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    // VACUUM INTO writes a consistent snapshot from the live connection (no file-lock issue).
+    conn.execute("VACUUM INTO ?1", params![path]).map_err(|e| e.to_string())?;
+    Ok(())
+}

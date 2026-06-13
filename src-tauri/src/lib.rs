@@ -1,3 +1,4 @@
+mod backup;
 mod capture;
 mod commands;
 mod covers;
@@ -116,7 +117,9 @@ pub fn run() {
             commands::resolve_collection,
             commands::bulk_set_work_tags,
             commands::set_work_chapter_sort,
-            commands::library_health_scan
+            commands::library_health_scan,
+            commands::export_curation_json,
+            commands::export_db_snapshot
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -124,6 +127,7 @@ pub fn run() {
 
 // Exposed for integration tests.
 pub mod testing {
+    pub use crate::backup::build_curation_export;
     pub use crate::commands::{apply_metadata_proposals, apply_series_proposals, build_metadata_proposals, detect_series_for_author, get_chapter_transcript_inner, query_author_detail, query_author_series, query_authors, query_dormant_works, more_like_this, suggest_tags_from, search_transcripts_inner, SeriesMemberProposal, SeriesProposal, SeriesView, TranscriptHit};
     pub use crate::covers::{
         cover_cache_for_chapter, find_folder_image, make_thumbnail_png, read_embedded_picture,
