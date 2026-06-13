@@ -57,6 +57,7 @@ import {
   type WorkSort,
 } from "./lib/browse";
 import { parseDensity, type Density } from "./lib/density";
+import { parseA11yPrefs, DEFAULT_A11Y, type A11yPrefs } from "./lib/a11y";
 import {
   parseHomeShelves,
   serializeHomeShelves,
@@ -156,6 +157,7 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(false);
   const [harnessMenuOpen, setHarnessMenuOpen] = useState(false);
   const [density, setDensity] = useState<Density>("comfortable");
+  const [a11y, setA11y] = useState<A11yPrefs>(DEFAULT_A11Y);
 
   // ---- library search (controlled; spans authors/works/chapters) ----
   const [query, setQuery] = useState("");
@@ -912,6 +914,7 @@ export default function App() {
       setSidebarCollapsedState((await getSetting("sidebar_collapsed")) === "true");
       setHomeShelves(parseHomeShelves(await getSetting("home_shelves")).shelves);
       setDensity(parseDensity(await getSetting("library_density")));
+      setA11y(parseA11yPrefs(await getSetting("a11y_prefs")));
 
       if (args.autostart && args.walkthrough) {
         const openFirstAuthor = async () => {
@@ -2005,6 +2008,7 @@ export default function App() {
           onInsights={openInsights}
           onCollections={openCollections}
           density={density}
+          a11y={a11y}
           player={player}
         >
           {view}

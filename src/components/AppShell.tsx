@@ -2,10 +2,11 @@ import type { ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 import { IconButton } from "./ui";
 import type { Density } from "../lib/density";
+import { type A11yPrefs, a11yDataAttrs } from "../lib/a11y";
 
 export type ShellRoute = "home" | "library" | "discovery" | "rename" | "metadata" | "settings" | "journal" | "insights" | "collections";
 
-export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onRename, onMetadata, onSettings, onJournal, onInsights, onCollections, density, children, player }: {
+export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onRename, onMetadata, onSettings, onJournal, onInsights, onCollections, density, a11y, children, player }: {
   active: ShellRoute;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
@@ -19,6 +20,7 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
   onInsights: () => void;
   onCollections: () => void;
   density: Density;
+  a11y: A11yPrefs;
   children: ReactNode;
   player: ReactNode;
 }) {
@@ -46,7 +48,7 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
     </button>
   );
   return (
-    <div className={`app-shell${collapsed ? " app-shell--collapsed" : ""}`} data-density={density}>
+    <div className={`app-shell${collapsed ? " app-shell--collapsed" : ""}`} data-density={density} {...a11yDataAttrs(a11y)}>
       <aside className="sidebar" aria-label="Primary navigation">
         <div className="sidebar__brand">
           <span className="sidebar__wordmark">AudioShelf</span>
