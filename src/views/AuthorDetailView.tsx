@@ -378,7 +378,7 @@ export function AuthorDetailView(props: {
       ))}
       </div>
       {editState && editChapterInfo && editState.mode === "grouping" && (
-        <Dialog label="Edit grouping" onClose={() => setEditState(null)}>
+        <Dialog label="Edit grouping" title="Edit grouping" context={`Chapter ${editChapterInfo.chapter.chapterNo ?? ""} — change which work this chapter belongs to`} onClose={() => setEditState(null)}>
           <ChapterGroupingForm
             work={editChapterInfo.work}
             chapter={editChapterInfo.chapter}
@@ -388,7 +388,7 @@ export function AuthorDetailView(props: {
         </Dialog>
       )}
       {editState && editChapterInfo && editState.mode === "tags" && (
-        <Dialog label="Edit tags" onClose={() => setEditState(null)}>
+        <Dialog label="Edit tags" title="Edit tags & metadata" context={`Tags, narrator, language, and mood for "${editChapterInfo.chapter.title}"`} onClose={() => setEditState(null)}>
           <TagEditor
             tags={editChapterInfo.chapter.tags}
             allTags={props.allTags}
@@ -472,7 +472,7 @@ export function AuthorDetailView(props: {
         </section>
       )}
       {moreLikeThisWorkId !== null && moreLikeThisMap[moreLikeThisWorkId] !== undefined && (
-        <Dialog label="More like this" onClose={() => setMoreLikeThisWorkId(null)}>
+        <Dialog label="More like this" title="More like this" context={`Works similar to "${works.find((w) => w.id === moreLikeThisWorkId)?.baseTitle ?? "this work"}"`} onClose={() => setMoreLikeThisWorkId(null)}>
           <div style={{ padding: 8 }}>
             {moreLikeThisMap[moreLikeThisWorkId].length === 0
               ? <p className="muted">No similar works found in your library.</p>
