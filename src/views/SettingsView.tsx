@@ -353,7 +353,7 @@ export function SettingsView(props: {
       )}
 
       {!firstRun && (props.onExportJson || props.onExportSnapshot || props.onImportJson || props.onRestoreSnapshot || props.onHealthScan) && (
-        <Card style={{ padding: 24, marginTop: 16 }}>
+        <Card className="backup-maintenance" style={{ padding: 24, marginTop: 16 }}>
           <h2>Backup &amp; maintenance</h2>
           <p className="muted">
             Export your curation data, create full database snapshots, import from a previous export, restore
@@ -422,7 +422,7 @@ export function SettingsView(props: {
           )}
 
           {props.healthReport && (
-            <div style={{ marginTop: 16 }}>
+            <div className="health-report" style={{ marginTop: 16 }}>
               <h3 style={{ margin: "0 0 8px" }}>Health scan result</h3>
               {props.healthReport.schemaDrift && (
                 <div style={{ marginBottom: 12 }}>

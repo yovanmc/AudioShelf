@@ -3,14 +3,15 @@ import type { Collection, ScopedResults as Results } from "../lib/api";
 import { ScopedResults } from "./ScopedResults";
 
 export function CollectionsView({
-  collections, resolved, onResolve, onOpenAuthor,
+  collections, resolved, onResolve, onOpenAuthor, initialOpenId,
 }: {
   collections: Collection[];
   resolved: Record<number, Results | undefined>;
   onResolve: (id: number) => void;
   onOpenAuthor: (authorId: number) => void;
+  initialOpenId?: number | null;
 }) {
-  const [openId, setOpenId] = useState<number | null>(null);
+  const [openId, setOpenId] = useState<number | null>(initialOpenId ?? null);
   return (
     <div className="page">
       <header className="page-header"><h1>Collections</h1>

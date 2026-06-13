@@ -139,3 +139,12 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 [data-density="compact"]     .work-card { padding: 8px; }
 [data-density="comfortable"] .work-card { padding: 16px; }
 [data-density="spacious"]    .work-card { padding: 18px; }
+/* ---- Smart collections (M19) ---- */
+.collection-list { list-style: none; margin: var(--space-4) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.collection-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); width: 100%; padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; text-align: left; color: inherit; }
+.collection-row:hover { background: var(--color-surface-hover); }
+.collection-row__name { font-weight: 600; color: var(--color-text); }
+.collection-row__query { font-size: 0.85rem; color: var(--color-text-muted); background: transparent; padding: 0; }
+/* ---- Backup & maintenance / health report (M19) ---- */
+.backup-maintenance { scroll-margin-top: var(--space-4); }
+.health-report { scroll-margin-top: var(--space-4); }
