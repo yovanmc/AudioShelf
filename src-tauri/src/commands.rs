@@ -1,7 +1,7 @@
 //! Tauri commands and the shared DB state.
 
 use crate::db;
-use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterHit, ChapterRow, ContinueItem, DiscoveryWork, DormantWork, HomeData, ListeningStats, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
+use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterBookmark, ChapterHit, ChapterJournal, ChapterNote, ChapterRow, ContinueItem, DiscoveryWork, DormantWork, HomeData, JournalEntry, JournalExportReport, JournalResults, ListeningStats, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
 use crate::natsort::natural_cmp;
 use crate::regroup;
 use crate::rename;
@@ -171,6 +171,41 @@ pub fn set_chapter_tags(state: tauri::State<DbState>, chapter_id: i64, tags: Vec
     replace_tags(&conn, "chapter_tags", "chapter_id", chapter_id, &tags).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn set_chapter_summary(state: tauri::State<DbState>, chapter_id: i64, summary: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE chapters SET user_summary=?2 WHERE id=?1", params![chapter_id, summary.trim()])
+        .map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_chapter_takeaway(state: tauri::State<DbState>, chapter_id: i64, takeaway: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE chapters SET takeaway=?2 WHERE id=?1", params![chapter_id, takeaway.trim()])
+        .map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_chapter_favorite(state: tauri::State<DbState>, chapter_id: i64, favorite: bool) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE chapters SET is_favorite=?2 WHERE id=?1", params![chapter_id, favorite as i64])
+        .map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_work_re_entry_note(state: tauri::State<DbState>, work_id: i64, note: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE works SET re_entry_note=?2 WHERE id=?1", params![work_id, note.trim()])
+        .map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_work_rating(state: tauri::State<DbState>, work_id: i64, rating: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE works SET completion_rating=?2 WHERE id=?1", params![work_id, rating.trim()])
+        .map(|_| ()).map_err(|e| e.to_string())
+}
+
 // ---- query helpers (pub so integration tests and the testing module can call them) ----
 
 /// Atomically mark a chapter played and record a play event at `now_ms`.
@@ -253,18 +288,26 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
     )?;
 
     let mut wstmt = conn.prepare(
-        "SELECT id, base_title FROM works WHERE author_id=?1 AND status='active'",
+        "SELECT id, base_title, re_entry_note, completion_rating FROM works WHERE author_id=?1 AND status='active'",
     )?;
     let mut works: Vec<WorkRow> = wstmt
         .query_map(params![author_id], |r| {
-            Ok(WorkRow { id: r.get(0)?, base_title: r.get(1)?, tags: Vec::new(), chapters: Vec::new() })
+            Ok(WorkRow {
+                id: r.get(0)?,
+                base_title: r.get(1)?,
+                tags: Vec::new(),
+                chapters: Vec::new(),
+                re_entry_note: r.get::<_, String>(2).unwrap_or_default(),
+                completion_rating: r.get::<_, String>(3).unwrap_or_default(),
+            })
         })?
         .collect::<rusqlite::Result<_>>()?;
     works.sort_by(|a, b| natural_cmp(&a.base_title, &b.base_title));
 
     for work in &mut works {
         let mut cstmt = conn.prepare(
-            "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played
+            "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played,
+                    user_summary, takeaway, is_favorite
              FROM chapters WHERE work_id=?1 AND status='active'",
         )?;
         let mut chapters: Vec<ChapterRow> = cstmt
@@ -283,6 +326,9 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                     file_path: r.get(5)?,
                     played: r.get::<_, i64>(6)? != 0,
                     tags: Vec::new(),
+                    user_summary: r.get::<_, String>(7).unwrap_or_default(),
+                    takeaway: r.get::<_, String>(8).unwrap_or_default(),
+                    is_favorite: r.get::<_, i64>(9).unwrap_or(0) != 0,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -526,7 +572,8 @@ pub(crate) fn more_from_author(conn: &rusqlite::Connection, author_id: i64) -> r
 /// Load a single chapter as a `ChapterRow` (title derived from raw_filename; tags included).
 fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<ChapterRow> {
     let mut row = conn.query_row(
-        "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played
+        "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played,
+                user_summary, takeaway, is_favorite
          FROM chapters WHERE id=?1",
         params![chapter_id],
         |r| {
@@ -544,6 +591,9 @@ fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::R
                 file_path: r.get(5)?,
                 played: r.get::<_, i64>(6)? != 0,
                 tags: Vec::new(),
+                user_summary: r.get::<_, String>(7).unwrap_or_default(),
+                takeaway: r.get::<_, String>(8).unwrap_or_default(),
+                is_favorite: r.get::<_, i64>(9).unwrap_or(0) != 0,
             })
         },
     )?;
@@ -1946,6 +1996,347 @@ pub fn suggest_tags(state: tauri::State<DbState>, work_id: i64) -> Result<Vec<St
     suggest_tags_for_work(&conn, work_id).map_err(|e| e.to_string())
 }
 
+// ---- M17 Phase 3: notes & bookmarks CRUD commands ------------------------------------
+
+/// Load notes and bookmarks for a chapter, ordered by position_secs then id.
+pub(crate) fn journal_for_chapter(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<ChapterJournal> {
+    let mut ns = conn.prepare(
+        "SELECT id, chapter_id, position_secs, body, created_at
+           FROM chapter_notes WHERE chapter_id=?1 ORDER BY position_secs, id")?;
+    let notes = ns.query_map(params![chapter_id], |r| Ok(ChapterNote {
+        id: r.get(0)?, chapter_id: r.get(1)?, position_secs: r.get(2)?, body: r.get(3)?, created_at: r.get(4)?,
+    }))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut bs = conn.prepare(
+        "SELECT id, chapter_id, position_secs, label, created_at
+           FROM chapter_bookmarks WHERE chapter_id=?1 ORDER BY position_secs, id")?;
+    let bookmarks = bs.query_map(params![chapter_id], |r| Ok(ChapterBookmark {
+        id: r.get(0)?, chapter_id: r.get(1)?, position_secs: r.get(2)?, label: r.get(3)?, created_at: r.get(4)?,
+    }))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(ChapterJournal { notes, bookmarks })
+}
+
+#[tauri::command]
+pub fn get_chapter_journal(state: tauri::State<DbState>, chapter_id: i64) -> Result<ChapterJournal, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    journal_for_chapter(&conn, chapter_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_chapter_note(state: tauri::State<DbState>, chapter_id: i64, position_secs: i64, body: String, now_ms: i64) -> Result<ChapterNote, String> {
+    let body = body.trim().to_string();
+    if body.is_empty() { return Err("note body is empty".into()); }
+    let pos = position_secs.max(0);
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1,?2,?3,?4)",
+        params![chapter_id, pos, body, now_ms],
+    ).map_err(|e| e.to_string())?;
+    let id = conn.last_insert_rowid();
+    Ok(ChapterNote { id, chapter_id, position_secs: pos, body, created_at: now_ms })
+}
+
+#[tauri::command]
+pub fn delete_chapter_note(state: tauri::State<DbState>, note_id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM chapter_notes WHERE id=?1", params![note_id]).map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_bookmark(state: tauri::State<DbState>, chapter_id: i64, position_secs: i64, label: String, now_ms: i64) -> Result<ChapterBookmark, String> {
+    let label = label.trim().to_string();
+    let pos = position_secs.max(0);
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO chapter_bookmarks(chapter_id, position_secs, label, created_at) VALUES (?1,?2,?3,?4)",
+        params![chapter_id, pos, label, now_ms],
+    ).map_err(|e| e.to_string())?;
+    let id = conn.last_insert_rowid();
+    Ok(ChapterBookmark { id, chapter_id, position_secs: pos, label, created_at: now_ms })
+}
+
+#[tauri::command]
+pub fn delete_bookmark(state: tauri::State<DbState>, bookmark_id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM chapter_bookmarks WHERE id=?1", params![bookmark_id]).map(|_| ()).map_err(|e| e.to_string())
+}
+
+// ---- M17 Phase 4: unified journal query + Markdown/JSON export -----------------------
+
+/// Strip extension from a raw_filename, matching the convention used by ChapterRow.title
+/// (same as: std::path::Path::new(&raw).file_stem()...).
+fn strip_ext(raw: String) -> String {
+    std::path::Path::new(&raw)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or(raw)
+}
+
+/// Format an integer seconds value as "m:ss".
+fn fmt_pos(secs: i64) -> String {
+    let m = secs / 60;
+    let s = secs % 60;
+    format!("{m}:{s:02}")
+}
+
+/// Gather every journal artifact across the library into a flat Vec<JournalEntry>,
+/// joined to author/work/chapter context. Sorted by (author_name, work_title, chapter_id, position_secs).
+pub(crate) fn collect_journal(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<JournalEntry>> {
+    let mut out: Vec<JournalEntry> = Vec::new();
+
+    // notes
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title, c.id, c.raw_filename,
+                    n.position_secs, n.body, n.created_at
+               FROM chapter_notes n
+               JOIN chapters c ON c.id=n.chapter_id
+               JOIN works    w ON w.id=c.work_id
+               JOIN authors  a ON a.id=w.author_id")?;
+        let rows = s.query_map([], |r| Ok(JournalEntry {
+            kind: "note".into(),
+            author_id: r.get(0)?, author_name: r.get(1)?,
+            work_id: r.get(2)?, work_title: r.get(3)?,
+            chapter_id: Some(r.get(4)?), chapter_title: Some(strip_ext(r.get::<_, String>(5)?)),
+            position_secs: Some(r.get(6)?), body: r.get(7)?, created_at: Some(r.get(8)?),
+        }))?;
+        for e in rows { out.push(e?); }
+    }
+
+    // bookmarks
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title, c.id, c.raw_filename,
+                    b.position_secs, b.label, b.created_at
+               FROM chapter_bookmarks b
+               JOIN chapters c ON c.id=b.chapter_id
+               JOIN works    w ON w.id=c.work_id
+               JOIN authors  a ON a.id=w.author_id")?;
+        let rows = s.query_map([], |r| Ok(JournalEntry {
+            kind: "bookmark".into(),
+            author_id: r.get(0)?, author_name: r.get(1)?,
+            work_id: r.get(2)?, work_title: r.get(3)?,
+            chapter_id: Some(r.get(4)?), chapter_title: Some(strip_ext(r.get::<_, String>(5)?)),
+            position_secs: Some(r.get(6)?), body: r.get(7)?, created_at: Some(r.get(8)?),
+        }))?;
+        for e in rows { out.push(e?); }
+    }
+
+    // summaries (non-empty user_summary on chapters)
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title, c.id, c.raw_filename,
+                    c.user_summary
+               FROM chapters c
+               JOIN works   w ON w.id=c.work_id
+               JOIN authors a ON a.id=w.author_id
+              WHERE c.user_summary != '' AND c.status='active' AND w.status='active' AND a.status='active'")?;
+        let rows = s.query_map([], |r| Ok(JournalEntry {
+            kind: "summary".into(),
+            author_id: r.get(0)?, author_name: r.get(1)?,
+            work_id: r.get(2)?, work_title: r.get(3)?,
+            chapter_id: Some(r.get(4)?), chapter_title: Some(strip_ext(r.get::<_, String>(5)?)),
+            position_secs: None, body: r.get(6)?, created_at: None,
+        }))?;
+        for e in rows { out.push(e?); }
+    }
+
+    // takeaways (non-empty takeaway on chapters)
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title, c.id, c.raw_filename,
+                    c.takeaway
+               FROM chapters c
+               JOIN works   w ON w.id=c.work_id
+               JOIN authors a ON a.id=w.author_id
+              WHERE c.takeaway != '' AND c.status='active' AND w.status='active' AND a.status='active'")?;
+        let rows = s.query_map([], |r| Ok(JournalEntry {
+            kind: "takeaway".into(),
+            author_id: r.get(0)?, author_name: r.get(1)?,
+            work_id: r.get(2)?, work_title: r.get(3)?,
+            chapter_id: Some(r.get(4)?), chapter_title: Some(strip_ext(r.get::<_, String>(5)?)),
+            position_secs: None, body: r.get(6)?, created_at: None,
+        }))?;
+        for e in rows { out.push(e?); }
+    }
+
+    // favorites (is_favorite = 1 on chapters; body = chapter title)
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title, c.id, c.raw_filename
+               FROM chapters c
+               JOIN works   w ON w.id=c.work_id
+               JOIN authors a ON a.id=w.author_id
+              WHERE c.is_favorite=1 AND c.status='active' AND w.status='active' AND a.status='active'")?;
+        let rows = s.query_map([], |r| {
+            let raw: String = r.get(5)?;
+            let title = strip_ext(raw);
+            Ok(JournalEntry {
+                kind: "favorite".into(),
+                author_id: r.get(0)?, author_name: r.get(1)?,
+                work_id: r.get(2)?, work_title: r.get(3)?,
+                chapter_id: Some(r.get(4)?), chapter_title: Some(title.clone()),
+                position_secs: None, body: title, created_at: None,
+            })
+        })?;
+        for e in rows { out.push(e?); }
+    }
+
+    // re_entry notes (non-empty re_entry_note on works; no chapter)
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title,
+                    w.re_entry_note
+               FROM works   w
+               JOIN authors a ON a.id=w.author_id
+              WHERE w.re_entry_note != '' AND w.status='active' AND a.status='active'")?;
+        let rows = s.query_map([], |r| Ok(JournalEntry {
+            kind: "re_entry".into(),
+            author_id: r.get(0)?, author_name: r.get(1)?,
+            work_id: r.get(2)?, work_title: r.get(3)?,
+            chapter_id: None, chapter_title: None,
+            position_secs: None, body: r.get(4)?, created_at: None,
+        }))?;
+        for e in rows { out.push(e?); }
+    }
+
+    // ratings (non-empty completion_rating on works; no chapter)
+    {
+        let mut s = conn.prepare(
+            "SELECT a.id, COALESCE(a.display_name, a.folder_name), w.id, w.base_title,
+                    w.completion_rating
+               FROM works   w
+               JOIN authors a ON a.id=w.author_id
+              WHERE w.completion_rating != '' AND w.status='active' AND a.status='active'")?;
+        let rows = s.query_map([], |r| Ok(JournalEntry {
+            kind: "rating".into(),
+            author_id: r.get(0)?, author_name: r.get(1)?,
+            work_id: r.get(2)?, work_title: r.get(3)?,
+            chapter_id: None, chapter_title: None,
+            position_secs: None, body: r.get(4)?, created_at: None,
+        }))?;
+        for e in rows { out.push(e?); }
+    }
+
+    out.sort_by(|x, y| (&x.author_name, &x.work_title, x.chapter_id, x.position_secs)
+        .cmp(&(&y.author_name, &y.work_title, y.chapter_id, y.position_secs)));
+    Ok(out)
+}
+
+#[tauri::command]
+pub fn query_journal(state: tauri::State<DbState>, query: String) -> Result<JournalResults, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let all = collect_journal(&conn).map_err(|e| e.to_string())?;
+    let q = query.trim().to_lowercase();
+    let entries = if q.is_empty() {
+        all
+    } else {
+        all.into_iter().filter(|e| {
+            e.body.to_lowercase().contains(&q)
+                || e.work_title.to_lowercase().contains(&q)
+                || e.author_name.to_lowercase().contains(&q)
+                || e.chapter_title.as_deref().map_or(false, |t| t.to_lowercase().contains(&q))
+        }).collect()
+    };
+    Ok(JournalResults { entries })
+}
+
+/// Build a Markdown export of all journal entries, grouped by author → work.
+pub(crate) fn build_journal_markdown(entries: &[JournalEntry]) -> String {
+    use std::collections::BTreeMap;
+
+    // Group: author_name → work_title → Vec<&JournalEntry>
+    // Use BTreeMap so output is deterministic (entries are pre-sorted).
+    let mut by_author: BTreeMap<&str, BTreeMap<&str, Vec<&JournalEntry>>> = BTreeMap::new();
+    for e in entries {
+        by_author
+            .entry(&e.author_name)
+            .or_default()
+            .entry(&e.work_title)
+            .or_default()
+            .push(e);
+    }
+
+    let mut md = String::from("# AudioShelf — Listening Journal\n");
+
+    for (author_name, works) in &by_author {
+        md.push('\n');
+        md.push_str(&format!("## {author_name}\n"));
+
+        for (work_title, work_entries) in works {
+            // Find rating for this work (if any).
+            let rating = work_entries.iter()
+                .find(|e| e.kind == "rating")
+                .map(|e| e.body.as_str())
+                .unwrap_or("");
+            // Find re_entry note for this work (if any).
+            let re_entry = work_entries.iter()
+                .find(|e| e.kind == "re_entry")
+                .map(|e| e.body.as_str())
+                .unwrap_or("");
+
+            let heading = if rating.is_empty() {
+                format!("### {work_title}\n")
+            } else {
+                format!("### {work_title}  [rating: {rating}]\n")
+            };
+            md.push('\n');
+            md.push_str(&heading);
+
+            if !re_entry.is_empty() {
+                md.push_str(&format!("_Where I left off:_ {re_entry}\n\n"));
+            }
+
+            // Chapter-level entries (all kinds except re_entry and rating).
+            for e in work_entries.iter().filter(|e| e.kind != "re_entry" && e.kind != "rating") {
+                let ch = e.chapter_title.as_deref().unwrap_or("");
+                let line = match e.kind.as_str() {
+                    "note" => {
+                        let pos = e.position_secs.map(fmt_pos).unwrap_or_default();
+                        format!("- **Note** (Ch {ch} @ {pos}): {}\n", e.body)
+                    }
+                    "bookmark" => {
+                        let pos = e.position_secs.map(fmt_pos).unwrap_or_default();
+                        let label = if e.body.is_empty() { String::new() } else { format!(": {}", e.body) };
+                        format!("- **Bookmark** (Ch {ch} @ {pos}){label}\n")
+                    }
+                    "summary" => {
+                        format!("- **Summary** (Ch {ch}): {}\n", e.body)
+                    }
+                    "takeaway" => {
+                        format!("- **Takeaway** (Ch {ch}): {}\n", e.body)
+                    }
+                    "favorite" => {
+                        format!("- **★ Favorite**: {ch}\n")
+                    }
+                    other => {
+                        format!("- **{other}**: {}\n", e.body)
+                    }
+                };
+                md.push_str(&line);
+            }
+        }
+    }
+
+    md
+}
+
+pub(crate) fn build_journal_json(entries: &[JournalEntry]) -> Result<String, String> {
+    serde_json::to_string_pretty(entries).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn export_journal(state: tauri::State<DbState>, path: String, format: String) -> Result<JournalExportReport, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let entries = collect_journal(&conn).map_err(|e| e.to_string())?;
+    let contents = match format.as_str() {
+        "markdown" => build_journal_markdown(&entries),
+        "json" => build_journal_json(&entries)?,
+        other => return Err(format!("unknown export format: {other}")),
+    };
+    std::fs::write(&path, contents).map_err(|e| format!("write failed: {e}"))?;
+    Ok(JournalExportReport { path, format, entry_count: entries.len() })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2251,7 +2642,7 @@ mod tests {
         // The pre-seeded schema_version key reflects the latest migration version.
         assert_eq!(
             get_setting_value(&conn, "schema_version").unwrap(),
-            Some("5".to_string())
+            Some("6".to_string())
         );
     }
 
@@ -2619,7 +3010,7 @@ mod tests {
         ).unwrap();
         assert_eq!(full_count, 2, "full open must have both taxonomy tables");
         let ver: i64 = full_conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(ver, 5);
+        assert_eq!(ver, 6);
     }
 
     #[test]
@@ -2786,7 +3177,7 @@ mod tests {
         // Upgrade to latest via open_in_memory pattern (open_at_version then migrate).
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 5);
+        assert_eq!(full_ver, 6);
 
         let col3: i64 = full.query_row(
             "SELECT count(*) FROM pragma_table_info('works') WHERE name='metadata_source'",
@@ -2915,10 +3306,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist at v3");
 
-        // After a full open (which runs migrate), both tables must exist and version is 5.
+        // After a full open (which runs migrate), both tables must exist and version is 6.
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 5);
+        assert_eq!(full_ver, 6);
 
         let series_count: i64 = full.query_row(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
@@ -3153,6 +3544,380 @@ mod tests {
         let mystery_pos = suggestions.iter().position(|s| s == "mystery").unwrap();
         let adventure_pos = suggestions.iter().position(|s| s == "adventure").unwrap();
         assert!(mystery_pos < adventure_pos, "vocab match should rank before novel token");
+    }
+
+    // ---- M17 Phase 2: scalar journal fields + setter commands -------------------------
+
+    /// Seed an author, one work, and one chapter into an in-memory DB.
+    /// Returns (author_id, work_id, chapter_id).
+    fn seed_journal_author(conn: &rusqlite::Connection) -> (i64, i64, i64) {
+        conn.execute(
+            "INSERT INTO authors(folder_name, status) VALUES ('Journal Author', 'active')",
+            [],
+        ).unwrap();
+        let author_id: i64 = conn.query_row(
+            "SELECT id FROM authors WHERE folder_name='Journal Author'",
+            [],
+            |r| r.get(0),
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO works(author_id, base_title, sort_key, status) VALUES (?1, 'Journal Work', 'journal work', 'active')",
+            params![author_id],
+        ).unwrap();
+        let work_id: i64 = conn.query_row(
+            "SELECT id FROM works WHERE author_id=?1",
+            params![author_id],
+            |r| r.get(0),
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO chapters(work_id, file_path, raw_filename, chapter_no, format, played, status)
+             VALUES (?1, 'fake/ch1.mp3', 'ch1.mp3', 1, 'mp3', 0, 'active')",
+            params![work_id],
+        ).unwrap();
+        let chapter_id: i64 = conn.query_row(
+            "SELECT id FROM chapters WHERE work_id=?1",
+            params![work_id],
+            |r| r.get(0),
+        ).unwrap();
+
+        (author_id, work_id, chapter_id)
+    }
+
+    #[test]
+    fn scalar_journal_fields_round_trip() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (author_id, work_id, chapter_id) = seed_journal_author(&conn);
+
+        // --- chapter scalar setters ---
+
+        // set_chapter_summary
+        conn.execute("UPDATE chapters SET user_summary=?2 WHERE id=?1", params![chapter_id, "Great chapter"]).unwrap();
+
+        // set_chapter_takeaway
+        conn.execute("UPDATE chapters SET takeaway=?2 WHERE id=?1", params![chapter_id, "Key insight"]).unwrap();
+
+        // set_chapter_favorite
+        conn.execute("UPDATE chapters SET is_favorite=?2 WHERE id=?1", params![chapter_id, 1i64]).unwrap();
+
+        // --- work scalar setters ---
+
+        // set_work_re_entry_note
+        conn.execute("UPDATE works SET re_entry_note=?2 WHERE id=?1", params![work_id, "Start at chapter 3"]).unwrap();
+
+        // set_work_rating
+        conn.execute("UPDATE works SET completion_rating=?2 WHERE id=?1", params![work_id, "excellent"]).unwrap();
+
+        // --- verify via query_author_detail ---
+        let detail = super::query_author_detail(&conn, author_id).unwrap();
+        assert_eq!(detail.works.len(), 1);
+        let work = &detail.works[0];
+        assert_eq!(work.re_entry_note, "Start at chapter 3");
+        assert_eq!(work.completion_rating, "excellent");
+        assert_eq!(work.chapters.len(), 1);
+        let ch = &work.chapters[0];
+        assert_eq!(ch.user_summary, "Great chapter");
+        assert_eq!(ch.takeaway, "Key insight");
+        assert!(ch.is_favorite, "chapter should be marked as favorite");
+    }
+
+    #[test]
+    fn scalar_journal_fields_default_to_empty() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (author_id, _work_id, _chapter_id) = seed_journal_author(&conn);
+
+        // Without any setter calls, scalars default to empty / false.
+        let detail = super::query_author_detail(&conn, author_id).unwrap();
+        let work = &detail.works[0];
+        assert_eq!(work.re_entry_note, "");
+        assert_eq!(work.completion_rating, "");
+        let ch = &work.chapters[0];
+        assert_eq!(ch.user_summary, "");
+        assert_eq!(ch.takeaway, "");
+        assert!(!ch.is_favorite, "is_favorite must default to false");
+    }
+
+    #[test]
+    fn chapter_favorite_toggle_round_trips() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (author_id, _work_id, chapter_id) = seed_journal_author(&conn);
+
+        // set favorite = true
+        conn.execute("UPDATE chapters SET is_favorite=1 WHERE id=?1", params![chapter_id]).unwrap();
+        let detail = super::query_author_detail(&conn, author_id).unwrap();
+        assert!(detail.works[0].chapters[0].is_favorite);
+
+        // set favorite = false
+        conn.execute("UPDATE chapters SET is_favorite=0 WHERE id=?1", params![chapter_id]).unwrap();
+        let detail2 = super::query_author_detail(&conn, author_id).unwrap();
+        assert!(!detail2.works[0].chapters[0].is_favorite);
+    }
+
+    // ---- M17 Phase 3: notes & bookmarks CRUD tests ------------------------------------
+
+    #[test]
+    fn add_note_and_bookmark_returned_by_journal_ordered_by_position() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (_author_id, _work_id, chapter_id) = seed_journal_author(&conn);
+
+        // Add two notes at different positions (second note added first).
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1, 30, 'second note', 1000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1, 10, 'first note', 2000)",
+            params![chapter_id],
+        ).unwrap();
+
+        // Add two bookmarks at different positions (second added first).
+        conn.execute(
+            "INSERT INTO chapter_bookmarks(chapter_id, position_secs, label, created_at) VALUES (?1, 60, 'late mark', 1000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chapter_bookmarks(chapter_id, position_secs, label, created_at) VALUES (?1, 5, 'early mark', 2000)",
+            params![chapter_id],
+        ).unwrap();
+
+        let journal = super::journal_for_chapter(&conn, chapter_id).unwrap();
+
+        // Notes ordered by position_secs ascending.
+        assert_eq!(journal.notes.len(), 2);
+        assert_eq!(journal.notes[0].position_secs, 10);
+        assert_eq!(journal.notes[0].body, "first note");
+        assert_eq!(journal.notes[1].position_secs, 30);
+        assert_eq!(journal.notes[1].body, "second note");
+
+        // Bookmarks ordered by position_secs ascending.
+        assert_eq!(journal.bookmarks.len(), 2);
+        assert_eq!(journal.bookmarks[0].position_secs, 5);
+        assert_eq!(journal.bookmarks[0].label, "early mark");
+        assert_eq!(journal.bookmarks[1].position_secs, 60);
+        assert_eq!(journal.bookmarks[1].label, "late mark");
+    }
+
+    #[test]
+    fn delete_note_and_bookmark_leaves_journal_empty() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (_author_id, _work_id, chapter_id) = seed_journal_author(&conn);
+
+        // Insert and then delete a note.
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1, 12, 'my note', 1000)",
+            params![chapter_id],
+        ).unwrap();
+        let note_id: i64 = conn.query_row("SELECT last_insert_rowid()", [], |r| r.get(0)).unwrap();
+
+        // Insert and then delete a bookmark.
+        conn.execute(
+            "INSERT INTO chapter_bookmarks(chapter_id, position_secs, label, created_at) VALUES (?1, 30, 'my bookmark', 1000)",
+            params![chapter_id],
+        ).unwrap();
+        let bookmark_id: i64 = conn.query_row("SELECT last_insert_rowid()", [], |r| r.get(0)).unwrap();
+
+        // Confirm both are present.
+        let journal = super::journal_for_chapter(&conn, chapter_id).unwrap();
+        assert_eq!(journal.notes.len(), 1);
+        assert_eq!(journal.bookmarks.len(), 1);
+
+        // Delete the note.
+        conn.execute("DELETE FROM chapter_notes WHERE id=?1", params![note_id]).unwrap();
+        // Delete the bookmark.
+        conn.execute("DELETE FROM chapter_bookmarks WHERE id=?1", params![bookmark_id]).unwrap();
+
+        // Journal should now be empty.
+        let journal2 = super::journal_for_chapter(&conn, chapter_id).unwrap();
+        assert!(journal2.notes.is_empty(), "notes should be empty after delete");
+        assert!(journal2.bookmarks.is_empty(), "bookmarks should be empty after delete");
+    }
+
+    #[test]
+    fn add_chapter_note_rejects_whitespace_only_body() {
+        let conn = crate::db::open_in_memory().unwrap();
+        // We test the command logic directly by replicating what the command does.
+        // A whitespace-only body should return Err after trimming to empty.
+        let body = "   ".to_string();
+        let trimmed = body.trim().to_string();
+        assert!(trimmed.is_empty(), "whitespace body trims to empty");
+
+        // Simulate the command's early-return check.
+        let result: Result<(), &str> = if trimmed.is_empty() {
+            Err("note body is empty")
+        } else {
+            Ok(())
+        };
+        assert!(result.is_err(), "whitespace-only body must be rejected");
+        assert_eq!(result.unwrap_err(), "note body is empty");
+
+        // Verify no note was actually inserted.
+        let (_author_id, _work_id, chapter_id) = seed_journal_author(&conn);
+        let journal = super::journal_for_chapter(&conn, chapter_id).unwrap();
+        assert!(journal.notes.is_empty(), "no note should exist after whitespace rejection");
+    }
+
+    #[test]
+    fn journal_for_chapter_returns_correct_fields() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (_author_id, _work_id, chapter_id) = seed_journal_author(&conn);
+
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1, 42, 'check fields', 9999)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chapter_bookmarks(chapter_id, position_secs, label, created_at) VALUES (?1, 77, 'key idea', 8888)",
+            params![chapter_id],
+        ).unwrap();
+
+        let journal = super::journal_for_chapter(&conn, chapter_id).unwrap();
+        assert_eq!(journal.notes.len(), 1);
+        let note = &journal.notes[0];
+        assert_eq!(note.chapter_id, chapter_id);
+        assert_eq!(note.position_secs, 42);
+        assert_eq!(note.body, "check fields");
+        assert_eq!(note.created_at, 9999);
+
+        assert_eq!(journal.bookmarks.len(), 1);
+        let bm = &journal.bookmarks[0];
+        assert_eq!(bm.chapter_id, chapter_id);
+        assert_eq!(bm.position_secs, 77);
+        assert_eq!(bm.label, "key idea");
+        assert_eq!(bm.created_at, 8888);
+    }
+
+    // ---- M17 Phase 4: unified journal query + export tests ----------------------------
+
+    #[test]
+    fn collect_journal_returns_all_7_kinds() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (author_id, work_id, chapter_id) = seed_journal_author(&conn);
+        let _ = (author_id,); // suppress unused warning
+
+        // Seed all 7 kinds.
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1, 15, 'my note body', 1000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chapter_bookmarks(chapter_id, position_secs, label, created_at) VALUES (?1, 30, 'key idea', 2000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute("UPDATE chapters SET user_summary='great summary' WHERE id=?1", params![chapter_id]).unwrap();
+        conn.execute("UPDATE chapters SET takeaway='key takeaway' WHERE id=?1", params![chapter_id]).unwrap();
+        conn.execute("UPDATE chapters SET is_favorite=1 WHERE id=?1", params![chapter_id]).unwrap();
+        conn.execute("UPDATE works SET re_entry_note='start here' WHERE id=?1", params![work_id]).unwrap();
+        conn.execute("UPDATE works SET completion_rating='amazing' WHERE id=?1", params![work_id]).unwrap();
+
+        let entries = super::collect_journal(&conn).unwrap();
+        let kinds: Vec<&str> = entries.iter().map(|e| e.kind.as_str()).collect();
+
+        assert!(kinds.contains(&"note"), "missing note");
+        assert!(kinds.contains(&"bookmark"), "missing bookmark");
+        assert!(kinds.contains(&"summary"), "missing summary");
+        assert!(kinds.contains(&"takeaway"), "missing takeaway");
+        assert!(kinds.contains(&"favorite"), "missing favorite");
+        assert!(kinds.contains(&"re_entry"), "missing re_entry");
+        assert!(kinds.contains(&"rating"), "missing rating");
+        assert_eq!(entries.len(), 7, "expected exactly 7 entries");
+    }
+
+    #[test]
+    fn query_journal_empty_query_returns_all_then_filter_narrows() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (_author_id, work_id, chapter_id) = seed_journal_author(&conn);
+
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1, 15, 'unique_searchword here', 1000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chapter_bookmarks(chapter_id, position_secs, label, created_at) VALUES (?1, 30, 'other label', 2000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute("UPDATE works SET re_entry_note='start here' WHERE id=?1", params![work_id]).unwrap();
+
+        let all = super::collect_journal(&conn).unwrap();
+        assert_eq!(all.len(), 3, "should have 3 total entries");
+
+        // Filter to only the note.
+        let filtered: Vec<_> = all.iter().filter(|e| {
+            let q = "unique_searchword";
+            e.body.to_lowercase().contains(q)
+                || e.work_title.to_lowercase().contains(q)
+                || e.author_name.to_lowercase().contains(q)
+                || e.chapter_title.as_deref().map_or(false, |t| t.to_lowercase().contains(q))
+        }).collect();
+        assert_eq!(filtered.len(), 1, "should narrow to 1 note");
+        assert_eq!(filtered[0].kind, "note");
+        assert!(filtered[0].body.contains("unique_searchword"));
+    }
+
+    #[test]
+    fn build_journal_json_round_trips_via_serde() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (_author_id, _work_id, chapter_id) = seed_journal_author(&conn);
+
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1, 10, 'round trip note', 5000)",
+            params![chapter_id],
+        ).unwrap();
+
+        let entries = super::collect_journal(&conn).unwrap();
+        let json = super::build_journal_json(&entries).unwrap();
+        let parsed: Vec<crate::model::JournalEntry> = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.len(), entries.len());
+        assert_eq!(parsed[0].kind, entries[0].kind);
+        assert_eq!(parsed[0].body, entries[0].body);
+    }
+
+    #[test]
+    fn build_journal_markdown_contains_headings_and_kind_markers() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (_author_id, work_id, chapter_id) = seed_journal_author(&conn);
+
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (?1, 15, 'note text', 1000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chapter_bookmarks(chapter_id, position_secs, label, created_at) VALUES (?1, 30, 'key idea', 2000)",
+            params![chapter_id],
+        ).unwrap();
+        conn.execute("UPDATE chapters SET user_summary='great summary' WHERE id=?1", params![chapter_id]).unwrap();
+        conn.execute("UPDATE chapters SET takeaway='key takeaway' WHERE id=?1", params![chapter_id]).unwrap();
+        conn.execute("UPDATE chapters SET is_favorite=1 WHERE id=?1", params![chapter_id]).unwrap();
+        conn.execute("UPDATE works SET re_entry_note='start here' WHERE id=?1", params![work_id]).unwrap();
+        conn.execute("UPDATE works SET completion_rating='amazing' WHERE id=?1", params![work_id]).unwrap();
+
+        let entries = super::collect_journal(&conn).unwrap();
+        let md = super::build_journal_markdown(&entries);
+
+        // Should have the top-level heading.
+        assert!(md.contains("# AudioShelf — Listening Journal"), "missing top heading");
+        // Author heading.
+        assert!(md.contains("## Journal Author"), "missing author heading");
+        // Work heading with rating.
+        assert!(md.contains("### Journal Work"), "missing work heading");
+        assert!(md.contains("amazing"), "missing rating word");
+        // Re-entry note.
+        assert!(md.contains("_Where I left off:_"), "missing re-entry label");
+        assert!(md.contains("start here"), "missing re-entry text");
+        // Note marker with position.
+        assert!(md.contains("**Note**"), "missing note marker");
+        assert!(md.contains("0:15"), "missing note position");
+        // Bookmark marker.
+        assert!(md.contains("**Bookmark**"), "missing bookmark marker");
+        assert!(md.contains("0:30"), "missing bookmark position");
+        // Summary.
+        assert!(md.contains("**Summary**"), "missing summary marker");
+        assert!(md.contains("great summary"), "missing summary text");
+        // Takeaway.
+        assert!(md.contains("**Takeaway**"), "missing takeaway marker");
+        assert!(md.contains("key takeaway"), "missing takeaway text");
+        // Favorite star.
+        assert!(md.contains("★ Favorite"), "missing favorite marker");
     }
 }
 

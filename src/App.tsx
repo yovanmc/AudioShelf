@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { save } from "@tauri-apps/plugin-dialog";
 import {
   getLaunchArgs, scanLibrary, getAuthors, getAuthorDetail,
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
@@ -11,12 +12,17 @@ import {
   listTagsWithCounts, renameTag, mergeTags, setTagAlias, clearTagAlias,
   detectSeries, applySeries, getAuthorSeries,
   searchTranscripts, getChapterTranscript,
+  setChapterSummary, setChapterTakeaway, setChapterFavorite,
+  setWorkReEntryNote, setWorkRating,
+  getChapterJournal, addChapterNote, deleteChapterNote, addBookmark, deleteBookmark,
+  queryJournal, exportJournal,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
-  type SeriesView, type TranscriptHit,
+  type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
 } from "./lib/api";
 import { HomeView } from "./views/HomeView";
+import { JournalView } from "./views/JournalView";
 import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
 import { DiscoveryView } from "./views/DiscoveryView";
@@ -29,7 +35,7 @@ import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
 import { clampSeek, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -77,7 +83,8 @@ type Route =
   | { kind: "discovery" }
   | { kind: "rename" }
   | { kind: "metadata" }
-  | { kind: "settings"; firstRun: boolean };
+  | { kind: "settings"; firstRun: boolean }
+  | { kind: "journal" };
 
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
@@ -85,6 +92,7 @@ function shellRoute(route: Route): ShellRoute {
   if (route.kind === "rename") return "rename";
   if (route.kind === "metadata") return "metadata";
   if (route.kind === "settings") return "settings";
+  if (route.kind === "journal") return "journal";
   return "library";
 }
 
@@ -164,6 +172,21 @@ export default function App() {
   const [moreLikeThisMap, setMoreLikeThisMap] = useState<Record<number, DiscoveryWork[]>>({});
   const [workTagSuggestions, setWorkTagSuggestions] = useState<Record<number, string[]>>({});
 
+  // ---- M17: chapter journal state ----
+  const [openJournal, setOpenJournal] = useState<ChapterJournal | null>(null);
+  const [journalChapterId, setJournalChapterId] = useState<number | null>(null);
+
+  // ---- M17: journal view state ----
+  const [journal, setJournal] = useState<JournalResults | null>(null);
+  const [journalQuery, setJournalQuery] = useState("");
+  const [journalExportStatus, setJournalExportStatus] = useState<string | null>(null);
+
+  // ---- M17: chapter journal for NowPlayingPanel (keyed on current chapter) ----
+  const [currentChapterJournal, setCurrentChapterJournal] = useState<ChapterJournal | null>(null);
+
+  // ---- M17: pending seek ref for jump-to-bookmark ----
+  const pendingSeekRef = useRef<number | null>(null);
+
   useEffect(() => {
     const ctx = current;
     if (!ctx) { setCurrentWorkChapters([]); return; }
@@ -175,6 +198,17 @@ export default function App() {
     }).catch(() => { if (!cancelled) setCurrentWorkChapters([]); });
     return () => { cancelled = true; };
   }, [current?.workId, current?.authorId]);
+
+  // Fetch chapter journal for the currently playing chapter (for NowPlayingPanel bookmarks).
+  useEffect(() => {
+    const chapterId = current?.chapter.id;
+    if (!chapterId) { setCurrentChapterJournal(null); return; }
+    let cancelled = false;
+    void getChapterJournal(chapterId).then((j) => {
+      if (!cancelled) setCurrentChapterJournal(j);
+    }).catch(() => { if (!cancelled) setCurrentChapterJournal(null); });
+    return () => { cancelled = true; };
+  }, [current?.chapter.id]);
 
   function setSidebarCollapsed(collapsed: boolean) {
     setSidebarCollapsedState(collapsed);
@@ -231,6 +265,159 @@ export default function App() {
     await setChapterTags(chapterId, tags);
     setDetail(await getAuthorDetail(detailRef.current.id));
     await refreshTags();
+  }
+
+  // ---- M17 journal helpers ----
+
+  async function refreshJournal(chapterId: number) {
+    const j = await getChapterJournal(chapterId);
+    setOpenJournal(j);
+  }
+
+  async function refreshDetailAfterJournalMutation() {
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  }
+
+  async function handleOpenJournal(chapterId: number) {
+    setJournalChapterId(chapterId);
+    const j = await getChapterJournal(chapterId);
+    setOpenJournal(j);
+  }
+
+  async function handleSetChapterSummary(chapterId: number, text: string) {
+    await setChapterSummary(chapterId, text);
+    await refreshDetailAfterJournalMutation();
+    await refreshJournal(chapterId);
+  }
+
+  async function handleSetChapterTakeaway(chapterId: number, text: string) {
+    await setChapterTakeaway(chapterId, text);
+    await refreshDetailAfterJournalMutation();
+    await refreshJournal(chapterId);
+  }
+
+  async function handleSetChapterFavorite(chapterId: number, isFavorite: boolean) {
+    await setChapterFavorite(chapterId, isFavorite);
+    await refreshDetailAfterJournalMutation();
+    await refreshJournal(chapterId);
+  }
+
+  async function handleAddChapterNote(chapterId: number, positionSecs: number, body: string) {
+    await addChapterNote(chapterId, positionSecs, body);
+    await refreshJournal(chapterId);
+  }
+
+  async function handleDeleteChapterNote(noteId: number) {
+    await deleteChapterNote(noteId);
+    if (journalChapterId !== null) await refreshJournal(journalChapterId);
+  }
+
+  async function handleAddBookmark(chapterId: number, positionSecs: number, label: string) {
+    await addBookmark(chapterId, positionSecs, label);
+    await refreshJournal(chapterId);
+  }
+
+  async function handleDeleteBookmark(bookmarkId: number) {
+    await deleteBookmark(bookmarkId);
+    if (journalChapterId !== null) await refreshJournal(journalChapterId);
+  }
+
+  async function handleSetWorkReEntryNote(workId: number, note: string) {
+    await setWorkReEntryNote(workId, note);
+    await refreshDetailAfterJournalMutation();
+  }
+
+  async function handleSetWorkRating(workId: number, rating: string) {
+    await setWorkRating(workId, rating);
+    await refreshDetailAfterJournalMutation();
+  }
+
+  // ---- M17: journal view helpers ----
+
+  async function loadJournal(q: string) {
+    setJournalQuery(q);
+    const results = await queryJournal(q);
+    setJournal(results);
+  }
+
+  async function openJournalView() {
+    const results = await queryJournal(journalQuery);
+    setJournal(results);
+    setRoute({ kind: "journal" });
+  }
+
+  async function handleExportJournal(format: "markdown" | "json") {
+    const path = await save({
+      defaultPath: format === "markdown" ? "audioshelf-journal.md" : "audioshelf-journal.json",
+      filters: [{ name: format === "markdown" ? "Markdown" : "JSON", extensions: [format === "markdown" ? "md" : "json"] }],
+    });
+    if (!path) return;
+    const report = await exportJournal(path, format);
+    setJournalExportStatus(`Exported ${report.entryCount} entries to ${report.path}`);
+    setTimeout(() => setJournalExportStatus(null), 4000);
+  }
+
+  // ---- M17: NowPlayingPanel capture helpers ----
+
+  async function handleAddNoteHere(positionSecs: number) {
+    const ctx = currentRef.current;
+    if (!ctx) return;
+    const body = window.prompt("Add note:");
+    if (!body || !body.trim()) return;
+    await addChapterNote(ctx.chapter.id, positionSecs, body);
+    const j = await getChapterJournal(ctx.chapter.id);
+    setCurrentChapterJournal(j);
+  }
+
+  async function handleAddBookmarkHere(positionSecs: number) {
+    const ctx = currentRef.current;
+    if (!ctx) return;
+    const label = window.prompt("Bookmark label (optional):") ?? "";
+    await addBookmark(ctx.chapter.id, positionSecs, label);
+    const j = await getChapterJournal(ctx.chapter.id);
+    setCurrentChapterJournal(j);
+  }
+
+  async function handleToggleCurrentFavorite(isFavorite: boolean) {
+    const ctx = currentRef.current;
+    if (!ctx) return;
+    await setChapterFavorite(ctx.chapter.id, isFavorite);
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  }
+
+  function jumpToBookmark(b: ChapterBookmark) {
+    const cur = currentRef.current;
+    if (cur && cur.chapter.id === b.chapterId && audioRef.current) {
+      audioRef.current.currentTime = b.positionSecs;
+      return;
+    }
+    pendingSeekRef.current = b.positionSecs;
+    void playChapterById(b.chapterId);
+  }
+
+  async function playChapterById(chapterId: number) {
+    // Resolve the chapter's author and work via getAuthorDetail, mirroring the M14 jumpToChapter pattern.
+    // We need the authorId — find it from the currentChapterJournal entries or look up all authors.
+    // Since we have a chapterId, we scan all authors to find the one that owns this chapter.
+    const allAuthors = await getAuthors();
+    for (const a of allAuthors) {
+      const d = await getAuthorDetail(a.id);
+      for (const w of d.works) {
+        const ch = w.chapters.find((c) => c.id === chapterId);
+        if (ch) {
+          playChapter({
+            chapter: ch,
+            authorId: d.id,
+            authorName: d.name,
+            workId: w.id,
+            workTitle: w.baseTitle,
+            workTotalChapters: w.chapters.length,
+            workPlayedChapters: w.chapters.filter((c) => c.played).length,
+          });
+          return;
+        }
+      }
+    }
   }
 
   async function doRenameTag(from: string, to: string) {
@@ -891,6 +1078,100 @@ export default function App() {
                   setRoute({ kind: "discovery" });
                 },
               })
+            : args.walkthrough === "journal"
+            ? journalSteps({
+                // Step 1: open Journal view before any seeding → empty state.
+                showJournalEmpty: async () => {
+                  await resetPlayHistory();
+                  const results = await queryJournal("");
+                  setJournal(results);
+                  setRoute({ kind: "journal" });
+                },
+                // Step 2: open first author, open the first chapter's journal dialog,
+                // seed summary + takeaway + favorite + note (12s) + bookmark (30s).
+                showChapterJournalDialog: async () => {
+                  const list = await getAuthors();
+                  if (list.length === 0) return;
+                  const d = await getAuthorDetail(list[0].id);
+                  setDetail(d);
+                  setRoute({ kind: "author" });
+                  const work = d.works[0];
+                  const ch = work?.chapters[0];
+                  if (!ch) return;
+                  await setChapterSummary(ch.id, "A compelling opening chapter that sets the tone for the whole work.");
+                  await setChapterTakeaway(ch.id, "First impressions matter.");
+                  await setChapterFavorite(ch.id, true);
+                  await addChapterNote(ch.id, 12, "The narrator's voice really draws you in here.");
+                  await addBookmark(ch.id, 30, "key idea");
+                  // handleOpenJournal sets journalChapterId + openJournal in App state.
+                  // openJournalForChapterId prop flows to AuthorDetailView and a useEffect
+                  // there sets editState → { chapterId, mode: "journal" }, which renders
+                  // the ChapterJournalDialog. Two settle() passes ensure both the prop
+                  // re-render and the useEffect+editState re-render are committed before
+                  // the outer runSteps settle() takes the screenshot.
+                  await handleOpenJournal(ch.id);
+                  await settle();
+                  await settle();
+                },
+                // Step 3: set re-entry note + one-word rating on the first work, capture work header.
+                showWorkMeta: async () => {
+                  const list = await getAuthors();
+                  if (list.length === 0) return;
+                  // Seed the work-level meta values first.
+                  const d0 = await getAuthorDetail(list[0].id);
+                  const work = d0.works[0];
+                  if (!work) return;
+                  await setWorkReEntryNote(work.id, "Resume from the chapter about the journey.");
+                  await setWorkRating(work.id, "captivating");
+                  // Also close the journal dialog (clear journalChapterId) so the dialog
+                  // does not overlap the work-header fields in the screenshot.
+                  setJournalChapterId(null);
+                  setOpenJournal(null);
+                  // Navigate away then back via openAuthor so AuthorDetailView unmounts
+                  // and remounts with fresh detail. WorkReEntryField / WorkRatingField are
+                  // controlled via local useState initialised from props.value only on
+                  // mount; remounting is the only way to show the freshly saved values
+                  // without changing feature code.
+                  setRoute({ kind: "library" });
+                  await settle();
+                  await openAuthor(list[0].id);
+                },
+                // Step 4: open Journal view (now populated) — grouped entries, kind chips.
+                showJournalBrowse: async () => {
+                  const results = await queryJournal("");
+                  setJournal(results);
+                  setRoute({ kind: "journal" });
+                },
+                // Step 5: type a word from the seeded note → filtered results.
+                showJournalSearch: async () => {
+                  const results = await queryJournal("narrator");
+                  setJournal(results);
+                  setJournalQuery("narrator");
+                  setRoute({ kind: "journal" });
+                },
+                // Step 6: play the seeded chapter, open Now Playing, show bookmarks + jump + capture controls.
+                showNowPlayingBookmarks: async () => {
+                  const list = await getAuthors();
+                  if (list.length === 0) return;
+                  const d = await getAuthorDetail(list[0].id);
+                  const work = d.works[0];
+                  const ch = work?.chapters[0];
+                  if (!work || !ch) return;
+                  setDetail(d);
+                  setRoute({ kind: "author" });
+                  playChapter({
+                    chapter: ch,
+                    authorId: d.id,
+                    authorName: d.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(true);
+                  await settle();
+                },
+              })
             : browseSteps({
                 // Seed tags on a few authors + a played chapter so sort-by-length,
                 // played%, the tag filter, and the status filter all have signal.
@@ -1019,6 +1300,18 @@ export default function App() {
           onRequestMoreLikeThis={requestMoreLikeThis}
           workTagSuggestions={workTagSuggestions}
           onOpenAuthor={openAuthor}
+          openJournal={openJournal}
+          onOpenJournal={handleOpenJournal}
+          openJournalForChapterId={journalChapterId ?? undefined}
+          onSetChapterSummary={handleSetChapterSummary}
+          onSetChapterTakeaway={handleSetChapterTakeaway}
+          onSetChapterFavorite={handleSetChapterFavorite}
+          onAddChapterNote={handleAddChapterNote}
+          onDeleteChapterNote={handleDeleteChapterNote}
+          onAddBookmark={handleAddBookmark}
+          onDeleteBookmark={handleDeleteBookmark}
+          onSetWorkReEntryNote={handleSetWorkReEntryNote}
+          onSetWorkRating={handleSetWorkRating}
         />
       );
     }
@@ -1081,6 +1374,16 @@ export default function App() {
         />
       );
     }
+    if (route.kind === "journal") {
+      return (
+        <JournalView
+          journal={journal}
+          exportStatus={journalExportStatus}
+          onSearch={loadJournal}
+          onExport={handleExportJournal}
+        />
+      );
+    }
     return (
       <LibraryView
         authors={authors}
@@ -1131,7 +1434,13 @@ export default function App() {
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+        onLoadedMetadata={(e) => {
+          setDuration(e.currentTarget.duration || 0);
+          if (pendingSeekRef.current != null) {
+            try { e.currentTarget.currentTime = pendingSeekRef.current; } catch {}
+            pendingSeekRef.current = null;
+          }
+        }}
         onEnded={handleEnded}
       />
       {standalone ? <div className="standalone-view">{view}</div> : (
@@ -1145,6 +1454,7 @@ export default function App() {
           onRename={openRename}
           onMetadata={openMetadata}
           onSettings={openSettings}
+          onJournal={openJournalView}
           player={player}
         >
           {view}
@@ -1173,6 +1483,11 @@ export default function App() {
           chapters={currentWorkChapters}
           onJumpToChapter={jumpToChapter}
           transcript={currentTranscript}
+          chapterJournal={currentChapterJournal}
+          onAddNoteHere={handleAddNoteHere}
+          onAddBookmarkHere={handleAddBookmarkHere}
+          onToggleFavorite={handleToggleCurrentFavorite}
+          onJumpToBookmark={jumpToBookmark}
         />
       )}
     </div>

@@ -33,6 +33,9 @@ pub struct ChapterRow {
     pub file_path: String,
     pub played: bool,
     pub tags: Vec<String>,
+    pub user_summary: String,
+    pub takeaway: String,
+    pub is_favorite: bool,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -42,6 +45,8 @@ pub struct WorkRow {
     pub base_title: String,
     pub tags: Vec<String>,
     pub chapters: Vec<ChapterRow>,
+    pub re_entry_note: String,
+    pub completion_rating: String,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -205,6 +210,62 @@ pub struct HomeData {
     pub keep_listening: Option<ContinueItem>,
     pub recommendations: Vec<RecommendationWork>,
     pub stats: ListeningStats,
+}
+
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ChapterNote {
+    pub id: i64,
+    pub chapter_id: i64,
+    pub position_secs: i64,
+    pub body: String,
+    pub created_at: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ChapterBookmark {
+    pub id: i64,
+    pub chapter_id: i64,
+    pub position_secs: i64,
+    pub label: String,
+    pub created_at: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChapterJournal {
+    pub notes: Vec<ChapterNote>,
+    pub bookmarks: Vec<ChapterBookmark>,
+}
+
+#[derive(Serialize, serde::Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalEntry {
+    pub kind: String,            // "note" | "bookmark" | "summary" | "takeaway" | "favorite" | "re_entry" | "rating"
+    pub author_id: i64,
+    pub author_name: String,
+    pub work_id: i64,
+    pub work_title: String,
+    pub chapter_id: Option<i64>,
+    pub chapter_title: Option<String>,
+    pub position_secs: Option<i64>,
+    pub body: String,            // note/summary/takeaway text, bookmark label, rating word, etc.
+    pub created_at: Option<i64>,
+}
+
+#[derive(Serialize, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalResults {
+    pub entries: Vec<JournalEntry>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalExportReport {
+    pub path: String,
+    pub format: String,
+    pub entry_count: usize,
 }
 
 /// One field proposed to change based on embedded audio metadata.

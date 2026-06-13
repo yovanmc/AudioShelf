@@ -56,6 +56,11 @@ pub fn run() {
             commands::set_author_tags,
             commands::set_work_tags,
             commands::set_chapter_tags,
+            commands::set_chapter_summary,
+            commands::set_chapter_takeaway,
+            commands::set_chapter_favorite,
+            commands::set_work_re_entry_note,
+            commands::set_work_rating,
             commands::get_discovery,
             commands::get_discovery_by_tags,
             commands::get_more_from_author,
@@ -85,7 +90,14 @@ pub fn run() {
             commands::get_chapter_transcript,
             commands::get_dormant_works,
             commands::get_more_like_this,
-            commands::suggest_tags
+            commands::suggest_tags,
+            commands::get_chapter_journal,
+            commands::add_chapter_note,
+            commands::delete_chapter_note,
+            commands::add_bookmark,
+            commands::delete_bookmark,
+            commands::query_journal,
+            commands::export_journal
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

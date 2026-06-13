@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NowPlayingPanel } from "./NowPlayingPanel";
 
 const context = {
-  chapter: { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/audio.mp3", played: false, tags: [] },
+  chapter: { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/audio.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
   authorId: 1,
   authorName: "Jane Doe",
   workId: 3,
@@ -107,8 +107,8 @@ describe("NowPlayingPanel", () => {
 
   it("renders chapter list when given more than one chapter", () => {
     const chapters: import("../lib/api").ChapterRow[] = [
-      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [] },
-      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [] },
+      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
+      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [], userSummary: "", takeaway: "", isFavorite: false },
     ];
     render(<NowPlayingPanel {...props({ chapters })} />);
     expect(screen.getByText("In this work", { exact: false })).toBeInTheDocument();
@@ -121,8 +121,8 @@ describe("NowPlayingPanel", () => {
 
   it("clicking a chapter calls onJumpToChapter with that chapter", async () => {
     const chapters: import("../lib/api").ChapterRow[] = [
-      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [] },
-      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [] },
+      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
+      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [], userSummary: "", takeaway: "", isFavorite: false },
     ];
     const onJumpToChapter = vi.fn();
     render(<NowPlayingPanel {...props({ chapters, onJumpToChapter })} />);
@@ -132,7 +132,7 @@ describe("NowPlayingPanel", () => {
 
   it("does not render chapter list for a single-chapter work", () => {
     const chapters: import("../lib/api").ChapterRow[] = [
-      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [] },
+      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
     ];
     render(<NowPlayingPanel {...props({ chapters })} />);
     expect(screen.queryByText("In this work", { exact: false })).not.toBeInTheDocument();
@@ -156,5 +156,88 @@ describe("NowPlayingPanel", () => {
   it("does not render the Transcript section when transcript prop is null", () => {
     render(<NowPlayingPanel {...props({ transcript: null })} />);
     expect(screen.queryByText("Transcript")).not.toBeInTheDocument();
+  });
+
+  // ---- journal capture controls ----
+
+  it("renders the Capture section always", () => {
+    render(<NowPlayingPanel {...props()} />);
+    expect(screen.getByRole("region", { name: "Journal capture" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add note here" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bookmark this moment" })).toBeInTheDocument();
+  });
+
+  it("'Add note here' fires onAddNoteHere with Math.floor(currentTime)", async () => {
+    const onAddNoteHere = vi.fn();
+    // currentTime is 30 in the default props — Math.floor(30) = 30
+    render(<NowPlayingPanel {...props({ onAddNoteHere, currentTime: 30 })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Add note here" }));
+    expect(onAddNoteHere).toHaveBeenCalledWith(30);
+  });
+
+  it("'Add note here' floors a fractional currentTime", async () => {
+    const onAddNoteHere = vi.fn();
+    render(<NowPlayingPanel {...props({ onAddNoteHere, currentTime: 45.9 })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Add note here" }));
+    expect(onAddNoteHere).toHaveBeenCalledWith(45);
+  });
+
+  it("'Bookmark this moment' fires onAddBookmarkHere with Math.floor(currentTime)", async () => {
+    const onAddBookmarkHere = vi.fn();
+    render(<NowPlayingPanel {...props({ onAddBookmarkHere, currentTime: 72.7 })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Bookmark this moment" }));
+    expect(onAddBookmarkHere).toHaveBeenCalledWith(72);
+  });
+
+  it("renders the ★ Favorite toggle with correct aria-pressed state", () => {
+    const chapterWithFav = { ...context.chapter, isFavorite: false };
+    render(<NowPlayingPanel {...props({ context: { ...context, chapter: chapterWithFav } })} />);
+    const btn = screen.getByRole("button", { name: "Mark chapter as favorite" });
+    expect(btn).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("★ Favorite toggle shows 'Remove from favorites' when isFavorite is true", () => {
+    const chapterFaved = { ...context.chapter, isFavorite: true };
+    render(<NowPlayingPanel {...props({ context: { ...context, chapter: chapterFaved } })} />);
+    expect(screen.getByRole("button", { name: "Remove from favorites" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("clicking ★ Favorite fires onToggleFavorite with the toggled value", async () => {
+    const onToggleFavorite = vi.fn();
+    const chapterNotFaved = { ...context.chapter, isFavorite: false };
+    render(<NowPlayingPanel {...props({ context: { ...context, chapter: chapterNotFaved }, onToggleFavorite })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Mark chapter as favorite" }));
+    expect(onToggleFavorite).toHaveBeenCalledWith(true);
+  });
+
+  it("renders the bookmark list when chapterJournal has bookmarks", () => {
+    const chapterJournal: import("../lib/api").ChapterJournal = {
+      notes: [],
+      bookmarks: [
+        { id: 1, chapterId: 1, positionSecs: 37, label: "key idea", createdAt: 1000 },
+        { id: 2, chapterId: 1, positionSecs: 90, label: "", createdAt: 2000 },
+      ],
+    };
+    render(<NowPlayingPanel {...props({ chapterJournal })} />);
+    expect(screen.getByText("key idea")).toBeInTheDocument();
+    expect(screen.getByText("0:37")).toBeInTheDocument();
+    expect(screen.getByText("1:30")).toBeInTheDocument();
+    // Two Jump buttons
+    expect(screen.getAllByRole("button", { name: /Jump to bookmark/ })).toHaveLength(2);
+  });
+
+  it("clicking a bookmark Jump fires onJumpToBookmark with the bookmark", async () => {
+    const onJumpToBookmark = vi.fn();
+    const bookmark: import("../lib/api").ChapterBookmark = { id: 5, chapterId: 1, positionSecs: 45, label: "here", createdAt: 500 };
+    const chapterJournal: import("../lib/api").ChapterJournal = { notes: [], bookmarks: [bookmark] };
+    render(<NowPlayingPanel {...props({ chapterJournal, onJumpToBookmark })} />);
+    await userEvent.click(screen.getByRole("button", { name: /Jump to bookmark at 0:45/ }));
+    expect(onJumpToBookmark).toHaveBeenCalledWith(bookmark);
+  });
+
+  it("does not render bookmark list when chapterJournal has no bookmarks", () => {
+    const chapterJournal: import("../lib/api").ChapterJournal = { notes: [], bookmarks: [] };
+    render(<NowPlayingPanel {...props({ chapterJournal })} />);
+    expect(screen.queryByText("Bookmarks")).not.toBeInTheDocument();
   });
 });

@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -179,6 +179,31 @@ export function m16Steps(nav: {
     { name: "transcript-search", run: nav.showTranscriptSearch },
     { name: "forgotten-shelf", run: nav.showForgottenShelf },
     { name: "discover-reasons", run: nav.showDiscoverReasons },
+  ];
+}
+
+/**
+ * Build the "journal" walkthrough: six surfaces introduced in M17 — the empty
+ * journal state, the chapter journal dialog (summary/takeaway/favorite/note/bookmark),
+ * the work-level meta fields (re-entry note + rating), the populated journal browse
+ * view, filtered journal search, and the now-playing bookmarks panel with jump-to.
+ * All data is seeded at runtime so on-disk fixtures stay 43/44/47.
+ */
+export function journalSteps(nav: {
+  showJournalEmpty: () => Promise<void>;
+  showChapterJournalDialog: () => Promise<void>;
+  showWorkMeta: () => Promise<void>;
+  showJournalBrowse: () => Promise<void>;
+  showJournalSearch: () => Promise<void>;
+  showNowPlayingBookmarks: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "journal-empty", run: nav.showJournalEmpty },
+    { name: "journal-chapter-edit", run: nav.showChapterJournalDialog },
+    { name: "journal-work-meta", run: nav.showWorkMeta },
+    { name: "journal-browse", run: nav.showJournalBrowse },
+    { name: "journal-search", run: nav.showJournalSearch },
+    { name: "now-playing-bookmarks", run: nav.showNowPlayingBookmarks },
   ];
 }
 
