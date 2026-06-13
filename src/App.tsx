@@ -44,12 +44,13 @@ import { ScanView } from "./views/ScanView";
 import { CollectionsView } from "./components/CollectionsView";
 import { BulkTagDialog } from "./components/BulkTagDialog";
 import { PlayerBar } from "./player/PlayerBar";
+import { MiniPlayer } from "./player/MiniPlayer";
 import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -244,6 +245,9 @@ export default function App() {
   const [recapStatus, setRecapStatus] = useState<string | null>(null);
   const routeRef = useRef<Route>(route);
   routeRef.current = route;
+
+  // ---- M20: harness-only mini-player overlay ----
+  const [harnessMiniPlayer, setHarnessMiniPlayer] = useState(false);
 
   // ---- M16 Task 11: intelligence UI state ----
   const [dormantWorks, setDormantWorks] = useState<DormantWork[]>([]);
@@ -1624,6 +1628,94 @@ export default function App() {
                   await settle();
                 },
               })
+            : args.walkthrough === "m20"
+            ? m20Steps({
+                // Step 1: force-reset a11y to known baseline, then switch to light theme.
+                // Also reset dir to LTR in case any prior run left it as RTL.
+                showThemeLight: async () => {
+                  document.documentElement.dir = "ltr";
+                  setA11y({ ...DEFAULT_A11Y, theme: "light" });
+                  setHarnessMiniPlayer(false);
+                  await loadHome();
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
+                // Step 2: high-contrast theme.
+                showThemeHighContrast: async () => {
+                  setA11y({ ...DEFAULT_A11Y, theme: "high-contrast" });
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
+                // Step 3: XLarge text size (most visible diff).
+                showTextLarge: async () => {
+                  setA11y({ ...DEFAULT_A11Y, textSize: "xlarge" });
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
+                // Step 4: dyslexia font.
+                showDyslexiaFont: async () => {
+                  setA11y({ ...DEFAULT_A11Y, dyslexiaFont: true });
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
+                // Step 5: reduced-motion on; navigate to Settings so the toggle is visibly ON.
+                showReducedMotion: async () => {
+                  setA11y({ ...DEFAULT_A11Y, reducedMotion: true });
+                  setRoute({ kind: "settings", firstRun: false });
+                  await settle();
+                  document.querySelector(".a11y-section")?.scrollIntoView({ block: "start" });
+                  await settle();
+                },
+                // Step 6: colorblind-safe status icons — reset a11y, open author detail
+                // (work rows show status dots/icons from Task 6).
+                showColorblindStatus: async () => {
+                  setA11y({ ...DEFAULT_A11Y });
+                  const list = await getAuthors();
+                  if (list.length > 0) await openAuthor(list[0].id);
+                  await settle();
+                },
+                // Step 7: focus the skip link so it slides into view (top: var(--space-3)).
+                showSkipLinkFocus: async () => {
+                  setA11y({ ...DEFAULT_A11Y });
+                  setRoute({ kind: "home" });
+                  await settle();
+                  document.querySelector<HTMLElement>(".skip-link")?.focus();
+                  await settle();
+                },
+                // Step 8: navigate to author detail — the role="tree" work/chapter list is there.
+                showSrTree: async () => {
+                  setA11y({ ...DEFAULT_A11Y });
+                  const list = await getAuthors();
+                  if (list.length > 0) await openAuthor(list[0].id);
+                  await settle();
+                },
+                // Step 9: RTL layout — proves nothing collapses under RTL.
+                showRtlLayout: async () => {
+                  setA11y({ ...DEFAULT_A11Y });
+                  document.documentElement.dir = "rtl";
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
+                // Step 10: show the inline MiniPlayer overlay, then restore dir + a11y.
+                showMiniPlayer: async () => {
+                  document.documentElement.dir = "ltr";
+                  setA11y({ ...DEFAULT_A11Y });
+                  setRoute({ kind: "home" });
+                  setHarnessMiniPlayer(true);
+                  await settle();
+                },
+                // Step 11: Accessibility settings section. Reset a11y to defaults first,
+                // then show Settings so controls render in their default state.
+                // Set harnessMiniPlayer false to remove the overlay.
+                showAccessibilitySettings: async () => {
+                  setHarnessMiniPlayer(false);
+                  setA11y({ ...DEFAULT_A11Y });
+                  setRoute({ kind: "settings", firstRun: false });
+                  await settle();
+                  document.querySelector(".a11y-section")?.scrollIntoView({ block: "start" });
+                  await settle();
+                },
+              })
             : browseSteps({
                 // Seed tags on a few authors + a played chapter so sort-by-length,
                 // played%, the tag filter, and the status filter all have signal.
@@ -2218,6 +2310,20 @@ export default function App() {
         onOpenWorkAuthor={(authorId) => { void openAuthor(authorId); }}
         onPlayChapter={(id) => { void playChapterById(id); }}
       />
+      {harnessMiniPlayer && (
+        <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, background: "rgba(0,0,0,0.6)" }}>
+          <MiniPlayer
+            title="Chapter 3 — The Arrival"
+            author="Jane Doe"
+            isPlaying={true}
+            position={72}
+            duration={300}
+            onToggle={() => {}}
+            onPrev={() => {}}
+            onNext={() => {}}
+          />
+        </div>
+      )}
       {current && playerExpanded && (
         <NowPlayingPanel
           context={current}

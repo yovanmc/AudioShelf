@@ -273,7 +273,7 @@ export function SettingsView(props: {
       )}
 
       {!firstRun && props.onA11yChange && props.a11y && (
-        <Card style={{ padding: 24, marginTop: 16 }}>
+        <Card className="a11y-section" style={{ padding: 24, marginTop: 16 }}>
           <h2>Accessibility</h2>
 
           <div style={{ marginTop: 12 }}>

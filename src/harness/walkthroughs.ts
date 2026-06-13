@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -252,6 +252,42 @@ export function m19Steps(nav: {
     { name: "chapter-sort", run: nav.showChapterSort },
     { name: "backup-maintenance", run: nav.showBackupMaintenance },
     { name: "health-report", run: nav.showHealthReport },
+  ];
+}
+
+/**
+ * Build the "m20" walkthrough: eleven accessibility surfaces introduced in M20 —
+ * light theme, high-contrast theme, large text, dyslexia font, reduced motion (settings
+ * toggle visible on), colorblind-safe status icons (author detail), skip-link focused,
+ * screen-reader tree (author detail role=tree), RTL layout, inline mini-player overlay,
+ * and the Accessibility settings section with controls visible.
+ * All state is forced via local setA11y() (no persistence) so nothing leaks across runs.
+ */
+export function m20Steps(nav: {
+  showThemeLight: () => Promise<void>;
+  showThemeHighContrast: () => Promise<void>;
+  showTextLarge: () => Promise<void>;
+  showDyslexiaFont: () => Promise<void>;
+  showReducedMotion: () => Promise<void>;
+  showColorblindStatus: () => Promise<void>;
+  showSkipLinkFocus: () => Promise<void>;
+  showSrTree: () => Promise<void>;
+  showRtlLayout: () => Promise<void>;
+  showMiniPlayer: () => Promise<void>;
+  showAccessibilitySettings: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "theme-light", run: nav.showThemeLight },
+    { name: "theme-high-contrast", run: nav.showThemeHighContrast },
+    { name: "text-large", run: nav.showTextLarge },
+    { name: "dyslexia-font", run: nav.showDyslexiaFont },
+    { name: "reduced-motion", run: nav.showReducedMotion },
+    { name: "colorblind-status", run: nav.showColorblindStatus },
+    { name: "skip-link-focus", run: nav.showSkipLinkFocus },
+    { name: "sr-tree", run: nav.showSrTree },
+    { name: "rtl-layout", run: nav.showRtlLayout },
+    { name: "mini-player", run: nav.showMiniPlayer },
+    { name: "a11y-settings", run: nav.showAccessibilitySettings },
   ];
 }
 
