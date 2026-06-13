@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ScanResult, TagStat, Collection } from "../lib/api";
+import type { ScanResult, TagStat, Collection, ImportReport, HealthReport } from "../lib/api";
 import { Button, Card, Notice, PageHeader } from "../components/ui";
 import { Icon } from "../components/Icon";
 import type { HomeShelf, ShelfKind } from "../lib/shelves";
@@ -190,6 +190,15 @@ export function SettingsView(props: {
   // Density (optional — existing tests omit these)
   density?: Density;
   onDensityChange?: (d: Density) => void;
+  // Backup & maintenance (optional — existing tests omit these)
+  onExportJson?: () => void;
+  onExportSnapshot?: () => void;
+  onImportJson?: () => void;
+  onRestoreSnapshot?: () => void;
+  onHealthScan?: () => void;
+  importReport?: ImportReport | null;
+  healthReport?: HealthReport | null;
+  restoreStaged?: boolean;
 }) {
   const { root, lastScan, scanError, busy, firstRun } = props;
   const shelves = props.shelves ?? [];
@@ -341,6 +350,125 @@ export function SettingsView(props: {
           onDeleteCollection={props.onDeleteCollection}
           onReorderCollections={props.onReorderCollections}
         />
+      )}
+
+      {!firstRun && (props.onExportJson || props.onExportSnapshot || props.onImportJson || props.onRestoreSnapshot || props.onHealthScan) && (
+        <Card style={{ padding: 24, marginTop: 16 }}>
+          <h2>Backup &amp; maintenance</h2>
+          <p className="muted">
+            Export your curation data, create full database snapshots, import from a previous export, restore
+            a snapshot, or scan your library for file health issues.
+          </p>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+            {props.onExportJson && (
+              <Button variant="secondary" onClick={props.onExportJson}>
+                Export curation (JSON)
+              </Button>
+            )}
+            {props.onExportSnapshot && (
+              <Button variant="secondary" onClick={props.onExportSnapshot}>
+                Export full snapshot (.db)
+              </Button>
+            )}
+            {props.onImportJson && (
+              <Button variant="secondary" onClick={props.onImportJson}>
+                Import curation (JSON)
+              </Button>
+            )}
+            {props.onRestoreSnapshot && (
+              <Button variant="secondary" onClick={props.onRestoreSnapshot}>
+                Restore snapshot (.db)
+              </Button>
+            )}
+            {props.onHealthScan && (
+              <Button variant="secondary" onClick={props.onHealthScan}>
+                Run health scan
+              </Button>
+            )}
+          </div>
+
+          {props.restoreStaged && (
+            <div style={{ marginTop: 16 }}>
+              <Notice tone="info">
+                Restore staged — restart AudioShelf to apply (your current library is backed up automatically).
+              </Notice>
+            </div>
+          )}
+
+          {props.importReport && (
+            <div style={{ marginTop: 16 }}>
+              <h3 style={{ margin: "0 0 8px" }}>Import result</h3>
+              <ul className="muted" style={{ margin: 0, paddingLeft: 20 }}>
+                <li>Tags added: {props.importReport.tagsAdded}</li>
+                <li>Played marked: {props.importReport.playedMarked}</li>
+                <li>Favorites marked: {props.importReport.favoritesMarked}</li>
+                <li>Journal fields filled: {props.importReport.journalFieldsFilled}</li>
+                <li>Notes added: {props.importReport.notesAdded}</li>
+                <li>Bookmarks added: {props.importReport.bookmarksAdded}</li>
+                <li>Collections added: {props.importReport.collectionsAdded}</li>
+                <li>Saved searches added: {props.importReport.searchesAdded}</li>
+                {props.importReport.unmatchedAuthors > 0 && (
+                  <li>Unmatched authors: {props.importReport.unmatchedAuthors}</li>
+                )}
+                {props.importReport.unmatchedWorks > 0 && (
+                  <li>Unmatched works: {props.importReport.unmatchedWorks}</li>
+                )}
+                {props.importReport.unmatchedChapters > 0 && (
+                  <li>Unmatched chapters: {props.importReport.unmatchedChapters}</li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          {props.healthReport && (
+            <div style={{ marginTop: 16 }}>
+              <h3 style={{ margin: "0 0 8px" }}>Health scan result</h3>
+              {props.healthReport.schemaDrift && (
+                <div style={{ marginBottom: 12 }}>
+                  <Notice tone="error">
+                    Schema drift detected — DB version {props.healthReport.schemaVersion}, expected {props.healthReport.latestSchema}.
+                  </Notice>
+                </div>
+              )}
+              {props.healthReport.missingFiles.length === 0 &&
+               props.healthReport.zeroByte.length === 0 &&
+               props.healthReport.unreadable.length === 0 && (
+                <p className="muted" style={{ margin: 0 }}>All files look healthy.</p>
+              )}
+              {props.healthReport.missingFiles.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <strong>Missing files ({props.healthReport.missingFiles.length})</strong>
+                  <ul className="muted" style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                    {props.healthReport.missingFiles.map((item) => (
+                      <li key={item.chapterId}>{item.authorName} — {item.workTitle} — {item.title}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {props.healthReport.zeroByte.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <strong>Zero-byte files ({props.healthReport.zeroByte.length})</strong>
+                  <ul className="muted" style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                    {props.healthReport.zeroByte.map((item) => (
+                      <li key={item.chapterId}>{item.authorName} — {item.workTitle} — {item.title}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {props.healthReport.unreadable.length > 0 && (
+                <div>
+                  <strong>Unreadable files ({props.healthReport.unreadable.length})</strong>
+                  <ul className="muted" style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                    {props.healthReport.unreadable.map((item) => (
+                      <li key={item.chapterId}>{item.authorName} — {item.workTitle} — {item.title}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
       )}
     </main>
   );

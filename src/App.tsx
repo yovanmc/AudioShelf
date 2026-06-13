@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { save } from "@tauri-apps/plugin-dialog";
+import { save, open } from "@tauri-apps/plugin-dialog";
 import {
   getLaunchArgs, scanLibrary, getAuthors, getAuthorDetail,
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
@@ -20,11 +20,13 @@ import {
   advancedSearch, listSavedSearches, createSavedSearch, deleteSavedSearch,
   listCollections, createCollection, deleteCollection, reorderCollections, resolveCollection,
   bulkSetWorkTags, setWorkChapterSort,
+  exportCurationJson, exportDbSnapshot, importCurationJson, stageDbRestore, libraryHealthScan,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
   type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
   type InsightsData, type ScopedResults, type SavedSearch, type Collection,
+  type ImportReport, type HealthReport,
 } from "./lib/api";
 import { hasScopedTokens } from "./lib/query";
 import { buildRecapSvg } from "./lib/recap";
@@ -174,6 +176,11 @@ export default function App() {
   // ---- M19 smart collections ----
   const [collections, setCollections] = useState<Collection[]>([]);
   const [resolvedCollections, setResolvedCollections] = useState<Record<number, ScopedResults | undefined>>({});
+
+  // ---- M19 backup & maintenance ----
+  const [importReport, setImportReport] = useState<ImportReport | null>(null);
+  const [healthReport, setHealthReport] = useState<HealthReport | null>(null);
+  const [restoreStaged, setRestoreStaged] = useState(false);
 
   // ---- command palette (Ctrl+K) ----
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -848,6 +855,25 @@ export default function App() {
     await reorderCollections(ids);
     await refreshCollections();
   }
+
+  // ---- M19 backup & maintenance handlers ----
+  const onExportJson = async () => {
+    const path = await save({ defaultPath: "audioshelf-curation.json", filters: [{ name: "JSON", extensions: ["json"] }] });
+    if (path) await exportCurationJson(path, Date.now());
+  };
+  const onExportSnapshot = async () => {
+    const path = await save({ defaultPath: "audioshelf-snapshot.db", filters: [{ name: "SQLite", extensions: ["db"] }] });
+    if (path) await exportDbSnapshot(path);
+  };
+  const onImportJson = async () => {
+    const path = await open({ multiple: false, filters: [{ name: "JSON", extensions: ["json"] }] });
+    if (typeof path === "string") setImportReport(await importCurationJson(path));
+  };
+  const onRestoreSnapshot = async () => {
+    const path = await open({ multiple: false, filters: [{ name: "SQLite", extensions: ["db"] }] });
+    if (typeof path === "string") { await stageDbRestore(path); setRestoreStaged(true); }
+  };
+  const onHealthScan = async () => setHealthReport(await libraryHealthScan());
 
   useEffect(() => {
     void refreshSavedSearches();
@@ -1652,6 +1678,14 @@ export default function App() {
           onReorderCollections={handleReorderCollections}
           density={density}
           onDensityChange={onDensityChange}
+          onExportJson={onExportJson}
+          onExportSnapshot={onExportSnapshot}
+          onImportJson={onImportJson}
+          onRestoreSnapshot={onRestoreSnapshot}
+          onHealthScan={onHealthScan}
+          importReport={importReport}
+          healthReport={healthReport}
+          restoreStaged={restoreStaged}
         />
       );
     }
