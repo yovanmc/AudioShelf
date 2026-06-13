@@ -1,5 +1,5 @@
 export type IconName =
-  | "home" | "library" | "discover" | "rename" | "settings"
+  | "home" | "library" | "discover" | "rename" | "metadata" | "settings"
   | "menu" | "chevronLeft" | "chevronRight" | "more"
   | "play" | "pause" | "back15" | "back30" | "forward15" | "forward30"
   | "volume" | "sleep" | "search" | "check" | "tag"
@@ -7,6 +7,7 @@ export type IconName =
 
 const paths: Record<IconName, string> = {
   home: "M3 11.5 12 4l9 7.5V21h-6v-6H9v6H3z",
+  metadata: "M4 6h16M4 10h10M4 14h7M4 18h5m10-1v4m-2-2h4",
   library: "M4 4h4v16H4zm6 0h4v16h-4zm6 2h4v14h-4z",
   discover: "m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4z",
   rename: "M4 5h10v4H4zm0 10h16v4H4zm12-8 4 4-4 4",

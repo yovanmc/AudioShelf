@@ -4,18 +4,20 @@ import {
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
   getAllTags, setAuthorTags, setWorkTags, setChapterTags, getDiscovery, getDiscoveryByTags,
   previewRenames, applyRenames, undoRenames,
+  previewMetadata, applyMetadata,
   setGroupingOverride, clearGroupingOverride,
   getSetting, setSetting, pickFolder, searchLibrary, queryHome, resetPlayHistory,
   listTagsWithCounts, renameTag, mergeTags, setTagAlias, clearTagAlias,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
-  type ChapterRow, type TagStat,
+  type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
 } from "./lib/api";
 import { HomeView } from "./views/HomeView";
 import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
 import { DiscoveryView } from "./views/DiscoveryView";
 import { RenameView } from "./views/RenameView";
+import { MetadataView } from "./views/MetadataView";
 import { SettingsView } from "./views/SettingsView";
 import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
@@ -70,12 +72,14 @@ type Route =
   | { kind: "author" }
   | { kind: "discovery" }
   | { kind: "rename" }
+  | { kind: "metadata" }
   | { kind: "settings"; firstRun: boolean };
 
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
   if (route.kind === "discovery") return "discovery";
   if (route.kind === "rename") return "rename";
+  if (route.kind === "metadata") return "metadata";
   if (route.kind === "settings") return "settings";
   return "library";
 }
@@ -117,6 +121,10 @@ export default function App() {
   const [renameItems, setRenameItems] = useState<RenameItem[]>([]);
   const [renameResult, setRenameResult] = useState<RenameResult | null>(null);
   const lastManifestRef = useRef<string | null>(null);
+
+  // ---- metadata import state ----
+  const [metadataProposals, setMetadataProposals] = useState<MetadataProposal[]>([]);
+  const [metadataResult, setMetadataResult] = useState<MetadataApplyReport | null>(null);
 
   // ---- player state ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -237,6 +245,21 @@ export default function App() {
     await undoRenames(renameResult.manifestPath);
     setRenameResult(null);
     setRenameItems(await previewRenames());
+  }
+
+  async function openMetadata() {
+    setMetadataResult(null);
+    setMetadataProposals(await previewMetadata());
+    setRoute({ kind: "metadata" });
+  }
+  async function reloadMetadataPreview() {
+    setMetadataResult(null);
+    setMetadataProposals(await previewMetadata());
+  }
+  async function doApplyMetadata(accepted: MetadataProposal[]) {
+    const res = await applyMetadata(accepted);
+    setMetadataResult(res);
+    setMetadataProposals(await previewMetadata()); // refresh to remove applied diffs
   }
 
   async function openDiscovery() {
@@ -877,6 +900,16 @@ export default function App() {
         />
       );
     }
+    if (route.kind === "metadata") {
+      return (
+        <MetadataView
+          proposals={metadataProposals}
+          result={metadataResult}
+          onApply={doApplyMetadata}
+          onReload={reloadMetadataPreview}
+        />
+      );
+    }
     if (route.kind === "settings") {
       return (
         <SettingsView
@@ -963,6 +996,7 @@ export default function App() {
           onLibrary={() => setRoute({ kind: "library" })}
           onDiscovery={openDiscovery}
           onRename={openRename}
+          onMetadata={openMetadata}
           onSettings={openSettings}
           player={player}
         >

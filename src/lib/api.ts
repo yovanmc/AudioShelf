@@ -88,6 +88,16 @@ export interface RenameItem {
 export interface RenameResult { renamedCount: number; failures: string[]; manifestPath: string; }
 export interface UndoResult { revertedCount: number; failures: string[]; }
 
+export interface MetadataProposal {
+  chapterId: number;
+  workId: number;
+  field: "title" | "order" | "tag";
+  current: string;
+  proposed: string;
+  source: "embedded";
+}
+export interface MetadataApplyReport { applied: number; skipped: number; }
+
 export interface LaunchArgs {
   library: string | null;
   autostart: boolean;
@@ -144,6 +154,11 @@ export const applyRenames = (chapterIds: number[], nowMs: number) =>
   invoke<RenameResult>("apply_renames", { chapterIds, nowMs });
 export const undoRenames = (manifestPath: string) =>
   invoke<UndoResult>("undo_renames", { manifestPath });
+
+export const previewMetadata = (authorId?: number) =>
+  invoke<MetadataProposal[]>("preview_metadata", { authorId: authorId ?? null });
+export const applyMetadata = (proposals: MetadataProposal[]) =>
+  invoke<MetadataApplyReport>("apply_metadata", { proposals });
 
 export const setGroupingOverride = (chapterId: number, baseTitle: string | null, chapterNo: number | null) =>
   invoke<AuthorDetail>("set_grouping_override", { chapterId, baseTitle, chapterNo });
