@@ -19,7 +19,7 @@ import {
   queryInsights, exportRecapPng, seedPlayEvents,
   advancedSearch, listSavedSearches, createSavedSearch, deleteSavedSearch,
   listCollections, createCollection, deleteCollection, reorderCollections, resolveCollection,
-  bulkSetWorkTags,
+  bulkSetWorkTags, setWorkChapterSort,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
@@ -54,6 +54,7 @@ import {
   type PlayedStatus,
   type WorkSort,
 } from "./lib/browse";
+import { parseDensity, type Density } from "./lib/density";
 import {
   parseHomeShelves,
   serializeHomeShelves,
@@ -152,6 +153,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(false);
   const [harnessMenuOpen, setHarnessMenuOpen] = useState(false);
+  const [density, setDensity] = useState<Density>("comfortable");
 
   // ---- library search (controlled; spans authors/works/chapters) ----
   const [query, setQuery] = useState("");
@@ -276,6 +278,11 @@ export default function App() {
   function setSidebarCollapsed(collapsed: boolean) {
     setSidebarCollapsedState(collapsed);
     void setSetting("sidebar_collapsed", String(collapsed));
+  }
+
+  function onDensityChange(d: Density) {
+    setDensity(d);
+    void setSetting("library_density", d);
   }
 
   async function loadHome() {
@@ -422,6 +429,11 @@ export default function App() {
   async function handleSetWorkRating(workId: number, rating: string) {
     await setWorkRating(workId, rating);
     await refreshDetailAfterJournalMutation();
+  }
+
+  async function onChapterSortChange(workId: number, sort: string) {
+    await setWorkChapterSort(workId, sort);
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
   }
 
   // ---- M17: journal view helpers ----
@@ -871,6 +883,7 @@ export default function App() {
       setBrowsePrefs(parseBrowsePrefs(await getSetting("browse_prefs")));
       setSidebarCollapsedState((await getSetting("sidebar_collapsed")) === "true");
       setHomeShelves(parseHomeShelves(await getSetting("home_shelves")).shelves);
+      setDensity(parseDensity(await getSetting("library_density")));
 
       if (args.autostart && args.walkthrough) {
         const openFirstAuthor = async () => {
@@ -1573,6 +1586,7 @@ export default function App() {
           onDeleteBookmark={handleDeleteBookmark}
           onSetWorkReEntryNote={handleSetWorkReEntryNote}
           onSetWorkRating={handleSetWorkRating}
+          onChapterSortChange={onChapterSortChange}
         />
       );
     }
@@ -1636,6 +1650,8 @@ export default function App() {
           onCreateCollection={handleCreateCollection}
           onDeleteCollection={handleDeleteCollection}
           onReorderCollections={handleReorderCollections}
+          density={density}
+          onDensityChange={onDensityChange}
         />
       );
     }
@@ -1771,6 +1787,7 @@ export default function App() {
           onJournal={openJournalView}
           onInsights={openInsights}
           onCollections={openCollections}
+          density={density}
           player={player}
         >
           {view}

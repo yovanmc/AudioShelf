@@ -153,6 +153,7 @@ export function AuthorDetailView(props: {
   onDeleteBookmark?: (bookmarkId: number) => void;
   onSetWorkReEntryNote?: (workId: number, note: string) => void;
   onSetWorkRating?: (workId: number, rating: string) => void;
+  onChapterSortChange?: (workId: number, sort: string) => void;
 }) {
   const { detail, series = [], moreLikeThisMap = {}, workTagSuggestions = {} } = props;
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
@@ -285,6 +286,25 @@ export function AuthorDetailView(props: {
                   onSave={props.onSetWorkRating}
                 />
               )}
+            </div>
+          )}
+          {props.onChapterSortChange && (
+            <div style={{ marginTop: 8 }}>
+              <label style={{ fontSize: "0.85rem" }}>
+                <span className="muted" style={{ marginRight: 6 }}>Chapter order:</span>
+                <select
+                  aria-label={`Chapter sort for ${w.baseTitle}`}
+                  value={w.chapterSort}
+                  onChange={(e) => props.onChapterSortChange!(w.id, e.target.value)}
+                >
+                  <option value="">Chapter order</option>
+                  <option value="number_desc">Reverse order</option>
+                  <option value="title_asc">Title A–Z</option>
+                  <option value="title_desc">Title Z–A</option>
+                  <option value="duration_asc">Shortest first</option>
+                  <option value="duration_desc">Longest first</option>
+                </select>
+              </label>
             </div>
           )}
           {!collapsed.has(w.id) && (

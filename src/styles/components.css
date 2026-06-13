@@ -131,3 +131,11 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 .button--accent { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
 .button--accent:hover { background: var(--color-accent-hover, var(--color-accent)); border-color: var(--color-accent-hover, var(--color-accent)); }
 .button--active { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-text); }
+/* ---- Density (M19) ---- */
+/* comfortable = current default; compact/spacious diverge from it */
+[data-density="compact"]     .card-grid { gap: 8px; }
+[data-density="comfortable"] .card-grid { gap: 16px; }
+[data-density="spacious"]    .card-grid { gap: 28px; }
+[data-density="compact"]     .work-card { padding: 8px; }
+[data-density="comfortable"] .work-card { padding: 16px; }
+[data-density="spacious"]    .work-card { padding: 18px; }

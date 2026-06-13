@@ -5,6 +5,7 @@ import { Icon } from "../components/Icon";
 import type { HomeShelf, ShelfKind } from "../lib/shelves";
 import type { PlayedStatus } from "../lib/browse";
 import { TagManagerView } from "./TagManagerView";
+import type { Density } from "../lib/density";
 
 const STATUS_LABELS: Record<PlayedStatus, string> = {
   all: "All",
@@ -186,6 +187,9 @@ export function SettingsView(props: {
   onCreateCollection?: (name: string, query: string) => void;
   onDeleteCollection?: (id: number) => void;
   onReorderCollections?: (ids: number[]) => void;
+  // Density (optional — existing tests omit these)
+  density?: Density;
+  onDensityChange?: (d: Density) => void;
 }) {
   const { root, lastScan, scanError, busy, firstRun } = props;
   const shelves = props.shelves ?? [];
@@ -232,6 +236,27 @@ export function SettingsView(props: {
           Indexed {lastScan.authors} authors, {lastScan.works} works,{" "}
           {lastScan.chapters} chapters.
         </Notice>
+      )}
+
+      {!firstRun && props.onDensityChange && (
+        <Card style={{ padding: 24, marginTop: 16 }}>
+          <h2>Library density</h2>
+          <p className="muted">Controls the spacing of cards in your library.</p>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            {(["compact", "comfortable", "spacious"] as Density[]).map((d) => (
+              <button
+                key={d}
+                type="button"
+                className={`button button--secondary${props.density === d ? " button--active" : ""}`}
+                aria-pressed={props.density === d}
+                onClick={() => props.onDensityChange!(d)}
+                style={props.density === d ? { borderColor: "var(--color-accent)", background: "var(--color-accent-soft)" } : undefined}
+              >
+                {d.charAt(0).toUpperCase() + d.slice(1)}
+              </button>
+            ))}
+          </div>
+        </Card>
       )}
 
       {!firstRun && (
