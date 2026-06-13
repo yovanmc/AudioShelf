@@ -22,12 +22,17 @@ pub struct TagStat {
 
 pub struct DbState(pub Mutex<rusqlite::Connection>);
 
-pub fn init_db(app: &tauri::AppHandle) -> rusqlite::Connection {
+/// Returns the resolved path of the live SQLite DB for this app instance.
+pub fn resolve_db_path(app: &tauri::AppHandle) -> String {
     use tauri::Manager;
     let dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir());
     std::fs::create_dir_all(&dir).ok();
-    let path = dir.join("audioshelf.db");
-    db::open(&path.to_string_lossy()).expect("open db")
+    dir.join("audioshelf.db").to_string_lossy().into_owned()
+}
+
+pub fn init_db(app: &tauri::AppHandle) -> rusqlite::Connection {
+    let path = resolve_db_path(app);
+    db::open(&path).expect("open db")
 }
 
 #[tauri::command]
@@ -4406,4 +4411,20 @@ pub fn export_db_snapshot(state: tauri::State<DbState>, path: String) -> Result<
     // VACUUM INTO writes a consistent snapshot from the live connection (no file-lock issue).
     conn.execute("VACUUM INTO ?1", params![path]).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Holds the resolved path of the live SQLite DB so restore commands can locate it.
+pub struct DbPathState(pub String);
+
+#[tauri::command]
+pub fn import_curation_json(state: tauri::State<DbState>, path: String) -> Result<crate::model::ImportReport, String> {
+    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let root: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("invalid backup JSON: {e}"))?;
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    crate::backup::apply_curation_import(&conn, &root).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn stage_db_restore(db_path: tauri::State<DbPathState>, src: String) -> Result<(), String> {
+    crate::backup::stage_db_restore(&db_path.0, &src)
 }

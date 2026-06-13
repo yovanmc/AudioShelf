@@ -428,3 +428,19 @@ pub struct HealthReport {
     pub latest_schema: i64,
     pub schema_drift: bool,
 }
+
+#[derive(Serialize, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportReport {
+    pub tags_added: i64,
+    pub played_marked: i64,
+    pub favorites_marked: i64,
+    pub journal_fields_filled: i64,
+    pub notes_added: i64,
+    pub bookmarks_added: i64,
+    pub collections_added: i64,
+    pub searches_added: i64,
+    pub unmatched_authors: i64,
+    pub unmatched_works: i64,
+    pub unmatched_chapters: i64,
+}

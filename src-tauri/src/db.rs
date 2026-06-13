@@ -63,6 +63,7 @@ pub(crate) const LATEST: i64 = 7;
 
 /// Open a file-backed connection and ensure the schema exists (idempotent).
 pub fn open(path: &str) -> rusqlite::Result<Connection> {
+    crate::backup::apply_pending_restore(path); // best-effort, crash-safe staged restore
     let conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
     migrate(&conn)?;
