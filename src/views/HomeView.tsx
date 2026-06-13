@@ -1,4 +1,4 @@
-import type { HomeData, PlaybackContext } from "../lib/api";
+import type { DormantWork, HomeData, PlaybackContext } from "../lib/api";
 import { WorkCard } from "../components/WorkCard";
 import { Button, EmptyState, PageHeader, SectionHeading, StatCard } from "../components/ui";
 import { CreatorIdentity } from "../components/CreatorIdentity";
@@ -18,6 +18,8 @@ export function HomeView(props: {
   featureMenuOpen?: boolean;
   shelves?: HomeShelf[];
   shelfItems?: Record<string, ShelfItem[]>;
+  /** Dormant works for the "Forgotten" shelf — optional so existing tests don't break. */
+  dormantWorks?: DormantWork[];
 }) {
   if (!props.home) {
     return <div className="view"><div className="card empty-state">Loading your shelf...</div></div>;
@@ -80,6 +82,21 @@ export function HomeView(props: {
           onPlayNextOfWork={props.onPlayNextOfWork}
         />
       ))}
+      {(props.dormantWorks ?? []).length > 0 && (
+        <Shelf
+          shelf={{ id: "__forgotten__", title: "Forgotten", kind: "dormant" }}
+          items={(props.dormantWorks ?? []).map((w) => ({
+            kind: "dormant" as const,
+            workId: w.workId,
+            title: w.baseTitle,
+            authorId: w.authorId,
+            authorName: w.authorName,
+            playedFraction: w.playedFraction,
+          }))}
+          onOpenAuthor={props.onOpenAuthor}
+          onPlayNextOfWork={props.onPlayNextOfWork}
+        />
+      )}
       {!noHistory && recommendations.length > 0 && (
         <section className="view-section">
           <SectionHeading eyebrow={keepListening ? "Based on your library and listening" : "From your library"} title="You May Like" />

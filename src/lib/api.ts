@@ -24,6 +24,18 @@ export interface SearchResults { authors: AuthorHit[]; works: WorkHit[]; chapter
 export interface DiscoveryWork {
   workId: number; baseTitle: string; authorId: number; authorName: string;
   unplayedCount: number; sharedTags: string[];
+  /** Human-readable reason this work was surfaced. Empty string when unavailable. */
+  reason?: string;
+}
+
+export interface DormantWork {
+  workId: number;
+  baseTitle: string;
+  authorId: number;
+  authorName: string;
+  lastPlayedAt: number;
+  /** Fraction (0–1) of the work's chapters that have been played. */
+  playedFraction: number;
 }
 export interface MoreWork { workId: number; baseTitle: string; unplayedCount: number; }
 
@@ -178,6 +190,12 @@ export const getDiscoveryByTags = (tags: string[]) =>
   invoke<DiscoveryWork[]>("get_discovery_by_tags", { tags });
 export const getMoreFromAuthor = (authorId: number) =>
   invoke<MoreWork[]>("get_more_from_author", { authorId });
+export const getDormantWorks = (nowMs: number, days: number) =>
+  invoke<DormantWork[]>("get_dormant_works", { nowMs, days });
+export const getMoreLikeThis = (workId: number, cap: number) =>
+  invoke<DiscoveryWork[]>("get_more_like_this", { workId, cap });
+export const suggestTags = (workId: number) =>
+  invoke<string[]>("suggest_tags", { workId });
 export const queryHome = (nowMs: number, tzOffsetMinutes: number) =>
   invoke<HomeData>("query_home", { nowMs, tzOffsetMinutes });
 

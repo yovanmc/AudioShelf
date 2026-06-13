@@ -3,6 +3,7 @@ import {
   getLaunchArgs, scanLibrary, getAuthors, getAuthorDetail,
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
   getAllTags, setAuthorTags, setWorkTags, setChapterTags, getDiscovery, getDiscoveryByTags,
+  getDormantWorks, getMoreLikeThis, suggestTags,
   previewRenames, applyRenames, undoRenames,
   previewMetadata, applyMetadata,
   setGroupingOverride, clearGroupingOverride,
@@ -10,7 +11,7 @@ import {
   listTagsWithCounts, renameTag, mergeTags, setTagAlias, clearTagAlias,
   detectSeries, applySeries, getAuthorSeries,
   searchTranscripts, getChapterTranscript,
-  type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork,
+  type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
   type SeriesView, type TranscriptHit,
@@ -158,6 +159,11 @@ export default function App() {
   const routeRef = useRef<Route>(route);
   routeRef.current = route;
 
+  // ---- M16 Task 11: intelligence UI state ----
+  const [dormantWorks, setDormantWorks] = useState<DormantWork[]>([]);
+  const [moreLikeThisMap, setMoreLikeThisMap] = useState<Record<number, DiscoveryWork[]>>({});
+  const [workTagSuggestions, setWorkTagSuggestions] = useState<Record<number, string[]>>({});
+
   useEffect(() => {
     const ctx = current;
     if (!ctx) { setCurrentWorkChapters([]); return; }
@@ -179,10 +185,22 @@ export default function App() {
     const now = Date.now();
     setHomeNow(now);
     setHome(await queryHome(now, new Date().getTimezoneOffset()));
+    // Load dormant works (>30 days) for the Forgotten shelf.
+    getDormantWorks(now, 30).then(setDormantWorks).catch(() => setDormantWorks([]));
   }
   async function openHome() {
     await loadHome();
     setRoute({ kind: "home" });
+  }
+
+  async function requestMoreLikeThis(workId: number) {
+    const results = await getMoreLikeThis(workId, 12).catch(() => [] as DiscoveryWork[]);
+    setMoreLikeThisMap((prev) => ({ ...prev, [workId]: results }));
+  }
+
+  async function loadWorkTagSuggestions(workId: number) {
+    const suggestions = await suggestTags(workId).catch(() => [] as string[]);
+    setWorkTagSuggestions((prev) => ({ ...prev, [workId]: suggestions }));
   }
 
   async function loadAuthors() {
@@ -360,7 +378,8 @@ export default function App() {
   }
 
   async function openAuthor(id: number) {
-    setDetail(await getAuthorDetail(id));
+    const d = await getAuthorDetail(id);
+    setDetail(d);
     setRoute({ kind: "author" });
     // Load persisted series; if none yet, auto-detect-and-apply silently (low friction).
     let series = await getAuthorSeries(id);
@@ -372,6 +391,10 @@ export default function App() {
       }
     }
     setAuthorSeries(series);
+    // Load auto-tag suggestions for each of this author's works.
+    for (const work of d.works) {
+      void loadWorkTagSuggestions(work.id);
+    }
   }
 
   async function togglePlayed(chapterId: number, played: boolean) {
@@ -888,6 +911,7 @@ export default function App() {
           featureMenuOpen={harnessMenuOpen}
           shelves={homeShelves}
           shelfItems={shelfItems}
+          dormantWorks={dormantWorks}
         />
       );
     }
@@ -908,6 +932,10 @@ export default function App() {
           onWorkSortChange={setWorkSort}
           series={authorSeries}
           onPlayNextOfWork={playNextChapterOfWork}
+          moreLikeThisMap={moreLikeThisMap}
+          onRequestMoreLikeThis={requestMoreLikeThis}
+          workTagSuggestions={workTagSuggestions}
+          onOpenAuthor={openAuthor}
         />
       );
     }

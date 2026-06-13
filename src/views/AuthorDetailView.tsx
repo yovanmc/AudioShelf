@@ -1,8 +1,9 @@
 import { useState } from "react";
-import type { AuthorDetail, ChapterRow, PlaybackContext, SeriesView, WorkRow } from "../lib/api";
+import type { AuthorDetail, ChapterRow, DiscoveryWork, PlaybackContext, SeriesView, WorkRow } from "../lib/api";
 import { TagEditor } from "./TagEditor";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
 import { Button, Dialog, ProgressBar, SectionHeading, TagGroup } from "../components/ui";
+import { WorkCard } from "../components/WorkCard";
 import { Menu } from "../components/Menu";
 import { Icon } from "../components/Icon";
 import { formatDuration, formatLong } from "../lib/time";
@@ -66,10 +67,19 @@ export function AuthorDetailView(props: {
   series?: SeriesView[];
   /** Called when user wants to play the next unplayed chapter of a work in a series. */
   onPlayNextOfWork?: (workId: number, authorId: number) => void;
+  /** "More like this" results keyed by work_id — optional; populated by App. */
+  moreLikeThisMap?: Record<number, DiscoveryWork[]>;
+  /** Called when user requests "More like this" for a work. */
+  onRequestMoreLikeThis?: (workId: number) => void;
+  /** Auto-tag suggestions keyed by work_id — optional; populated by App. */
+  workTagSuggestions?: Record<number, string[]>;
+  /** Called to open the author detail of another suggested work. */
+  onOpenAuthor?: (authorId: number) => void;
 }) {
-  const { detail, series = [] } = props;
+  const { detail, series = [], moreLikeThisMap = {}, workTagSuggestions = {} } = props;
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [editState, setEditState] = useState<EditState>(null);
+  const [moreLikeThisWorkId, setMoreLikeThisWorkId] = useState<number | null>(null);
   const works = sortWorks(detail.works, props.workSort);
   const allCollapsed = works.length > 0 && works.every((w) => collapsed.has(w.id));
   const toggleWork = (id: number) =>
@@ -162,7 +172,17 @@ export function AuthorDetailView(props: {
               tags={w.tags}
               allTags={props.allTags}
               onChange={(t) => props.onSetWorkTags(w.id, t)}
+              suggestions={workTagSuggestions[w.id]}
             />
+            {props.onRequestMoreLikeThis && (
+              <button
+                type="button"
+                className="chip chip--toggle"
+                style={{ marginLeft: 8 }}
+                aria-label={`More like ${w.baseTitle}`}
+                onClick={() => { props.onRequestMoreLikeThis!(w.id); setMoreLikeThisWorkId(w.id); }}
+              >More like this</button>
+            )}
           </div>
           {!collapsed.has(w.id) && (
           <ul className="recent-list">
@@ -270,6 +290,32 @@ export function AuthorDetailView(props: {
             );
           })}
         </section>
+      )}
+      {moreLikeThisWorkId !== null && moreLikeThisMap[moreLikeThisWorkId] !== undefined && (
+        <Dialog label="More like this" onClose={() => setMoreLikeThisWorkId(null)}>
+          <div style={{ padding: 8 }}>
+            {moreLikeThisMap[moreLikeThisWorkId].length === 0
+              ? <p className="muted">No similar works found in your library.</p>
+              : <div className="card-grid">
+                  {moreLikeThisMap[moreLikeThisWorkId].map((w) => (
+                    <WorkCard
+                      key={w.workId}
+                      workId={w.workId}
+                      title={w.baseTitle}
+                      authorId={w.authorId}
+                      authorName={w.authorName}
+                      reason={w.reason && w.reason.length > 0 ? w.reason : undefined}
+                      tags={w.sharedTags}
+                      meta={`${w.unplayedCount} unplayed`}
+                      actionLabel="View creator"
+                      onAction={() => { setMoreLikeThisWorkId(null); props.onOpenAuthor?.(w.authorId); }}
+                      onOpenAuthor={() => { setMoreLikeThisWorkId(null); props.onOpenAuthor?.(w.authorId); }}
+                    />
+                  ))}
+                </div>
+            }
+          </div>
+        </Dialog>
       )}
     </main>
   );

@@ -1,7 +1,7 @@
-import { getAuthors, getAuthorDetail, getDiscoveryByTags } from "./api";
+import { getAuthors, getAuthorDetail, getDiscoveryByTags, getDormantWorks } from "./api";
 import { filterAuthors, type PlayedStatus } from "./browse";
 
-export type ShelfKind = "tag" | "creator" | "status";
+export type ShelfKind = "tag" | "creator" | "status" | "dormant";
 
 export interface HomeShelf {
   id: string;            // stable unique id (e.g. `s${counter}` minted at add-time)
@@ -10,6 +10,7 @@ export interface HomeShelf {
   tag?: string;          // kind === "tag"
   authorId?: number;     // kind === "creator"
   status?: PlayedStatus; // kind === "status"
+  dormantDays?: number;  // kind === "dormant" — threshold in days (default 30)
 }
 
 export interface HomeShelvesConfig {
@@ -27,7 +28,7 @@ export function parseHomeShelves(raw: string | null): HomeShelvesConfig {
     const clean = shelves.filter(
       (s): s is HomeShelf =>
         !!s && typeof s.id === "string" && typeof s.title === "string" &&
-        (s.kind === "tag" || s.kind === "creator" || s.kind === "status"),
+        (s.kind === "tag" || s.kind === "creator" || s.kind === "status" || s.kind === "dormant"),
     );
     return { shelves: clean };
   } catch {
@@ -39,10 +40,11 @@ export function serializeHomeShelves(config: HomeShelvesConfig): string {
   return JSON.stringify(config);
 }
 
-/** Normalized shelf item — work shelves yield "work", status shelves yield "creator". */
+/** Normalized shelf item — work shelves yield "work", status shelves yield "creator", dormant yields "dormant". */
 export type ShelfItem =
   | { kind: "work"; workId: number; title: string; authorId: number; authorName: string; unplayedCount: number; tags: string[] }
-  | { kind: "creator"; authorId: number; authorName: string; workCount: number; unplayedCount: number };
+  | { kind: "creator"; authorId: number; authorName: string; workCount: number; unplayedCount: number }
+  | { kind: "dormant"; workId: number; title: string; authorId: number; authorName: string; playedFraction: number };
 
 /** Fetch a shelf's items using EXISTING commands only (no new Rust). */
 export async function loadShelfItems(shelf: HomeShelf): Promise<ShelfItem[]> {
@@ -66,6 +68,14 @@ export async function loadShelfItems(shelf: HomeShelf): Promise<ShelfItem[]> {
     return filterAuthors(authors, { tag: null, status: shelf.status }).map((a) => ({
       kind: "creator" as const, authorId: a.id, authorName: a.name,
       workCount: a.workCount, unplayedCount: a.unplayedCount,
+    }));
+  }
+  if (shelf.kind === "dormant") {
+    const days = shelf.dormantDays ?? 30;
+    const works = await getDormantWorks(Date.now(), days);
+    return works.map((w) => ({
+      kind: "dormant" as const, workId: w.workId, title: w.baseTitle,
+      authorId: w.authorId, authorName: w.authorName, playedFraction: w.playedFraction,
     }));
   }
   return [];

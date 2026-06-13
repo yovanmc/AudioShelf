@@ -4,6 +4,8 @@ export function TagEditor(props: {
   tags: string[];
   allTags: string[];
   onChange: (tags: string[]) => void;
+  /** Optional auto-tag suggestion chips (one-click add). */
+  suggestions?: string[];
 }) {
   const listId = useId();
   const [value, setValue] = useState("");
@@ -20,6 +22,11 @@ export function TagEditor(props: {
 
   function remove(tag: string) {
     props.onChange(props.tags.filter((t) => t !== tag));
+  }
+
+  function addSuggestion(tag: string) {
+    if (props.tags.includes(tag)) return;
+    props.onChange([...props.tags, tag]);
   }
 
   return (
@@ -47,6 +54,19 @@ export function TagEditor(props: {
       <datalist id={listId}>
         {props.allTags.map((t) => <option key={t} value={t} />)}
       </datalist>
+      {props.suggestions && props.suggestions.length > 0 && (
+        <div className="tag-suggestions" aria-label="Suggested tags">
+          {props.suggestions.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className="chip chip--suggestion"
+              aria-label={`Add suggested tag ${s}`}
+              onClick={() => addSuggestion(s)}
+            >+ {s}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

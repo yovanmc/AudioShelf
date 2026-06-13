@@ -29,6 +29,18 @@ export function Shelf({
               onOpenAuthor={() => onOpenAuthor(item.authorId)}
               onPlay={onPlayNextOfWork ? () => onPlayNextOfWork(item.workId, item.authorId) : undefined}
             />
+          ) : item.kind === "dormant" ? (
+            <WorkCard
+              key={`d${item.workId}`}
+              workId={item.workId}
+              title={item.title}
+              authorId={item.authorId}
+              authorName={item.authorName}
+              progress={Math.round(item.playedFraction * 100)}
+              meta={`${Math.round(item.playedFraction * 100)}% played`}
+              onOpenAuthor={() => onOpenAuthor(item.authorId)}
+              onPlay={onPlayNextOfWork ? () => onPlayNextOfWork(item.workId, item.authorId) : undefined}
+            />
           ) : (
             <div key={`c${item.authorId}`} className="shelf-creator card">
               <CreatorIdentity

@@ -597,4 +597,107 @@ describe("AuthorDetailView", () => {
     );
     expect(screen.queryByText("Reading Order / Series")).not.toBeInTheDocument();
   });
+
+  // ---- M16 Task 11 tests ----
+
+  it("shows 'More like this' button when onRequestMoreLikeThis is provided and calls it with workId", async () => {
+    const onRequest = vi.fn();
+    render(
+      <AuthorDetailView
+        detail={detail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+        onRequestMoreLikeThis={onRequest}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: `More like ${detail.works[0].baseTitle}` });
+    expect(btn).toBeInTheDocument();
+    await userEvent.click(btn);
+    expect(onRequest).toHaveBeenCalledWith(detail.works[0].id);
+  });
+
+  it("renders more-like-this results in a dialog when moreLikeThisMap has results for a work", async () => {
+    const mockResults = [
+      { workId: 99, baseTitle: "Similar Book", authorId: 50, authorName: "Other Author", unplayedCount: 3, sharedTags: ["cozy"], reason: "Shares cozy" },
+    ];
+    const onRequest = vi.fn();
+    render(
+      <AuthorDetailView
+        detail={detail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+        onRequestMoreLikeThis={onRequest}
+        moreLikeThisMap={{ [detail.works[0].id]: mockResults }}
+      />,
+    );
+    // Open the dialog by clicking the More like this button.
+    await userEvent.click(screen.getByRole("button", { name: `More like ${detail.works[0].baseTitle}` }));
+    // Dialog opens showing the result.
+    expect(screen.getByRole("dialog", { name: "More like this" })).toBeInTheDocument();
+    expect(screen.getByText("Similar Book")).toBeInTheDocument();
+    expect(screen.getByText("Shares cozy")).toBeInTheDocument();
+  });
+
+  it("renders auto-tag suggestion chips when workTagSuggestions has entries for a work", () => {
+    render(
+      <AuthorDetailView
+        detail={detail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={["mystery"]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+        workTagSuggestions={{ [detail.works[0].id]: ["thriller", "adventure"] }}
+      />,
+    );
+    expect(screen.getByLabelText("Add suggested tag thriller")).toBeInTheDocument();
+    expect(screen.getByLabelText("Add suggested tag adventure")).toBeInTheDocument();
+  });
+
+  it("clicking a suggestion chip calls onSetWorkTags with the tag added", async () => {
+    const onSetWorkTags = vi.fn();
+    render(
+      <AuthorDetailView
+        detail={detail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={onSetWorkTags}
+        onSetChapterTags={noop}
+        allTags={["mystery"]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+        workTagSuggestions={{ [detail.works[0].id]: ["thriller"] }}
+      />,
+    );
+    await userEvent.click(screen.getByLabelText("Add suggested tag thriller"));
+    expect(onSetWorkTags).toHaveBeenCalledWith(detail.works[0].id, ["thriller"]);
+  });
 });
