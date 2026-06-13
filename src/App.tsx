@@ -114,13 +114,12 @@ type Route =
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
   if (route.kind === "discovery") return "discovery";
-  if (route.kind === "rename") return "rename";
-  if (route.kind === "metadata") return "metadata";
+  if (route.kind === "rename") return "settings";
+  if (route.kind === "metadata") return "settings";
   if (route.kind === "settings") return "settings";
   if (route.kind === "journal") return "journal";
   if (route.kind === "insights") return "insights";
   if (route.kind === "collections") return "collections";
-  if (route.kind === "narrators") return "narrators";
   return "library";
 }
 
@@ -1294,9 +1293,7 @@ export default function App() {
                 // Surface 2: MetadataView — WAV fixtures carry no embedded tags so the
                 // diff list will be empty (no proposals). Capture honest empty state.
                 showMetadataDiff: async () => {
-                  setMetadataResult(null);
-                  setMetadataProposals(await previewMetadata());
-                  setRoute({ kind: "metadata" });
+                  await openMetadata();
                 },
                 // Surface 3: Series spine in AuthorDetail — openAuthor already runs
                 // detectSeries/applySeries; with the numeric fixtures the series may or
@@ -1871,9 +1868,8 @@ export default function App() {
                 // Step 4: open the Narrators browse view with "Jane Roe" already selected
                 // so the works list is populated.
                 showNarratorsBrowse: async () => {
-                  await loadMetaTerms();
+                  await openNarrators();
                   await selectNarrator("Jane Roe");
-                  setRoute({ kind: "narrators" });
                 },
                 // Step 5: open the Discover view with the "mood: cozy" facet picked so
                 // the works list is populated.
@@ -2483,13 +2479,10 @@ export default function App() {
           onHome={openHome}
           onLibrary={() => setRoute({ kind: "library" })}
           onDiscovery={openDiscovery}
-          onRename={openRename}
-          onMetadata={openMetadata}
           onSettings={openSettings}
           onJournal={openJournalView}
           onInsights={openInsights}
           onCollections={openCollections}
-          onNarrators={openNarrators}
           density={density}
           a11y={a11y}
           player={player}

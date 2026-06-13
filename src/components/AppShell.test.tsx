@@ -12,13 +12,10 @@ function props(overrides = {}) {
     onHome: vi.fn(),
     onLibrary: vi.fn(),
     onDiscovery: vi.fn(),
-    onRename: vi.fn(),
-    onMetadata: vi.fn(),
     onSettings: vi.fn(),
     onJournal: vi.fn(),
     onInsights: vi.fn(),
     onCollections: vi.fn(),
-    onNarrators: vi.fn(),
     density: "comfortable" as const,
     a11y: DEFAULT_A11Y,
     children: <main>Page</main>,
@@ -33,11 +30,14 @@ describe("AppShell", () => {
     expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "Library" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Discover" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Import tags" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Journal" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Insights" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByText("Browse")).toBeInTheDocument();
+    expect(screen.getByText("My listening")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rename" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Import tags" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Narrators" })).not.toBeInTheDocument();
   });
 
   it("collapses and emits the new state", async () => {

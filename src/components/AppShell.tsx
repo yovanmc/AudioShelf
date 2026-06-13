@@ -4,39 +4,39 @@ import { IconButton } from "./ui";
 import type { Density } from "../lib/density";
 import { type A11yPrefs, a11yDataAttrs } from "../lib/a11y";
 
-export type ShellRoute = "home" | "library" | "discovery" | "rename" | "metadata" | "settings" | "journal" | "insights" | "collections" | "narrators";
+export type ShellRoute = "home" | "library" | "discovery" | "rename" | "metadata" | "settings" | "journal" | "insights" | "collections";
 
-export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onRename, onMetadata, onSettings, onJournal, onInsights, onCollections, onNarrators, density, a11y, children, player }: {
+export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onSettings, onJournal, onInsights, onCollections, density, a11y, children, player }: {
   active: ShellRoute;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
   onHome: () => void;
   onLibrary: () => void;
   onDiscovery: () => void;
-  onRename: () => void;
-  onMetadata: () => void;
   onSettings: () => void;
   onJournal: () => void;
   onInsights: () => void;
   onCollections: () => void;
-  onNarrators: () => void;
   density: Density;
   a11y: A11yPrefs;
   children: ReactNode;
   player: ReactNode;
 }) {
-  const items: Array<{ key: ShellRoute; label: string; icon: IconName; action: () => void }> = [
-    { key: "home", label: "Home", icon: "home", action: onHome },
-    { key: "library", label: "Library", icon: "library", action: onLibrary },
-    { key: "discovery", label: "Discover", icon: "discover", action: onDiscovery },
-    { key: "narrators", label: "Narrators", icon: "voice", action: onNarrators },
-    { key: "rename", label: "Rename", icon: "rename", action: onRename },
-    { key: "metadata", label: "Import tags", icon: "metadata", action: onMetadata },
-    { key: "journal", label: "Journal", icon: "journal", action: onJournal },
-    { key: "insights", label: "Insights", icon: "insights", action: onInsights },
-    { key: "collections", label: "Collections", icon: "collections", action: onCollections },
+  type NavItem = { key: ShellRoute; label: string; icon: IconName; action: () => void };
+  const groups: Array<{ label: string; items: NavItem[] }> = [
+    { label: "Browse", items: [
+      { key: "home", label: "Home", icon: "home", action: onHome },
+      { key: "library", label: "Library", icon: "library", action: onLibrary },
+      { key: "discovery", label: "Discover", icon: "discover", action: onDiscovery },
+    ] },
+    { label: "My listening", items: [
+      { key: "journal", label: "Journal", icon: "journal", action: onJournal },
+      { key: "insights", label: "Insights", icon: "insights", action: onInsights },
+      { key: "collections", label: "Collections", icon: "collections", action: onCollections },
+    ] },
   ];
-  const navButton = (item: typeof items[number]) => (
+  type AnyNavItem = NavItem;
+  const navButton = (item: AnyNavItem) => (
     <button
       key={item.key}
       className="sidebar__item"
@@ -57,7 +57,14 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
           <span className="sidebar__wordmark">AudioShelf</span>
           <IconButton icon={collapsed ? "chevronRight" : "chevronLeft"} label={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => onCollapsedChange(!collapsed)} />
         </div>
-        <nav className="sidebar__nav">{items.map(navButton)}</nav>
+        <nav className="sidebar__nav" aria-label="Primary navigation">
+          {groups.map((g) => (
+            <div className="sidebar__group" key={g.label}>
+              <span className="sidebar__group-label">{g.label}</span>
+              {g.items.map(navButton)}
+            </div>
+          ))}
+        </nav>
         <div className="sidebar__spacer" />
         <button
           className="sidebar__item"
