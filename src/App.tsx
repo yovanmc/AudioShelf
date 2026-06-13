@@ -9,10 +9,11 @@ import {
   getSetting, setSetting, pickFolder, searchLibrary, queryHome, resetPlayHistory,
   listTagsWithCounts, renameTag, mergeTags, setTagAlias, clearTagAlias,
   detectSeries, applySeries, getAuthorSeries,
+  searchTranscripts, getChapterTranscript,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
-  type SeriesView,
+  type SeriesView, type TranscriptHit,
 } from "./lib/api";
 import { HomeView } from "./views/HomeView";
 import { LibraryView } from "./views/LibraryView";
@@ -106,6 +107,10 @@ export default function App() {
   // ---- library search (controlled; spans authors/works/chapters) ----
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults | null>(null);
+  const [transcriptResults, setTranscriptResults] = useState<TranscriptHit[] | null>(null);
+
+  // ---- now-playing transcript (fetched per chapter) ----
+  const [currentTranscript, setCurrentTranscript] = useState<string | null>(null);
 
   // ---- browse prefs (sort / filter / work sort) ----
   const [browsePrefs, setBrowsePrefs] = useState<BrowsePrefs>({
@@ -839,18 +844,33 @@ export default function App() {
     const q = query.trim();
     if (q === "") {
       setResults(null);
+      setTranscriptResults(null);
       return;
     }
     let cancelled = false;
     const t = setTimeout(async () => {
-      const r = await searchLibrary(q);
-      if (!cancelled) setResults(r);
+      const [r, tr] = await Promise.all([searchLibrary(q), searchTranscripts(q)]);
+      if (!cancelled) {
+        setResults(r);
+        setTranscriptResults(tr);
+      }
     }, 150);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
   }, [query]);
+
+  // Fetch transcript for the currently playing chapter.
+  useEffect(() => {
+    const chapterId = current?.chapter.id;
+    if (!chapterId) { setCurrentTranscript(null); return; }
+    let cancelled = false;
+    void getChapterTranscript(chapterId).then((t) => {
+      if (!cancelled) setCurrentTranscript(t ?? null);
+    }).catch(() => { if (!cancelled) setCurrentTranscript(null); });
+    return () => { cancelled = true; };
+  }, [current?.chapter.id]);
 
   function routedView() {
     if (route.kind === "loading") return <div>Loading…</div>;
@@ -955,6 +975,7 @@ export default function App() {
         authors={authors}
         query={query}
         results={results}
+        transcriptResults={transcriptResults}
         onQueryChange={setQuery}
         onOpenAuthor={openAuthor}
         sort={browsePrefs.authorSort}
@@ -1040,6 +1061,7 @@ export default function App() {
           onCycleTimeLabel={cycleTimeLabel}
           chapters={currentWorkChapters}
           onJumpToChapter={jumpToChapter}
+          transcript={currentTranscript}
         />
       )}
     </div>
