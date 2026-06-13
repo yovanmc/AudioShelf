@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 import { IconButton } from "./ui";
 
-export type ShellRoute = "home" | "library" | "discovery" | "rename" | "metadata" | "settings" | "journal";
+export type ShellRoute = "home" | "library" | "discovery" | "rename" | "metadata" | "settings" | "journal" | "insights";
 
-export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onRename, onMetadata, onSettings, onJournal, children, player }: {
+export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onRename, onMetadata, onSettings, onJournal, onInsights, children, player }: {
   active: ShellRoute;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
@@ -15,6 +15,7 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
   onMetadata: () => void;
   onSettings: () => void;
   onJournal: () => void;
+  onInsights: () => void;
   children: ReactNode;
   player: ReactNode;
 }) {
@@ -25,6 +26,7 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
     { key: "rename", label: "Rename", icon: "rename", action: onRename },
     { key: "metadata", label: "Import tags", icon: "metadata", action: onMetadata },
     { key: "journal", label: "Journal", icon: "journal", action: onJournal },
+    { key: "insights", label: "Insights", icon: "insights", action: onInsights },
   ];
   const navButton = (item: typeof items[number]) => (
     <button

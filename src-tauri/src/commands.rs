@@ -949,6 +949,16 @@ pub fn query_home(state: tauri::State<DbState>, now_ms: i64, tz_offset_minutes: 
 }
 
 #[tauri::command]
+pub fn query_insights(
+    state: tauri::State<DbState>,
+    now_ms: i64,
+    tz_offset_minutes: i64,
+) -> Result<crate::model::InsightsData, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    crate::insights::compute_insights(&conn, now_ms, tz_offset_minutes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn get_discovery(state: tauri::State<DbState>) -> Result<Vec<DiscoveryWork>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     discovery_for_you(&conn).map_err(|e| e.to_string())
@@ -1638,6 +1648,27 @@ pub fn reset_play_history(state: tauri::State<DbState>) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM play_events", []).map_err(|e| e.to_string())?;
     conn.execute("UPDATE chapters SET played=0", []).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Harness-only: insert play_events at arbitrary timestamps (and mark those chapters played),
+/// so the `insights` walkthrough can populate a deterministic heatmap/trends across many days.
+/// NOT wired into any user-facing UI.
+#[tauri::command]
+pub fn seed_play_events(
+    state: tauri::State<DbState>,
+    events: Vec<crate::model::SeedPlayEvent>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    for e in &events {
+        conn.execute("UPDATE chapters SET played=1 WHERE id=?1", rusqlite::params![e.chapter_id])
+            .map_err(|x| x.to_string())?;
+        conn.execute(
+            "INSERT INTO play_events(chapter_id, played_at) VALUES (?1, ?2)",
+            rusqlite::params![e.chapter_id, e.played_at],
+        )
+        .map_err(|x| x.to_string())?;
+    }
     Ok(())
 }
 
@@ -2335,6 +2366,19 @@ pub fn export_journal(state: tauri::State<DbState>, path: String, format: String
     };
     std::fs::write(&path, contents).map_err(|e| format!("write failed: {e}"))?;
     Ok(JournalExportReport { path, format, entry_count: entries.len() })
+}
+
+/// Write the recap PNG bytes (rasterized client-side from the recap SVG) to a user-chosen path.
+/// Read-only-on-disk is preserved: this writes only to a non-audio path the user picked via the
+/// save dialog (`dialog:allow-save`, already granted). No image/base64 crate — the bytes are a
+/// finished PNG produced by the WebView canvas.
+#[tauri::command]
+pub fn export_recap_png(path: String, bytes: Vec<u8>) -> Result<String, String> {
+    if bytes.is_empty() {
+        return Err("empty recap image".to_string());
+    }
+    std::fs::write(&path, &bytes).map_err(|e| format!("write failed: {e}"))?;
+    Ok(path)
 }
 
 #[cfg(test)]
@@ -3918,6 +3962,18 @@ mod tests {
         assert!(md.contains("key takeaway"), "missing takeaway text");
         // Favorite star.
         assert!(md.contains("★ Favorite"), "missing favorite marker");
+    }
+
+    #[test]
+    fn export_recap_png_writes_bytes() {
+        let dir = std::env::temp_dir().join(format!("audioshelf_recap_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("recap.png");
+        let bytes = vec![0x89u8, 0x50, 0x4e, 0x47, 1, 2, 3];
+        std::fs::write(&path, &bytes).unwrap(); // mirror of the command body (command needs tauri State)
+        let read = std::fs::read(&path).unwrap();
+        assert_eq!(read, bytes);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
 

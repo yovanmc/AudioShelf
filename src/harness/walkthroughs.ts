@@ -207,6 +207,20 @@ export function journalSteps(nav: {
   ];
 }
 
+export function insightsSteps(nav: {
+  showInsightsEmpty: () => Promise<void>;
+  showInsightsOverview: () => Promise<void>;
+  showInsightsTrends: () => Promise<void>;
+  showInsightsRecap: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "insights-empty", run: nav.showInsightsEmpty },
+    { name: "insights-overview", run: nav.showInsightsOverview },
+    { name: "insights-trends", run: nav.showInsightsTrends },
+    { name: "insights-recap", run: nav.showInsightsRecap },
+  ];
+}
+
 export function m12Steps(nav: {
   showEmptyHome: () => Promise<void>;
   showHome: () => Promise<void>;
