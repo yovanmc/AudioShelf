@@ -1,7 +1,8 @@
 //! Tauri commands and the shared DB state.
 
 use crate::db;
-use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterBookmark, ChapterHit, ChapterJournal, ChapterNote, ChapterRow, Collection, ContinueItem, DiscoveryWork, DormantWork, HomeData, JournalEntry, JournalExportReport, JournalResults, ListeningStats, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SavedSearch, SearchResults, UndoResult, WorkHit, WorkRow};
+use crate::metadata::{is_valid_facet, scope_table, facet_label};
+use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterBookmark, ChapterHit, ChapterJournal, ChapterNote, ChapterRow, Collection, ContinueItem, DiscoveryWork, DormantWork, HomeData, JournalEntry, JournalExportReport, JournalResults, ListeningStats, MetaTag, MetaTerm, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SavedSearch, SearchResults, UndoResult, WorkHit, WorkRow};
 use crate::natsort::natural_cmp;
 use crate::regroup;
 use crate::rename;
@@ -2567,6 +2568,103 @@ pub fn set_work_chapter_sort(state: tauri::State<DbState>, work_id: i64, sort: S
     Ok(())
 }
 
+// ---- M21 Task 3: metadata vocabulary CRUD commands ------------------------------------
+
+/// Create-or-fetch a metadata term. Idempotent on UNIQUE(facet, value). Trims the
+/// value and rejects unknown facets / blank values.
+pub(crate) fn upsert_term(conn: &rusqlite::Connection, facet: &str, value: &str) -> rusqlite::Result<MetaTerm> {
+    if !is_valid_facet(facet) {
+        return Err(rusqlite::Error::InvalidParameterName(format!("unknown facet: {facet}")));
+    }
+    let v = value.trim();
+    if v.is_empty() {
+        return Err(rusqlite::Error::InvalidParameterName("empty metadata value".into()));
+    }
+    conn.execute(
+        "INSERT OR IGNORE INTO metadata_terms(facet, value) VALUES (?1, ?2)",
+        params![facet, v],
+    )?;
+    let id: i64 = conn.query_row(
+        "SELECT id FROM metadata_terms WHERE facet=?1 AND value=?2",
+        params![facet, v],
+        |r| r.get(0),
+    )?;
+    Ok(MetaTerm { id, facet: facet.to_string(), value: v.to_string(), chapter_count: 0, author_count: 0 })
+}
+
+/// All vocabulary terms with usage counts, ordered by facet then value.
+pub(crate) fn query_metadata_terms(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<MetaTerm>> {
+    let mut stmt = conn.prepare(
+        "SELECT t.id, t.facet, t.value,
+                (SELECT count(*) FROM chapter_metadata cm WHERE cm.term_id=t.id),
+                (SELECT count(*) FROM author_metadata am WHERE am.term_id=t.id)
+         FROM metadata_terms t
+         ORDER BY t.facet, lower(t.value)",
+    )?;
+    stmt.query_map([], |r| Ok(MetaTerm {
+        id: r.get(0)?, facet: r.get(1)?, value: r.get(2)?,
+        chapter_count: r.get(3)?, author_count: r.get(4)?,
+    }))?.collect()
+}
+
+#[tauri::command]
+pub fn create_metadata_term(state: tauri::State<DbState>, facet: String, value: String) -> Result<MetaTerm, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    upsert_term(&conn, &facet, &value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_metadata_terms(state: tauri::State<DbState>) -> Result<Vec<MetaTerm>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    query_metadata_terms(&conn).map_err(|e| e.to_string())
+}
+
+/// Rename a term's value (within its facet). A collision with an existing
+/// (facet,value) surfaces the UNIQUE error to the caller — use merge to combine.
+#[tauri::command]
+pub fn rename_metadata_term(state: tauri::State<DbState>, id: i64, value: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let v = value.trim();
+    if v.is_empty() { return Err("empty metadata value".into()); }
+    conn.execute("UPDATE metadata_terms SET value=?1 WHERE id=?2", params![v, id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Delete a term and all its attachments (transactional).
+#[tauri::command]
+pub fn delete_metadata_term(state: tauri::State<DbState>, id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM chapter_metadata WHERE term_id=?1", params![id]).map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM author_metadata WHERE term_id=?1", params![id]).map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM metadata_terms WHERE id=?1", params![id]).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// Merge source terms into a target term: re-point chapter + author attachments
+/// (INSERT OR IGNORE dedups), then delete the sources. Transactional.
+#[tauri::command]
+pub fn merge_metadata_terms(state: tauri::State<DbState>, source_ids: Vec<i64>, target_id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    for sid in &source_ids {
+        if *sid == target_id { continue; }
+        tx.execute(
+            "INSERT OR IGNORE INTO chapter_metadata(chapter_id, term_id) SELECT chapter_id, ?1 FROM chapter_metadata WHERE term_id=?2",
+            params![target_id, sid],
+        ).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM chapter_metadata WHERE term_id=?1", params![sid]).map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT OR IGNORE INTO author_metadata(author_id, term_id) SELECT author_id, ?1 FROM author_metadata WHERE term_id=?2",
+            params![target_id, sid],
+        ).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM author_metadata WHERE term_id=?1", params![sid]).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM metadata_terms WHERE id=?1", params![sid]).map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4244,6 +4342,37 @@ mod tests {
         assert_eq!(rep.zero_byte[0].chapter_id, 1);
         assert_eq!(rep.missing_files[0].chapter_id, 2);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ---- M21 Task 3: metadata vocabulary CRUD tests ------------------------------------
+
+    #[test]
+    fn upsert_term_is_idempotent_and_validates_facet() {
+        let conn = crate::db::open_at_version(8).unwrap();
+        let a = upsert_term(&conn, "narrator", "  Jane Roe  ").unwrap();
+        assert_eq!(a.value, "Jane Roe"); // trimmed
+        let b = upsert_term(&conn, "narrator", "Jane Roe").unwrap();
+        assert_eq!(a.id, b.id); // same row, no duplicate
+        let n: i64 = conn.query_row("SELECT count(*) FROM metadata_terms", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        assert!(upsert_term(&conn, "genre", "x").is_err()); // invalid facet
+        assert!(upsert_term(&conn, "mood", "   ").is_err()); // empty value
+    }
+
+    #[test]
+    fn list_terms_reports_usage_counts() {
+        let conn = crate::db::open_at_version(8).unwrap();
+        // seed a minimal author + work + chapter so attachments are valid.
+        conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (1,1,'/x.wav','x.wav',1,'wav',5,0,'active')", []).unwrap();
+        let t = upsert_term(&conn, "mood", "cozy").unwrap();
+        conn.execute("INSERT INTO chapter_metadata(chapter_id, term_id) VALUES (1, ?1)", params![t.id]).unwrap();
+        conn.execute("INSERT INTO author_metadata(author_id, term_id) VALUES (1, ?1)", params![t.id]).unwrap();
+        let terms = query_metadata_terms(&conn).unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].chapter_count, 1);
+        assert_eq!(terms[0].author_count, 1);
     }
 }
 
