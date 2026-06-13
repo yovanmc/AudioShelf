@@ -23,7 +23,7 @@ import {
   exportCurationJson, exportDbSnapshot, importCurationJson, stageDbRestore, libraryHealthScan,
   openMiniPlayer,
   listMetadataTerms, createMetadataTerm, renameMetadataTerm, deleteMetadataTerm, mergeMetadataTerms,
-  addMetadataValue, removeMetadataValue,
+  addMetadataValue, removeMetadataValue, getDiscoveryByMetadata,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
@@ -43,6 +43,7 @@ import { RenameView } from "./views/RenameView";
 import { MetadataView } from "./views/MetadataView";
 import { SettingsView } from "./views/SettingsView";
 import { ScanView } from "./views/ScanView";
+import { NarratorsView } from "./views/NarratorsView";
 import { CollectionsView } from "./components/CollectionsView";
 import { BulkTagDialog } from "./components/BulkTagDialog";
 import { PlayerBar } from "./player/PlayerBar";
@@ -195,6 +196,10 @@ export default function App() {
 
   // ---- M21: metadata vocabulary terms ----
   const [metaTerms, setMetaTerms] = useState<MetaTerm[]>([]);
+
+  // ---- M21: Narrators browse state ----
+  const [selectedNarrator, setSelectedNarrator] = useState<string | null>(null);
+  const [narratorWorks, setNarratorWorks] = useState<DiscoveryWork[]>([]);
 
   // ---- command palette (Ctrl+K) ----
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -381,6 +386,14 @@ export default function App() {
 
   // Flat list of all known metadata values for the MetadataEditor datalist suggestions.
   const metaSuggestions = useMemo(() => Array.from(new Set(metaTerms.map((t) => t.value))).sort(), [metaTerms]);
+
+  // Narrator terms for the Narrators browse view.
+  const narratorTerms = useMemo(() => metaTerms.filter((t) => t.facet === "narrator"), [metaTerms]);
+
+  const selectNarrator = async (value: string) => {
+    setSelectedNarrator(value);
+    setNarratorWorks(await getDiscoveryByMetadata("narrator", value));
+  };
 
   const handleAddChapterMeta = async (chapterId: number, facet: string, value: string) => {
     await addMetadataValue("chapter", chapterId, facet, value);
@@ -887,7 +900,7 @@ export default function App() {
     setRoute({ kind: "collections" });
   }
 
-  const openNarrators = () => setRoute({ kind: "narrators" });
+  const openNarrators = async () => { await loadMetaTerms(); setRoute({ kind: "narrators" }); };
 
   const onResolveCollection = (id: number) => {
     void resolveCollection(id).then((r) => setResolvedCollections((m) => ({ ...m, [id]: r })));
@@ -2250,7 +2263,16 @@ export default function App() {
       );
     }
     if (route.kind === "narrators") {
-      return <div className="view" />;
+      return (
+        <NarratorsView
+          narrators={narratorTerms}
+          selected={selectedNarrator}
+          works={narratorWorks}
+          onSelect={selectNarrator}
+          onOpenAuthor={openAuthor}
+          onPlayNextOfWork={playNextChapterOfWork}
+        />
+      );
     }
     if (route.kind === "collections") {
       return (
