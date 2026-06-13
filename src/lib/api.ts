@@ -88,6 +88,28 @@ export interface RenameItem {
 export interface RenameResult { renamedCount: number; failures: string[]; manifestPath: string; }
 export interface UndoResult { revertedCount: number; failures: string[]; }
 
+export interface SeriesMemberProposal {
+  workId: number;
+  baseTitle: string;
+  position: number;
+}
+export interface SeriesProposal {
+  title: string;
+  members: SeriesMemberProposal[];
+}
+export interface SeriesMemberView {
+  workId: number;
+  baseTitle: string;
+  position: number;
+  playedChapters: number;
+  totalChapters: number;
+}
+export interface SeriesView {
+  id: number;
+  title: string;
+  members: SeriesMemberView[];
+}
+
 export interface MetadataProposal {
   chapterId: number;
   workId: number;
@@ -154,6 +176,13 @@ export const applyRenames = (chapterIds: number[], nowMs: number) =>
   invoke<RenameResult>("apply_renames", { chapterIds, nowMs });
 export const undoRenames = (manifestPath: string) =>
   invoke<UndoResult>("undo_renames", { manifestPath });
+
+export const detectSeries = (authorId: number) =>
+  invoke<SeriesProposal[]>("detect_series", { authorId });
+export const applySeries = (authorId: number, proposals: SeriesProposal[]) =>
+  invoke("apply_series", { authorId, proposals });
+export const getAuthorSeries = (authorId: number) =>
+  invoke<SeriesView[]>("get_author_series", { authorId });
 
 export const previewMetadata = (authorId?: number) =>
   invoke<MetadataProposal[]>("preview_metadata", { authorId: authorId ?? null });

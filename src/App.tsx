@@ -8,9 +8,11 @@ import {
   setGroupingOverride, clearGroupingOverride,
   getSetting, setSetting, pickFolder, searchLibrary, queryHome, resetPlayHistory,
   listTagsWithCounts, renameTag, mergeTags, setTagAlias, clearTagAlias,
+  detectSeries, applySeries, getAuthorSeries,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
+  type SeriesView,
 } from "./lib/api";
 import { HomeView } from "./views/HomeView";
 import { LibraryView } from "./views/LibraryView";
@@ -89,6 +91,7 @@ export default function App() {
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [authors, setAuthors] = useState<AuthorRow[]>([]);
   const [detail, setDetail] = useState<AuthorDetail | null>(null);
+  const [authorSeries, setAuthorSeries] = useState<SeriesView[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
   const [tagStats, setTagStats] = useState<TagStat[]>([]);
   const [forYou, setForYou] = useState<DiscoveryWork[]>([]);
@@ -354,6 +357,16 @@ export default function App() {
   async function openAuthor(id: number) {
     setDetail(await getAuthorDetail(id));
     setRoute({ kind: "author" });
+    // Load persisted series; if none yet, auto-detect-and-apply silently (low friction).
+    let series = await getAuthorSeries(id);
+    if (series.length === 0) {
+      const proposals = await detectSeries(id);
+      if (proposals.length > 0) {
+        await applySeries(id, proposals);
+        series = await getAuthorSeries(id);
+      }
+    }
+    setAuthorSeries(series);
   }
 
   async function togglePlayed(chapterId: number, played: boolean) {
@@ -873,6 +886,8 @@ export default function App() {
           onBack={() => setRoute({ kind: "library" })}
           workSort={browsePrefs.workSort}
           onWorkSortChange={setWorkSort}
+          series={authorSeries}
+          onPlayNextOfWork={playNextChapterOfWork}
         />
       );
     }

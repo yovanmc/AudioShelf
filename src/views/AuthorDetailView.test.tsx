@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthorDetailView } from "./AuthorDetailView";
-import type { AuthorDetail } from "../lib/api";
+import type { AuthorDetail, SeriesView } from "../lib/api";
 
 const detail: AuthorDetail = {
   id: 1,
@@ -478,5 +478,123 @@ describe("AuthorDetailView", () => {
     // Escape closes it
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Edit grouping" })).not.toBeInTheDocument();
+  });
+
+  // ---- series spine tests ----
+
+  const seriesData: SeriesView[] = [
+    {
+      id: 1,
+      title: "Cool Story",
+      members: [
+        { workId: 10, baseTitle: "Cool Story", position: 1, playedChapters: 2, totalChapters: 2 },
+        { workId: 20, baseTitle: "Cool Story 2", position: 2, playedChapters: 0, totalChapters: 1 },
+        { workId: 30, baseTitle: "Cool Story 3", position: 3, playedChapters: 0, totalChapters: 1 },
+      ],
+    },
+  ];
+
+  it("renders series section with ordered members and progress when series prop is provided", () => {
+    render(
+      <AuthorDetailView
+        detail={detail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+        series={seriesData}
+        onPlayNextOfWork={noop}
+      />,
+    );
+    // Section heading is visible.
+    expect(screen.getByText("Reading Order / Series")).toBeInTheDocument();
+    // Series title is visible.
+    expect(screen.getByText("Cool Story", { selector: ".series-title" })).toBeInTheDocument();
+    // All three members appear with their position labels.
+    expect(screen.getByText("1.")).toBeInTheDocument();
+    expect(screen.getByText("2.")).toBeInTheDocument();
+    expect(screen.getByText("3.")).toBeInTheDocument();
+    // Member titles are visible (Cool Story 2 and Cool Story 3; Cool Story appears as both work and series title).
+    expect(screen.getByText("Cool Story 2")).toBeInTheDocument();
+    expect(screen.getByText("Cool Story 3")).toBeInTheDocument();
+    // Progress fractions are visible.
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+    expect(screen.getAllByText("0/1")).toHaveLength(2);
+  });
+
+  it("shows 'Continue the series' button for the first unfinished member and calls onPlayNextOfWork", async () => {
+    const onPlayNextOfWork = vi.fn();
+    render(
+      <AuthorDetailView
+        detail={detail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+        series={seriesData}
+        onPlayNextOfWork={onPlayNextOfWork}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: "Continue the series Cool Story" });
+    expect(btn).toBeInTheDocument();
+    await userEvent.click(btn);
+    // First unfinished member is workId=20 (playedChapters=0 < totalChapters=1).
+    // authorId comes from detail.id = 1.
+    expect(onPlayNextOfWork).toHaveBeenCalledWith(20, 1);
+  });
+
+  it("does not render series section when series prop is omitted (existing tests unbroken)", () => {
+    render(
+      <AuthorDetailView
+        detail={detail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("Reading Order / Series")).not.toBeInTheDocument();
+  });
+
+  it("does not render series section when series prop is empty array", () => {
+    render(
+      <AuthorDetailView
+        detail={detail}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+        series={[]}
+      />,
+    );
+    expect(screen.queryByText("Reading Order / Series")).not.toBeInTheDocument();
   });
 });
