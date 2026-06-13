@@ -80,7 +80,7 @@ pub mod testing {
         cover_cache_for_chapter, find_folder_image, make_thumbnail_png, read_embedded_picture,
         CoverPriority,
     };
-    pub use crate::db::open_in_memory;
+    pub use crate::db::{open_at_version, open_in_memory};
     pub use crate::regroup::regroup_author;
     pub use crate::rename::{build_plan, execute, undo, ItemStatus};
     pub use crate::scan::scan_into;
