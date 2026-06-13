@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { AuthorDetail, ChapterRow, ChapterJournal, DiscoveryWork, PlaybackContext, SeriesView, WorkRow } from "../lib/api";
 import { TagEditor } from "./TagEditor";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
@@ -138,6 +138,12 @@ export function AuthorDetailView(props: {
   openJournal?: ChapterJournal | null;
   /** Called when the Journal dialog is opened so App can fetch the journal for the chapter. */
   onOpenJournal?: (chapterId: number) => void;
+  /**
+   * Harness-only: when set, programmatically opens the chapter journal dialog for this
+   * chapter id (equivalent to clicking the Journal menu item). Used by the walkthrough
+   * capture step so the dialog is rendered without mouse interaction.
+   */
+  openJournalForChapterId?: number;
   onSetChapterSummary?: (chapterId: number, text: string) => void;
   onSetChapterTakeaway?: (chapterId: number, text: string) => void;
   onSetChapterFavorite?: (chapterId: number, isFavorite: boolean) => void;
@@ -152,6 +158,13 @@ export function AuthorDetailView(props: {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [editState, setEditState] = useState<EditState>(null);
   const [moreLikeThisWorkId, setMoreLikeThisWorkId] = useState<number | null>(null);
+
+  // Harness support: open the journal dialog programmatically when openJournalForChapterId is set.
+  useEffect(() => {
+    if (props.openJournalForChapterId != null) {
+      setEditState({ chapterId: props.openJournalForChapterId, mode: "journal" });
+    }
+  }, [props.openJournalForChapterId]);
   const works = sortWorks(detail.works, props.workSort);
   const allCollapsed = works.length > 0 && works.every((w) => collapsed.has(w.id));
   const toggleWork = (id: number) =>

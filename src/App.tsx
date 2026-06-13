@@ -1103,20 +1103,38 @@ export default function App() {
                   await setChapterFavorite(ch.id, true);
                   await addChapterNote(ch.id, 12, "The narrator's voice really draws you in here.");
                   await addBookmark(ch.id, 30, "key idea");
+                  // handleOpenJournal sets journalChapterId + openJournal in App state.
+                  // openJournalForChapterId prop flows to AuthorDetailView and a useEffect
+                  // there sets editState → { chapterId, mode: "journal" }, which renders
+                  // the ChapterJournalDialog. Two settle() passes ensure both the prop
+                  // re-render and the useEffect+editState re-render are committed before
+                  // the outer runSteps settle() takes the screenshot.
                   await handleOpenJournal(ch.id);
+                  await settle();
+                  await settle();
                 },
                 // Step 3: set re-entry note + one-word rating on the first work, capture work header.
                 showWorkMeta: async () => {
                   const list = await getAuthors();
                   if (list.length === 0) return;
-                  const d = await getAuthorDetail(list[0].id);
-                  setDetail(d);
-                  setRoute({ kind: "author" });
-                  const work = d.works[0];
+                  // Seed the work-level meta values first.
+                  const d0 = await getAuthorDetail(list[0].id);
+                  const work = d0.works[0];
                   if (!work) return;
                   await setWorkReEntryNote(work.id, "Resume from the chapter about the journey.");
                   await setWorkRating(work.id, "captivating");
-                  setDetail(await getAuthorDetail(list[0].id));
+                  // Also close the journal dialog (clear journalChapterId) so the dialog
+                  // does not overlap the work-header fields in the screenshot.
+                  setJournalChapterId(null);
+                  setOpenJournal(null);
+                  // Navigate away then back via openAuthor so AuthorDetailView unmounts
+                  // and remounts with fresh detail. WorkReEntryField / WorkRatingField are
+                  // controlled via local useState initialised from props.value only on
+                  // mount; remounting is the only way to show the freshly saved values
+                  // without changing feature code.
+                  setRoute({ kind: "library" });
+                  await settle();
+                  await openAuthor(list[0].id);
                 },
                 // Step 4: open Journal view (now populated) — grouped entries, kind chips.
                 showJournalBrowse: async () => {
@@ -1284,6 +1302,7 @@ export default function App() {
           onOpenAuthor={openAuthor}
           openJournal={openJournal}
           onOpenJournal={handleOpenJournal}
+          openJournalForChapterId={journalChapterId ?? undefined}
           onSetChapterSummary={handleSetChapterSummary}
           onSetChapterTakeaway={handleSetChapterTakeaway}
           onSetChapterFavorite={handleSetChapterFavorite}
