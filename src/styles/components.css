@@ -186,3 +186,6 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .mini-player__progress-fill { height: 100%; border-radius: inherit; background: var(--color-accent); transition: width 0.5s linear; }
 .mini-player__controls { display: flex; align-items: center; gap: var(--space-1); flex: none; -webkit-app-region: no-drag; }
 .mini-player__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted); font-size: 0.85rem; background: var(--color-surface); }
+
+.facet-row { margin-bottom: var(--space-3); }
+.facet-row__label { display: block; margin-bottom: 4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--color-text-muted); }

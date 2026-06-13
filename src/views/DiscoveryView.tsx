@@ -1,4 +1,4 @@
-import type { DiscoveryWork } from "../lib/api";
+import type { MetaTerm, DiscoveryWork } from "../lib/api";
 import { WorkCard } from "../components/WorkCard";
 import { EmptyState, PageHeader, SectionHeading } from "../components/ui";
 
@@ -28,7 +28,7 @@ export function DiscoveryView(props: {
   forYou: DiscoveryWork[]; allTags: string[]; byTags: DiscoveryWork[]; picked: string[];
   onPickTags: (tags: string[]) => void; onOpenAuthor: (id: number) => void; onBack?: () => void;
   onPlayNextOfWork?: (workId: number, authorId: number) => void;
-  narratorOptions: string[]; languageOptions: string[]; moodOptions: string[];
+  narratorTerms: MetaTerm[]; languageTerms: MetaTerm[]; moodTerms: MetaTerm[];
   pickedFacet: { facet: string; value: string } | null;
   byFacet: DiscoveryWork[];
   onPickFacet: (facet: string, value: string) => void;
@@ -59,22 +59,25 @@ export function DiscoveryView(props: {
       </section>
       <section className="view-section">
         <SectionHeading title="By narrator, language, or mood" />
-        <div className="toolbar card" style={{ padding: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {([["narrator", props.narratorOptions], ["language", props.languageOptions], ["mood", props.moodOptions]] as const).flatMap(([facet, opts]) =>
-            opts.map((value) => {
-              const on = props.pickedFacet?.facet === facet && props.pickedFacet?.value === value;
-              return (
-                <button
-                  key={`${facet}:${value}`}
-                  type="button"
-                  className={`chip chip--toggle${on ? " chip--on" : ""}`}
-                  aria-pressed={on}
-                  onClick={() => props.onPickFacet(facet, value)}
-                >{value}</button>
-              );
-            }),
-          )}
-        </div>
+        {([["narrator", props.narratorTerms], ["language", props.languageTerms], ["mood", props.moodTerms]] as const)
+          .filter(([, terms]) => terms.length > 0)
+          .map(([facet, terms]) => (
+            <div className="facet-row" key={facet}>
+              <span className="facet-row__label">{facet[0].toUpperCase() + facet.slice(1)}</span>
+              <div className="toolbar card" style={{ padding: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {terms.map((t) => {
+                  const on = props.pickedFacet?.facet === facet && props.pickedFacet?.value === t.value;
+                  return (
+                    <button key={`${facet}:${t.value}`} type="button"
+                      className={`chip chip--toggle${on ? " chip--on" : ""}`} aria-pressed={on}
+                      onClick={() => props.onPickFacet(facet, t.value)}>
+                      {t.value} <span className="muted">· {t.chapterCount}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         {props.pickedFacet && <WorkList works={props.byFacet} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} />}
       </section>
       <section className="view-section">

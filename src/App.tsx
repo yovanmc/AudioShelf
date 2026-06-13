@@ -43,7 +43,6 @@ import { RenameView } from "./views/RenameView";
 import { MetadataView } from "./views/MetadataView";
 import { SettingsView } from "./views/SettingsView";
 import { ScanView } from "./views/ScanView";
-import { NarratorsView } from "./views/NarratorsView";
 import { CollectionsView } from "./components/CollectionsView";
 import { BulkTagDialog } from "./components/BulkTagDialog";
 import { PlayerBar } from "./player/PlayerBar";
@@ -108,8 +107,7 @@ type Route =
   | { kind: "settings"; firstRun: boolean }
   | { kind: "journal" }
   | { kind: "insights" }
-  | { kind: "collections" }
-  | { kind: "narrators" };
+  | { kind: "collections" };
 
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
@@ -195,10 +193,6 @@ export default function App() {
 
   // ---- M21: metadata vocabulary terms ----
   const [metaTerms, setMetaTerms] = useState<MetaTerm[]>([]);
-
-  // ---- M21: Narrators browse state ----
-  const [selectedNarrator, setSelectedNarrator] = useState<string | null>(null);
-  const [narratorWorks, setNarratorWorks] = useState<DiscoveryWork[]>([]);
 
   // ---- M21: Discover facet picker state ----
   const [pickedFacet, setPickedFacet] = useState<{ facet: string; value: string } | null>(null);
@@ -393,22 +387,14 @@ export default function App() {
   // Flat list of all known metadata values for the MetadataEditor datalist suggestions.
   const metaSuggestions = useMemo(() => Array.from(new Set(metaTerms.map((t) => t.value))).sort(), [metaTerms]);
 
-  // Narrator terms for the Narrators browse view.
+  // Facet term lists for the Discover facet picker.
   const narratorTerms = useMemo(() => metaTerms.filter((t) => t.facet === "narrator"), [metaTerms]);
-
-  // Facet option lists for the Discover facet picker.
-  const narratorOptions = useMemo(() => metaTerms.filter((t) => t.facet === "narrator").map((t) => t.value), [metaTerms]);
-  const languageOptions = useMemo(() => metaTerms.filter((t) => t.facet === "language").map((t) => t.value), [metaTerms]);
-  const moodOptions = useMemo(() => metaTerms.filter((t) => t.facet === "mood").map((t) => t.value), [metaTerms]);
+  const languageTerms = useMemo(() => metaTerms.filter((t) => t.facet === "language"), [metaTerms]);
+  const moodTerms = useMemo(() => metaTerms.filter((t) => t.facet === "mood"), [metaTerms]);
 
   const pickFacet = async (facet: string, value: string) => {
     setPickedFacet({ facet, value });
     setByFacet(await getDiscoveryByMetadata(facet, value));
-  };
-
-  const selectNarrator = async (value: string) => {
-    setSelectedNarrator(value);
-    setNarratorWorks(await getDiscoveryByMetadata("narrator", value));
   };
 
   const handleAddChapterMeta = async (chapterId: number, facet: string, value: string) => {
@@ -916,8 +902,6 @@ export default function App() {
     void listCollections().then(setCollections);
     setRoute({ kind: "collections" });
   }
-
-  const openNarrators = async () => { await loadMetaTerms(); setRoute({ kind: "narrators" }); };
 
   const onResolveCollection = (id: number) => {
     void resolveCollection(id).then((r) => setResolvedCollections((m) => ({ ...m, [id]: r })));
@@ -1865,11 +1849,13 @@ export default function App() {
                   await settle();
                   await settle();
                 },
-                // Step 4: open the Narrators browse view with "Jane Roe" already selected
-                // so the works list is populated.
+                // Step 4: open the Discover view with the first narrator facet selected
+                // so the merged narrator-browsing surface (with chapter counts) is captured.
                 showNarratorsBrowse: async () => {
-                  await openNarrators();
-                  await selectNarrator("Jane Roe");
+                  await openDiscovery();
+                  const terms = await listMetadataTerms().catch(() => [] as MetaTerm[]);
+                  const narrator = terms.find((t) => t.facet === "narrator")?.value;
+                  if (narrator) await pickFacet("narrator", narrator);
                 },
                 // Step 5: open the Discover view with the "mood: cozy" facet picked so
                 // the works list is populated.
@@ -2254,9 +2240,9 @@ export default function App() {
           onPickTags={pickTags}
           onOpenAuthor={openAuthor}
           onPlayNextOfWork={playNextChapterOfWork}
-          narratorOptions={narratorOptions}
-          languageOptions={languageOptions}
-          moodOptions={moodOptions}
+          narratorTerms={narratorTerms}
+          languageTerms={languageTerms}
+          moodTerms={moodTerms}
           pickedFacet={pickedFacet}
           byFacet={byFacet}
           onPickFacet={pickFacet}
@@ -2347,18 +2333,6 @@ export default function App() {
           now={insightsNow}
           onExportRecap={handleExportRecap}
           recapStatus={recapStatus}
-        />
-      );
-    }
-    if (route.kind === "narrators") {
-      return (
-        <NarratorsView
-          narrators={narratorTerms}
-          selected={selectedNarrator}
-          works={narratorWorks}
-          onSelect={selectNarrator}
-          onOpenAuthor={openAuthor}
-          onPlayNextOfWork={playNextChapterOfWork}
         />
       );
     }
