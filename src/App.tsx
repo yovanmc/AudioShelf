@@ -3,18 +3,25 @@ import {
   getLaunchArgs, scanLibrary, getAuthors, getAuthorDetail,
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
   getAllTags, setAuthorTags, setWorkTags, setChapterTags, getDiscovery, getDiscoveryByTags,
+  getDormantWorks, getMoreLikeThis, suggestTags,
   previewRenames, applyRenames, undoRenames,
+  previewMetadata, applyMetadata,
   setGroupingOverride, clearGroupingOverride,
   getSetting, setSetting, pickFolder, searchLibrary, queryHome, resetPlayHistory,
-  type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork,
+  listTagsWithCounts, renameTag, mergeTags, setTagAlias, clearTagAlias,
+  detectSeries, applySeries, getAuthorSeries,
+  searchTranscripts, getChapterTranscript,
+  type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
-  type ChapterRow,
+  type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
+  type SeriesView, type TranscriptHit,
 } from "./lib/api";
 import { HomeView } from "./views/HomeView";
 import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
 import { DiscoveryView } from "./views/DiscoveryView";
 import { RenameView } from "./views/RenameView";
+import { MetadataView } from "./views/MetadataView";
 import { SettingsView } from "./views/SettingsView";
 import { ScanView } from "./views/ScanView";
 import { PlayerBar } from "./player/PlayerBar";
@@ -22,7 +29,7 @@ import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
 import { clampSeek, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -69,12 +76,14 @@ type Route =
   | { kind: "author" }
   | { kind: "discovery" }
   | { kind: "rename" }
+  | { kind: "metadata" }
   | { kind: "settings"; firstRun: boolean };
 
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
   if (route.kind === "discovery") return "discovery";
   if (route.kind === "rename") return "rename";
+  if (route.kind === "metadata") return "metadata";
   if (route.kind === "settings") return "settings";
   return "library";
 }
@@ -84,7 +93,9 @@ export default function App() {
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [authors, setAuthors] = useState<AuthorRow[]>([]);
   const [detail, setDetail] = useState<AuthorDetail | null>(null);
+  const [authorSeries, setAuthorSeries] = useState<SeriesView[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [tagStats, setTagStats] = useState<TagStat[]>([]);
   const [forYou, setForYou] = useState<DiscoveryWork[]>([]);
   const [byTags, setByTags] = useState<DiscoveryWork[]>([]);
   const [pickedTags, setPickedTags] = useState<string[]>([]);
@@ -97,6 +108,10 @@ export default function App() {
   // ---- library search (controlled; spans authors/works/chapters) ----
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults | null>(null);
+  const [transcriptResults, setTranscriptResults] = useState<TranscriptHit[] | null>(null);
+
+  // ---- now-playing transcript (fetched per chapter) ----
+  const [currentTranscript, setCurrentTranscript] = useState<string | null>(null);
 
   // ---- browse prefs (sort / filter / work sort) ----
   const [browsePrefs, setBrowsePrefs] = useState<BrowsePrefs>({
@@ -115,6 +130,10 @@ export default function App() {
   const [renameItems, setRenameItems] = useState<RenameItem[]>([]);
   const [renameResult, setRenameResult] = useState<RenameResult | null>(null);
   const lastManifestRef = useRef<string | null>(null);
+
+  // ---- metadata import state ----
+  const [metadataProposals, setMetadataProposals] = useState<MetadataProposal[]>([]);
+  const [metadataResult, setMetadataResult] = useState<MetadataApplyReport | null>(null);
 
   // ---- player state ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -140,6 +159,11 @@ export default function App() {
   const routeRef = useRef<Route>(route);
   routeRef.current = route;
 
+  // ---- M16 Task 11: intelligence UI state ----
+  const [dormantWorks, setDormantWorks] = useState<DormantWork[]>([]);
+  const [moreLikeThisMap, setMoreLikeThisMap] = useState<Record<number, DiscoveryWork[]>>({});
+  const [workTagSuggestions, setWorkTagSuggestions] = useState<Record<number, string[]>>({});
+
   useEffect(() => {
     const ctx = current;
     if (!ctx) { setCurrentWorkChapters([]); return; }
@@ -161,17 +185,32 @@ export default function App() {
     const now = Date.now();
     setHomeNow(now);
     setHome(await queryHome(now, new Date().getTimezoneOffset()));
+    // Load dormant works (>30 days) for the Forgotten shelf.
+    getDormantWorks(now, 30).then(setDormantWorks).catch(() => setDormantWorks([]));
   }
   async function openHome() {
     await loadHome();
     setRoute({ kind: "home" });
   }
 
+  async function requestMoreLikeThis(workId: number) {
+    const results = await getMoreLikeThis(workId, 12).catch(() => [] as DiscoveryWork[]);
+    setMoreLikeThisMap((prev) => ({ ...prev, [workId]: results }));
+  }
+
+  async function loadWorkTagSuggestions(workId: number) {
+    const suggestions = await suggestTags(workId).catch(() => [] as string[]);
+    setWorkTagSuggestions((prev) => ({ ...prev, [workId]: suggestions }));
+  }
+
   async function loadAuthors() {
     setAuthors(await getAuthors());
   }
 
-  async function refreshTags() { setAllTags(await getAllTags()); }
+  async function refreshTags() {
+    setAllTags(await getAllTags());
+    setTagStats(await listTagsWithCounts());
+  }
 
   async function setTags(tags: string[]) {
     if (!detailRef.current) return;
@@ -194,6 +233,24 @@ export default function App() {
     await refreshTags();
   }
 
+  async function doRenameTag(from: string, to: string) {
+    await renameTag(from, to);
+    await refreshTags();
+  }
+
+  async function doMergeTags(sources: string[], target: string) {
+    await mergeTags(sources, target);
+    await refreshTags();
+  }
+
+  async function doSetTagAlias(alias: string, canonical: string) {
+    await setTagAlias(alias, canonical);
+  }
+
+  async function doClearTagAlias(alias: string) {
+    await clearTagAlias(alias);
+  }
+
   async function openRename() {
     setRenameResult(null);
     setRenameItems(await previewRenames());
@@ -214,6 +271,21 @@ export default function App() {
     await undoRenames(renameResult.manifestPath);
     setRenameResult(null);
     setRenameItems(await previewRenames());
+  }
+
+  async function openMetadata() {
+    setMetadataResult(null);
+    setMetadataProposals(await previewMetadata());
+    setRoute({ kind: "metadata" });
+  }
+  async function reloadMetadataPreview() {
+    setMetadataResult(null);
+    setMetadataProposals(await previewMetadata());
+  }
+  async function doApplyMetadata(accepted: MetadataProposal[]) {
+    const res = await applyMetadata(accepted);
+    setMetadataResult(res);
+    setMetadataProposals(await previewMetadata()); // refresh to remove applied diffs
   }
 
   async function openDiscovery() {
@@ -306,8 +378,23 @@ export default function App() {
   }
 
   async function openAuthor(id: number) {
-    setDetail(await getAuthorDetail(id));
+    const d = await getAuthorDetail(id);
+    setDetail(d);
     setRoute({ kind: "author" });
+    // Load persisted series; if none yet, auto-detect-and-apply silently (low friction).
+    let series = await getAuthorSeries(id);
+    if (series.length === 0) {
+      const proposals = await detectSeries(id);
+      if (proposals.length > 0) {
+        await applySeries(id, proposals);
+        series = await getAuthorSeries(id);
+      }
+    }
+    setAuthorSeries(series);
+    // Load auto-tag suggestions for each of this author's works.
+    for (const work of d.works) {
+      void loadWorkTagSuggestions(work.id);
+    }
   }
 
   async function togglePlayed(chapterId: number, played: boolean) {
@@ -721,6 +808,89 @@ export default function App() {
                   setResults(await searchLibrary("mystery"));
                 },
               })
+            : args.walkthrough === "m16"
+            ? m16Steps({
+                // Surface 1: Settings tag manager — seed tags on a few authors/works so
+                // tagStats has real usage counts before opening Settings.
+                showManageTags: async () => {
+                  const list = await getAuthors();
+                  if (list.length > 0) {
+                    await setAuthorTags(list[0].id, ["cozy", "drama"]);
+                    const d = await getAuthorDetail(list[0].id);
+                    if (d.works[0]) await setWorkTags(d.works[0].id, ["cozy"]);
+                    if (d.works[0]?.chapters[0]) await setChapterTags(d.works[0].chapters[0].id, ["intro"]);
+                  }
+                  if (list.length > 1) await setAuthorTags(list[1].id, ["drama"]);
+                  await refreshTags();
+                  setRoute({ kind: "settings", firstRun: false });
+                },
+                // Surface 2: MetadataView — WAV fixtures carry no embedded tags so the
+                // diff list will be empty (no proposals). Capture honest empty state.
+                showMetadataDiff: async () => {
+                  setMetadataResult(null);
+                  setMetadataProposals(await previewMetadata());
+                  setRoute({ kind: "metadata" });
+                },
+                // Surface 3: Series spine in AuthorDetail — openAuthor already runs
+                // detectSeries/applySeries; with the numeric fixtures the series may or
+                // may not be detected. Either way the author detail renders correctly.
+                showSeriesSpine: async () => {
+                  const list = await getAuthors();
+                  if (list.length > 0) await openAuthor(list[0].id);
+                },
+                // Surface 4: Transcript search bucket in Library — no sidecar .vtt
+                // fixtures exist so transcriptResults will be empty. Capture the search
+                // state (query entered, transcript section absent/empty) as the honest state.
+                showTranscriptSearch: async () => {
+                  const q = "cool";
+                  setRoute({ kind: "library" });
+                  setQuery(q);
+                  const [r, tr] = await Promise.all([searchLibrary(q), searchTranscripts(q)]);
+                  setResults(r);
+                  setTranscriptResults(tr);
+                },
+                // Surface 5: Forgotten shelf on Home — seed a play event far in the past
+                // (91 days ago) so getDormantWorks(now, 30) returns it, then open Home.
+                // Self-contained: reset first, then seed exactly one old event.
+                showForgottenShelf: async () => {
+                  await resetPlayHistory();
+                  const list = await getAuthors();
+                  if (list.length > 0) {
+                    const d = await getAuthorDetail(list[0].id);
+                    const ch = d.works[0]?.chapters[0];
+                    const ninetyOneDaysAgo = Date.now() - 91 * 86_400_000;
+                    if (ch) await markChapterFinished(ch.id, ninetyOneDaysAgo);
+                  }
+                  // Re-fetch dormant works with the freshly seeded history before loading home.
+                  const now = Date.now();
+                  const dormant = await getDormantWorks(now, 30).catch(() => [] as DormantWork[]);
+                  setDormantWorks(dormant);
+                  setHomeNow(now);
+                  setHome(await queryHome(now, new Date().getTimezoneOffset()));
+                  setRoute({ kind: "home" });
+                },
+                // Surface 6: Discovery cards with reason strings — seed play history + tags
+                // so getDiscovery returns cards with populated reason fields.
+                showDiscoverReasons: async () => {
+                  // Re-seed: reset first (step 5 wiped history), then mark two chapters
+                  // finished and tag all authors "cozy" so the recommendation engine
+                  // has both a played signal and a tag to generate reason strings.
+                  const list = await getAuthors();
+                  for (const a of list) await setAuthorTags(a.id, ["cozy"]);
+                  if (list.length > 0) {
+                    const d = await getAuthorDetail(list[0].id);
+                    const chapters = d.works.flatMap((w) => w.chapters);
+                    const day = 86_400_000;
+                    if (chapters[0]) await markChapterFinished(chapters[0].id, Date.now() - day);
+                    if (chapters[1]) await markChapterFinished(chapters[1].id, Date.now());
+                  }
+                  await refreshTags();
+                  setForYou(await getDiscovery());
+                  setByTags([]);
+                  setPickedTags([]);
+                  setRoute({ kind: "discovery" });
+                },
+              })
             : browseSteps({
                 // Seed tags on a few authors + a played chapter so sort-by-length,
                 // played%, the tag filter, and the status filter all have signal.
@@ -780,18 +950,33 @@ export default function App() {
     const q = query.trim();
     if (q === "") {
       setResults(null);
+      setTranscriptResults(null);
       return;
     }
     let cancelled = false;
     const t = setTimeout(async () => {
-      const r = await searchLibrary(q);
-      if (!cancelled) setResults(r);
+      const [r, tr] = await Promise.all([searchLibrary(q), searchTranscripts(q)]);
+      if (!cancelled) {
+        setResults(r);
+        setTranscriptResults(tr);
+      }
     }, 150);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
   }, [query]);
+
+  // Fetch transcript for the currently playing chapter.
+  useEffect(() => {
+    const chapterId = current?.chapter.id;
+    if (!chapterId) { setCurrentTranscript(null); return; }
+    let cancelled = false;
+    void getChapterTranscript(chapterId).then((t) => {
+      if (!cancelled) setCurrentTranscript(t ?? null);
+    }).catch(() => { if (!cancelled) setCurrentTranscript(null); });
+    return () => { cancelled = true; };
+  }, [current?.chapter.id]);
 
   function routedView() {
     if (route.kind === "loading") return <div>Loading…</div>;
@@ -809,6 +994,7 @@ export default function App() {
           featureMenuOpen={harnessMenuOpen}
           shelves={homeShelves}
           shelfItems={shelfItems}
+          dormantWorks={dormantWorks}
         />
       );
     }
@@ -827,6 +1013,12 @@ export default function App() {
           onBack={() => setRoute({ kind: "library" })}
           workSort={browsePrefs.workSort}
           onWorkSortChange={setWorkSort}
+          series={authorSeries}
+          onPlayNextOfWork={playNextChapterOfWork}
+          moreLikeThisMap={moreLikeThisMap}
+          onRequestMoreLikeThis={requestMoreLikeThis}
+          workTagSuggestions={workTagSuggestions}
+          onOpenAuthor={openAuthor}
         />
       );
     }
@@ -854,6 +1046,16 @@ export default function App() {
         />
       );
     }
+    if (route.kind === "metadata") {
+      return (
+        <MetadataView
+          proposals={metadataProposals}
+          result={metadataResult}
+          onApply={doApplyMetadata}
+          onReload={reloadMetadataPreview}
+        />
+      );
+    }
     if (route.kind === "settings") {
       return (
         <SettingsView
@@ -871,6 +1073,11 @@ export default function App() {
           onRemoveShelf={onRemoveShelf}
           onMoveShelf={onMoveShelf}
           onRenameShelf={onRenameShelf}
+          tagStats={tagStats}
+          onRenameTag={doRenameTag}
+          onMergeTags={doMergeTags}
+          onSetTagAlias={doSetTagAlias}
+          onClearTagAlias={doClearTagAlias}
         />
       );
     }
@@ -879,6 +1086,7 @@ export default function App() {
         authors={authors}
         query={query}
         results={results}
+        transcriptResults={transcriptResults}
         onQueryChange={setQuery}
         onOpenAuthor={openAuthor}
         sort={browsePrefs.authorSort}
@@ -935,6 +1143,7 @@ export default function App() {
           onLibrary={() => setRoute({ kind: "library" })}
           onDiscovery={openDiscovery}
           onRename={openRename}
+          onMetadata={openMetadata}
           onSettings={openSettings}
           player={player}
         >
@@ -963,6 +1172,7 @@ export default function App() {
           onCycleTimeLabel={cycleTimeLabel}
           chapters={currentWorkChapters}
           onJumpToChapter={jumpToChapter}
+          transcript={currentTranscript}
         />
       )}
     </div>

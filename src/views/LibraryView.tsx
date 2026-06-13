@@ -1,5 +1,5 @@
 import { FixedSizeList as List, type ListChildComponentProps } from "react-window";
-import type { AuthorRow, SearchResults } from "../lib/api";
+import type { AuthorRow, SearchResults, TranscriptHit } from "../lib/api";
 import { summarizeAuthor } from "../lib/library";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
 import { EmptyState, PageHeader, TagGroup } from "../components/ui";
@@ -19,6 +19,8 @@ export function LibraryView(props: {
   onQueryChange: (query: string) => void; onOpenAuthor: (id: number) => void;
   onOpenHome?: () => void; onOpenDiscovery?: () => void; onOpenRename?: () => void; onOpenSettings?: () => void;
   onPlayNextOfWork?: (workId: number, authorId: number) => void;
+  /** Transcript search hits to show in the search results panel (optional). */
+  transcriptResults?: TranscriptHit[] | null;
 }) {
   const searching = props.query.trim() !== "";
   const visible = filterAuthors(sortAuthors(props.authors, props.sort), { tag: props.filterTag, status: props.filterStatus });
@@ -48,7 +50,7 @@ export function LibraryView(props: {
           <input style={{ width: "100%" }} aria-label="Search library" placeholder="Search authors, works, chapters" value={props.query} onChange={(event) => props.onQueryChange(event.target.value)} />
         </label>
       </div>
-      {searching ? <SearchResultsPanel results={props.results} onOpenAuthor={props.onOpenAuthor} onPlayNextOfWork={props.onPlayNextOfWork} /> : (
+      {searching ? <SearchResultsPanel results={props.results} transcriptHits={props.transcriptResults} onOpenAuthor={props.onOpenAuthor} onPlayNextOfWork={props.onPlayNextOfWork} /> : (
         <>
           <div className="tabs" role="tablist" aria-label="Played status">
             {([
@@ -76,9 +78,21 @@ export function LibraryView(props: {
   );
 }
 
-function SearchResultsPanel({ results, onOpenAuthor, onPlayNextOfWork }: { results: SearchResults | null; onOpenAuthor: (id: number) => void; onPlayNextOfWork?: (workId: number, authorId: number) => void }) {
+function SearchResultsPanel({
+  results,
+  transcriptHits,
+  onOpenAuthor,
+  onPlayNextOfWork,
+}: {
+  results: SearchResults | null;
+  transcriptHits?: TranscriptHit[] | null;
+  onOpenAuthor: (id: number) => void;
+  onPlayNextOfWork?: (workId: number, authorId: number) => void;
+}) {
+  const hasTranscripts = transcriptHits && transcriptHits.length > 0;
   if (!results) return <div className="card empty-state">Searching...</div>;
-  if (!results.authors.length && !results.works.length && !results.chapters.length) return <EmptyState title="No matches.">Try another creator, title, chapter, or tag.</EmptyState>;
+  const hasAny = results.authors.length || results.works.length || results.chapters.length || hasTranscripts;
+  if (!hasAny) return <EmptyState title="No matches.">Try another creator, title, chapter, or tag.</EmptyState>;
   return (
     <div className="search-results">
       {results.authors.length > 0 && <section className="view-section"><h2>Authors</h2><div className="card">
@@ -113,6 +127,28 @@ function SearchResultsPanel({ results, onOpenAuthor, onPlayNextOfWork }: { resul
           </button>
         ))}
       </div></section>}
+      {hasTranscripts && (
+        <section className="view-section">
+          <h2>Transcripts</h2>
+          <div className="card">
+            {transcriptHits!.map((hit) => (
+              <button
+                key={hit.chapterId}
+                className="list-row"
+                style={{ width: "100%", background: "none", border: 0, textAlign: "left" }}
+                onClick={() => onOpenAuthor(hit.authorId)}
+              >
+                <WorkArtwork workId={hit.workId} title={hit.workTitle} size={48} />
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <strong>{hit.chapterTitle}</strong>
+                  <span className="muted" style={{ display: "block" }}>{hit.workTitle} · {hit.authorName}</span>
+                  <span className="muted" style={{ display: "block", fontSize: "0.85em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hit.snippet}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

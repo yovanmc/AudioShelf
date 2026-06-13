@@ -45,4 +45,22 @@ describe("DiscoveryView", () => {
     await userEvent.click(screen.getByRole("button", { name: "▶ Play" }));
     expect(onPlayNext).toHaveBeenCalledWith(1, 2);
   });
+
+  // ---- M16 Task 11: Discover reasons ----
+  it("shows the reason field from DiscoveryWork when it is non-empty", () => {
+    const withReason: DiscoveryWork[] = [
+      { workId: 1, baseTitle: "Night Walk", authorId: 2, authorName: "Sam Smith", unplayedCount: 2, sharedTags: ["cozy"], reason: "Shares cozy" },
+    ];
+    render(<DiscoveryView forYou={withReason} allTags={["cozy"]} byTags={[]} picked={[]} onPickTags={() => {}} onOpenAuthor={() => {}} onBack={() => {}} onPlayNextOfWork={vi.fn()} />);
+    expect(screen.getByText("Shares cozy")).toBeInTheDocument();
+  });
+
+  it("falls back to the computed reason when reason field is empty string", () => {
+    const noReason: DiscoveryWork[] = [
+      { workId: 1, baseTitle: "Night Walk", authorId: 2, authorName: "Sam Smith", unplayedCount: 2, sharedTags: ["cozy"], reason: "" },
+    ];
+    render(<DiscoveryView forYou={noReason} allTags={["cozy"]} byTags={[]} picked={[]} onPickTags={() => {}} onOpenAuthor={() => {}} onBack={() => {}} onPlayNextOfWork={vi.fn()} />);
+    // Falls back to computed "Shares cozy" from sharedTags.
+    expect(screen.getByText("Shares cozy")).toBeInTheDocument();
+  });
 });

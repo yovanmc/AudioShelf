@@ -11,7 +11,9 @@ function WorkList({ works, onOpenAuthor, onPlayNext }: { works: DiscoveryWork[];
       title={work.baseTitle}
       authorId={work.authorId}
       authorName={work.authorName}
-      reason={work.sharedTags.length ? `Shares ${work.sharedTags.slice(0, 2).join(" and ")}` : "Mostly unplayed"}
+      reason={work.reason && work.reason.length > 0
+        ? work.reason
+        : work.sharedTags.length ? `Shares ${work.sharedTags.slice(0, 2).join(" and ")}` : "Mostly unplayed"}
       tags={work.sharedTags}
       meta={`${work.unplayedCount} unplayed`}
       actionLabel="View creator"

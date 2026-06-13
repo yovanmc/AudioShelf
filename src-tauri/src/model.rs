@@ -53,6 +53,22 @@ pub struct DiscoveryWork {
     pub author_name: String,
     pub unplayed_count: i64,
     pub shared_tags: Vec<String>,
+    /// Human-readable reason this work was surfaced (empty string if unavailable).
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// A work that was played at some point but not touched for `days` days.
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DormantWork {
+    pub work_id: i64,
+    pub base_title: String,
+    pub author_id: i64,
+    pub author_name: String,
+    pub last_played_at: i64,
+    /// Fraction of the work's chapters that have been played (0.0–1.0).
+    pub played_fraction: f64,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -189,4 +205,25 @@ pub struct HomeData {
     pub keep_listening: Option<ContinueItem>,
     pub recommendations: Vec<RecommendationWork>,
     pub stats: ListeningStats,
+}
+
+/// One field proposed to change based on embedded audio metadata.
+/// `field` is one of: "title" (work base_title), "order" (chapter_no), "tag" (genre).
+#[derive(Serialize, serde::Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataProposal {
+    pub chapter_id: i64,
+    pub work_id: i64,
+    pub field: String,      // "title" | "order" | "tag"
+    pub current: String,
+    pub proposed: String,
+    pub source: String,     // always "embedded"
+}
+
+/// Result of applying a set of metadata proposals.
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataApplyReport {
+    pub applied: i64,
+    pub skipped: i64,
 }

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import type { AuthorDetail, ChapterRow, PlaybackContext, WorkRow } from "../lib/api";
+import type { AuthorDetail, ChapterRow, DiscoveryWork, PlaybackContext, SeriesView, WorkRow } from "../lib/api";
 import { TagEditor } from "./TagEditor";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
-import { Button, Dialog, ProgressBar, TagGroup } from "../components/ui";
+import { Button, Dialog, ProgressBar, SectionHeading, TagGroup } from "../components/ui";
+import { WorkCard } from "../components/WorkCard";
 import { Menu } from "../components/Menu";
 import { Icon } from "../components/Icon";
 import { formatDuration, formatLong } from "../lib/time";
@@ -62,10 +63,23 @@ export function AuthorDetailView(props: {
   onBack: () => void;
   workSort: WorkSort;
   onWorkSortChange: (s: WorkSort) => void;
+  /** Persisted series for this author (empty = none detected yet). Optional so existing tests don't break. */
+  series?: SeriesView[];
+  /** Called when user wants to play the next unplayed chapter of a work in a series. */
+  onPlayNextOfWork?: (workId: number, authorId: number) => void;
+  /** "More like this" results keyed by work_id — optional; populated by App. */
+  moreLikeThisMap?: Record<number, DiscoveryWork[]>;
+  /** Called when user requests "More like this" for a work. */
+  onRequestMoreLikeThis?: (workId: number) => void;
+  /** Auto-tag suggestions keyed by work_id — optional; populated by App. */
+  workTagSuggestions?: Record<number, string[]>;
+  /** Called to open the author detail of another suggested work. */
+  onOpenAuthor?: (authorId: number) => void;
 }) {
-  const { detail } = props;
+  const { detail, series = [], moreLikeThisMap = {}, workTagSuggestions = {} } = props;
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [editState, setEditState] = useState<EditState>(null);
+  const [moreLikeThisWorkId, setMoreLikeThisWorkId] = useState<number | null>(null);
   const works = sortWorks(detail.works, props.workSort);
   const allCollapsed = works.length > 0 && works.every((w) => collapsed.has(w.id));
   const toggleWork = (id: number) =>
@@ -158,7 +172,17 @@ export function AuthorDetailView(props: {
               tags={w.tags}
               allTags={props.allTags}
               onChange={(t) => props.onSetWorkTags(w.id, t)}
+              suggestions={workTagSuggestions[w.id]}
             />
+            {props.onRequestMoreLikeThis && (
+              <button
+                type="button"
+                className="chip chip--toggle"
+                style={{ marginLeft: 8 }}
+                aria-label={`More like ${w.baseTitle}`}
+                onClick={() => { props.onRequestMoreLikeThis!(w.id); setMoreLikeThisWorkId(w.id); }}
+              >More like this</button>
+            )}
           </div>
           {!collapsed.has(w.id) && (
           <ul className="recent-list">
@@ -212,6 +236,85 @@ export function AuthorDetailView(props: {
             allTags={props.allTags}
             onChange={(t) => props.onSetChapterTags(editChapterInfo.chapter.id, t)}
           />
+        </Dialog>
+      )}
+      {series.length > 0 && (
+        <section className="series-section view-section">
+          <SectionHeading title="Reading Order / Series" />
+          {series.map((s) => {
+            // Find the first unfinished member (has unplayed chapters) in order.
+            const nextUnfinished = s.members.find(
+              (m) => m.playedChapters < m.totalChapters
+            );
+            return (
+              <div key={s.id} className="series-spine card" style={{ padding: 16, marginBottom: 12 }}>
+                <h3 className="series-title" style={{ marginBottom: 8 }}>{s.title}</h3>
+                <ol className="series-members" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {s.members.map((m) => {
+                    const memberProgress = m.totalChapters > 0
+                      ? Math.round((m.playedChapters / m.totalChapters) * 100)
+                      : 0;
+                    return (
+                      <li
+                        key={m.workId}
+                        className="series-member"
+                        style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}
+                      >
+                        <span className="series-position muted" style={{ minWidth: 20 }}>
+                          {m.position}.
+                        </span>
+                        <span className="series-member-title" style={{ flex: 1 }}>
+                          {m.baseTitle}
+                        </span>
+                        <ProgressBar
+                          value={memberProgress}
+                          label={`${m.baseTitle} progress`}
+                        />
+                        <span className="muted series-member-progress" style={{ minWidth: 60, textAlign: "right" }}>
+                          {m.playedChapters}/{m.totalChapters}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
+                {nextUnfinished && props.onPlayNextOfWork && (
+                  <Button
+                    variant="primary"
+                    onClick={() => props.onPlayNextOfWork!(nextUnfinished.workId, detail.id)}
+                    aria-label={`Continue the series ${s.title}`}
+                  >
+                    Continue the series
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
+      {moreLikeThisWorkId !== null && moreLikeThisMap[moreLikeThisWorkId] !== undefined && (
+        <Dialog label="More like this" onClose={() => setMoreLikeThisWorkId(null)}>
+          <div style={{ padding: 8 }}>
+            {moreLikeThisMap[moreLikeThisWorkId].length === 0
+              ? <p className="muted">No similar works found in your library.</p>
+              : <div className="card-grid">
+                  {moreLikeThisMap[moreLikeThisWorkId].map((w) => (
+                    <WorkCard
+                      key={w.workId}
+                      workId={w.workId}
+                      title={w.baseTitle}
+                      authorId={w.authorId}
+                      authorName={w.authorName}
+                      reason={w.reason && w.reason.length > 0 ? w.reason : undefined}
+                      tags={w.sharedTags}
+                      meta={`${w.unplayedCount} unplayed`}
+                      actionLabel="View creator"
+                      onAction={() => { setMoreLikeThisWorkId(null); props.onOpenAuthor?.(w.authorId); }}
+                      onOpenAuthor={() => { setMoreLikeThisWorkId(null); props.onOpenAuthor?.(w.authorId); }}
+                    />
+                  ))}
+                </div>
+            }
+          </div>
         </Dialog>
       )}
     </main>

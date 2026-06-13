@@ -9,6 +9,7 @@ mod natsort;
 mod regroup;
 mod rename;
 mod scan;
+mod transcripts;
 
 use commands::DbState;
 use launch::LaunchArgs;
@@ -67,7 +68,24 @@ pub fn run() {
             commands::search_library,
             commands::get_work_cover,
             commands::get_author_cover,
-            commands::reset_play_history
+            commands::reset_play_history,
+            commands::list_tags_with_counts,
+            commands::rename_tag,
+            commands::merge_tags,
+            commands::set_tag_alias,
+            commands::clear_tag_alias,
+            commands::set_tag_parent,
+            commands::clear_tag_parent,
+            commands::preview_metadata,
+            commands::apply_metadata,
+            commands::detect_series,
+            commands::apply_series,
+            commands::get_author_series,
+            commands::search_transcripts,
+            commands::get_chapter_transcript,
+            commands::get_dormant_works,
+            commands::get_more_like_this,
+            commands::suggest_tags
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -75,13 +93,15 @@ pub fn run() {
 
 // Exposed for integration tests.
 pub mod testing {
-    pub use crate::commands::{query_author_detail, query_authors};
+    pub use crate::commands::{apply_metadata_proposals, apply_series_proposals, build_metadata_proposals, detect_series_for_author, get_chapter_transcript_inner, query_author_detail, query_author_series, query_authors, query_dormant_works, more_like_this, suggest_tags_from, search_transcripts_inner, SeriesMemberProposal, SeriesProposal, SeriesView, TranscriptHit};
     pub use crate::covers::{
         cover_cache_for_chapter, find_folder_image, make_thumbnail_png, read_embedded_picture,
         CoverPriority,
     };
-    pub use crate::db::open_in_memory;
+    pub use crate::db::{open_at_version, open_in_memory};
+    pub use crate::model::{MetadataApplyReport, MetadataProposal};
     pub use crate::regroup::regroup_author;
     pub use crate::rename::{build_plan, execute, undo, ItemStatus};
     pub use crate::scan::scan_into;
+    pub use crate::transcripts::parse_srt_vtt;
 }

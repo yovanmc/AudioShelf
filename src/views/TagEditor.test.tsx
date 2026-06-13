@@ -33,4 +33,31 @@ describe("TagEditor", () => {
     await userEvent.click(screen.getByLabelText("Remove tag cozy"));
     expect(onChange).toHaveBeenCalledWith(["calm"]);
   });
+
+  // ---- M16 Task 11: auto-tag suggestion chips ----
+  it("renders suggestion chips when suggestions prop is provided", () => {
+    render(<TagEditor tags={[]} allTags={[]} onChange={() => {}} suggestions={["thriller", "mystery"]} />);
+    expect(screen.getByLabelText("Add suggested tag thriller")).toBeInTheDocument();
+    expect(screen.getByLabelText("Add suggested tag mystery")).toBeInTheDocument();
+  });
+
+  it("clicking a suggestion chip calls onChange with the tag added", async () => {
+    const onChange = vi.fn();
+    render(<TagEditor tags={["cozy"]} allTags={[]} onChange={onChange} suggestions={["thriller"]} />);
+    await userEvent.click(screen.getByLabelText("Add suggested tag thriller"));
+    expect(onChange).toHaveBeenCalledWith(["cozy", "thriller"]);
+  });
+
+  it("does not render suggestions area when suggestions prop is omitted", () => {
+    const { container } = render(<TagEditor tags={[]} allTags={[]} onChange={() => {}} />);
+    expect(container.querySelector(".tag-suggestions")).toBeNull();
+  });
+
+  it("does not add a suggestion chip that is already in the existing tags", async () => {
+    const onChange = vi.fn();
+    render(<TagEditor tags={["cozy"]} allTags={[]} onChange={onChange} suggestions={["cozy"]} />);
+    // "cozy" is already present, clicking the chip should not call onChange.
+    await userEvent.click(screen.getByLabelText("Add suggested tag cozy"));
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

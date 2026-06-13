@@ -1,9 +1,10 @@
 import { useState } from "react";
-import type { ScanResult } from "../lib/api";
+import type { ScanResult, TagStat } from "../lib/api";
 import { Button, Card, Notice, PageHeader } from "../components/ui";
 import { Icon } from "../components/Icon";
 import type { HomeShelf, ShelfKind } from "../lib/shelves";
 import type { PlayedStatus } from "../lib/browse";
+import { TagManagerView } from "./TagManagerView";
 
 const STATUS_LABELS: Record<PlayedStatus, string> = {
   all: "All",
@@ -174,6 +175,12 @@ export function SettingsView(props: {
   onRemoveShelf?: (id: string) => void;
   onMoveShelf?: (id: string, dir: -1 | 1) => void;
   onRenameShelf?: (id: string, title: string) => void;
+  // Tag manager (optional — existing tests omit these)
+  tagStats?: TagStat[];
+  onRenameTag?: (from: string, to: string) => void;
+  onMergeTags?: (sources: string[], target: string) => void;
+  onSetTagAlias?: (alias: string, canonical: string) => void;
+  onClearTagAlias?: (alias: string) => void;
 }) {
   const { root, lastScan, scanError, busy, firstRun } = props;
   const shelves = props.shelves ?? [];
@@ -277,6 +284,23 @@ export function SettingsView(props: {
               onAddShelf={props.onAddShelf}
             />
           )}
+        </Card>
+      )}
+
+      {!firstRun && props.tagStats !== undefined && props.onRenameTag && props.onMergeTags && props.onSetTagAlias && props.onClearTagAlias && (
+        <Card style={{ padding: 24, marginTop: 16 }}>
+          <h2>Tag manager</h2>
+          <p className="muted">
+            Rename or merge tags across your entire library. Aliases let you type an
+            alternate name and have it resolve to the canonical form automatically.
+          </p>
+          <TagManagerView
+            tags={props.tagStats}
+            onRename={props.onRenameTag}
+            onMerge={props.onMergeTags}
+            onSetAlias={props.onSetTagAlias}
+            onClearAlias={props.onClearTagAlias}
+          />
         </Card>
       )}
     </main>

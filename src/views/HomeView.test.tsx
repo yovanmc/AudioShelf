@@ -148,4 +148,24 @@ describe("HomeView", () => {
     await userEvent.click(creatorButton);
     expect(onOpenAuthor).toHaveBeenCalledWith(1);
   });
+
+  // ---- M16 Task 11: Forgotten shelf ----
+  it("renders the Forgotten shelf when dormantWorks are provided", () => {
+    const dormant = [
+      { workId: 201, baseTitle: "Old Audiobook", authorId: 301, authorName: "Dusty Author", lastPlayedAt: 1000, playedFraction: 0.5 },
+    ];
+    render(<HomeView {...baseProps({ dormantWorks: dormant })} />);
+    expect(screen.getByRole("heading", { name: "Forgotten" })).toBeInTheDocument();
+    expect(screen.getByText("Old Audiobook")).toBeInTheDocument();
+  });
+
+  it("does not render the Forgotten shelf when dormantWorks is empty", () => {
+    render(<HomeView {...baseProps({ dormantWorks: [] })} />);
+    expect(screen.queryByRole("heading", { name: "Forgotten" })).not.toBeInTheDocument();
+  });
+
+  it("does not render the Forgotten shelf when dormantWorks prop is omitted", () => {
+    render(<HomeView {...baseProps()} />);
+    expect(screen.queryByRole("heading", { name: "Forgotten" })).not.toBeInTheDocument();
+  });
 });
