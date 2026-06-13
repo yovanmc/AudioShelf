@@ -9,12 +9,23 @@ pub struct DurationFilter { pub op: CmpOp, pub secs: i64 }
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum StatusFilter { Unstarted, InProgress, Done }
 
+/// A single metadata facet filter from the search DSL (e.g. `narrator:Roe`).
+/// Matches a single whitespace-delimited token value (no quoting), like `tag:`.
+/// Multi-word narrators/values are reached via the Narrators browse page or
+/// Discover facet picker, which pass exact values.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct MetaFilter {
+    pub facet: String,
+    pub value: String,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct ParsedQuery {
     pub text: String,
     pub tags: Vec<String>,
     pub duration: Option<DurationFilter>,
     pub status: Option<StatusFilter>,
+    pub meta: Vec<MetaFilter>,
 }
 
 pub fn parse_query(raw: &str) -> ParsedQuery {
@@ -33,6 +44,15 @@ pub fn parse_query(raw: &str) -> ParsedQuery {
                 Some(s) => out.status = Some(s),
                 None => text_parts.push(tok),
             }
+        } else if let Some(v) = tok.strip_prefix("narrator:") {
+            if !v.is_empty() { out.meta.push(MetaFilter { facet: "narrator".into(), value: v.to_string() }); }
+            else { text_parts.push(tok); }
+        } else if let Some(v) = tok.strip_prefix("language:") {
+            if !v.is_empty() { out.meta.push(MetaFilter { facet: "language".into(), value: v.to_string() }); }
+            else { text_parts.push(tok); }
+        } else if let Some(v) = tok.strip_prefix("mood:") {
+            if !v.is_empty() { out.meta.push(MetaFilter { facet: "mood".into(), value: v.to_string() }); }
+            else { text_parts.push(tok); }
         } else {
             text_parts.push(tok);
         }
@@ -118,5 +138,23 @@ mod tests {
     fn garbage_duration_is_ignored() {
         assert_eq!(parse_query("duration:abc").duration, None);
         assert_eq!(parse_query("duration:abc").text, "duration:abc");
+    }
+
+    #[test]
+    fn parses_metadata_facet_filters() {
+        let p = parse_query("narrator:Roe mood:cozy language:English ghosts");
+        assert_eq!(p.meta, vec![
+            MetaFilter { facet: "narrator".into(), value: "Roe".into() },
+            MetaFilter { facet: "mood".into(), value: "cozy".into() },
+            MetaFilter { facet: "language".into(), value: "English".into() },
+        ]);
+        assert_eq!(p.text, "ghosts");
+    }
+
+    #[test]
+    fn empty_facet_value_falls_through_to_text() {
+        let p = parse_query("narrator:");
+        assert!(p.meta.is_empty());
+        assert_eq!(p.text, "narrator:");
     }
 }
