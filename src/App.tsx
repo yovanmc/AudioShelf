@@ -65,6 +65,7 @@ import {
   type HomeShelf,
   type ShelfItem,
 } from "./lib/shelves";
+import { applyMediaSession, updatePosition, type NowPlayingMeta } from "./lib/mediaSession";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -1713,6 +1714,77 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Media Session API — SMTC now-playing card + hardware media keys.
+  // currentWorkChaptersRef keeps the chapter list stable across renders so the
+  // prev/next handlers always see the current list without being in the dep array.
+  const currentWorkChaptersRef = useRef<typeof currentWorkChapters>(currentWorkChapters);
+  currentWorkChaptersRef.current = currentWorkChapters;
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    if (!current) {
+      applyMediaSession(
+        navigator.mediaSession as unknown as Parameters<typeof applyMediaSession>[0],
+        null, false,
+        { onPlay: () => {}, onPause: () => {}, onPrevChapter: () => {}, onNextChapter: () => {},
+          onSeekBackward: () => {}, onSeekForward: () => {}, onSeekTo: () => {} },
+      );
+      return;
+    }
+    const nowPlayingMeta: NowPlayingMeta = {
+      title: current.chapter.title,
+      author: current.authorName,
+      work: current.workTitle,
+      // artwork omitted: resolving cover URL requires an async fetch not suitable here.
+    };
+    applyMediaSession(
+      navigator.mediaSession as unknown as Parameters<typeof applyMediaSession>[0],
+      nowPlayingMeta,
+      isPlaying,
+      {
+        onPlay: () => { if (!isPlayingRef.current) toggleRef.current(); },
+        onPause: () => { if (isPlayingRef.current) toggleRef.current(); },
+        onPrevChapter: () => {
+          const ctx = currentRef.current;
+          const chapters = currentWorkChaptersRef.current;
+          if (!ctx || chapters.length === 0) return;
+          const idx = chapters.findIndex((c) => c.id === ctx.chapter.id);
+          const prev = idx > 0 ? chapters[idx - 1] : chapters[0];
+          if (prev) {
+            playChapter({
+              chapter: prev,
+              authorId: ctx.authorId, authorName: ctx.authorName,
+              workId: ctx.workId, workTitle: ctx.workTitle,
+              workTotalChapters: chapters.length,
+              workPlayedChapters: chapters.filter((c) => c.played).length,
+            });
+          }
+        },
+        onNextChapter: () => {
+          const ctx = currentRef.current;
+          const chapters = currentWorkChaptersRef.current;
+          if (!ctx || chapters.length === 0) return;
+          const idx = chapters.findIndex((c) => c.id === ctx.chapter.id);
+          const next = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1] : null;
+          if (next) {
+            playChapter({
+              chapter: next,
+              authorId: ctx.authorId, authorName: ctx.authorName,
+              workId: ctx.workId, workTitle: ctx.workTitle,
+              workTotalChapters: chapters.length,
+              workPlayedChapters: chapters.filter((c) => c.played).length,
+            });
+          }
+        },
+        onSeekBackward: (s) => skipRef.current(-s),
+        onSeekForward: (s) => skipRef.current(s),
+        onSeekTo: (pos) => { if (audioRef.current) audioRef.current.currentTime = pos; },
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, isPlaying]);
+
   // Debounced command palette search (mirrors the 150ms library search pattern).
   useEffect(() => {
     if (!paletteOpen) return;
@@ -2013,7 +2085,17 @@ export default function App() {
         ref={audioRef}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
-        onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+        onTimeUpdate={(e) => {
+          const t = e.currentTarget.currentTime;
+          setCurrentTime(t);
+          if ("mediaSession" in navigator) {
+            updatePosition(
+              navigator.mediaSession as unknown as Parameters<typeof updatePosition>[0],
+              e.currentTarget.duration || 0,
+              t,
+            );
+          }
+        }}
         onLoadedMetadata={(e) => {
           setDuration(e.currentTarget.duration || 0);
           if (pendingSeekRef.current != null) {
