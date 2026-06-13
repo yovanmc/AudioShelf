@@ -105,7 +105,8 @@ type Route =
   | { kind: "settings"; firstRun: boolean }
   | { kind: "journal" }
   | { kind: "insights" }
-  | { kind: "collections" };
+  | { kind: "collections" }
+  | { kind: "narrators" };
 
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
@@ -116,6 +117,7 @@ function shellRoute(route: Route): ShellRoute {
   if (route.kind === "journal") return "journal";
   if (route.kind === "insights") return "insights";
   if (route.kind === "collections") return "collections";
+  if (route.kind === "narrators") return "narrators";
   return "library";
 }
 
@@ -849,6 +851,8 @@ export default function App() {
     void listCollections().then(setCollections);
     setRoute({ kind: "collections" });
   }
+
+  const openNarrators = () => setRoute({ kind: "narrators" });
 
   const onResolveCollection = (id: number) => {
     void resolveCollection(id).then((r) => setResolvedCollections((m) => ({ ...m, [id]: r })));
@@ -2200,6 +2204,9 @@ export default function App() {
         />
       );
     }
+    if (route.kind === "narrators") {
+      return <div className="view" />;
+    }
     if (route.kind === "collections") {
       return (
         <CollectionsView
@@ -2323,6 +2330,7 @@ export default function App() {
           onJournal={openJournalView}
           onInsights={openInsights}
           onCollections={openCollections}
+          onNarrators={openNarrators}
           density={density}
           a11y={a11y}
           player={player}
