@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -218,6 +218,40 @@ export function insightsSteps(nav: {
     { name: "insights-overview", run: nav.showInsightsOverview },
     { name: "insights-trends", run: nav.showInsightsTrends },
     { name: "insights-recap", run: nav.showInsightsRecap },
+  ];
+}
+
+/**
+ * Build the "m19" walkthrough: nine new surfaces introduced in M19 (Power & Scale) —
+ * command palette (Ctrl+K overlay with search results), scoped search (duration/tag
+ * tokens with parsed chips), saved searches (a recall-able named search), collections
+ * (the Collections route listing a seeded collection), bulk select (select mode active
+ * with ≥1 work checked and the bulk bar), density spacious (visibly looser grid),
+ * chapter sort (per-work sort control in AuthorDetail), backup & maintenance (the five
+ * Settings actions), and health report (counts + schema version banner).
+ * All data is seeded at runtime so on-disk fixtures stay 43/44/47.
+ */
+export function m19Steps(nav: {
+  showCommandPalette: () => Promise<void>;
+  showScopedSearch: () => Promise<void>;
+  showSavedSearches: () => Promise<void>;
+  showCollections: () => Promise<void>;
+  showBulkSelect: () => Promise<void>;
+  showDensitySpacious: () => Promise<void>;
+  showChapterSort: () => Promise<void>;
+  showBackupMaintenance: () => Promise<void>;
+  showHealthReport: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "command-palette", run: nav.showCommandPalette },
+    { name: "scoped-search", run: nav.showScopedSearch },
+    { name: "saved-searches", run: nav.showSavedSearches },
+    { name: "collections", run: nav.showCollections },
+    { name: "bulk-select", run: nav.showBulkSelect },
+    { name: "density-spacious", run: nav.showDensitySpacious },
+    { name: "chapter-sort", run: nav.showChapterSort },
+    { name: "backup-maintenance", run: nav.showBackupMaintenance },
+    { name: "health-report", run: nav.showHealthReport },
   ];
 }
 

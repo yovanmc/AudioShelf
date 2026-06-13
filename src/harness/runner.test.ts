@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps, journalSteps, insightsSteps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -96,6 +96,20 @@ describe("insightsSteps", () => {
       "insights-overview",
       "insights-trends",
       "insights-recap",
+    ]);
+  });
+});
+
+describe("m19Steps", () => {
+  it("captures the nine M19 power-&-scale surfaces in order", () => {
+    const noop = async () => {};
+    expect(m19Steps({
+      showCommandPalette: noop, showScopedSearch: noop, showSavedSearches: noop,
+      showCollections: noop, showBulkSelect: noop, showDensitySpacious: noop,
+      showChapterSort: noop, showBackupMaintenance: noop, showHealthReport: noop,
+    }).map((s) => s.name)).toEqual([
+      "command-palette", "scoped-search", "saved-searches", "collections",
+      "bulk-select", "density-spacious", "chapter-sort", "backup-maintenance", "health-report",
     ]);
   });
 });

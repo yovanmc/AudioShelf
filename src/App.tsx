@@ -48,7 +48,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -1431,6 +1431,148 @@ export default function App() {
                   // Scroll the recap card to the bottom of the viewport so the breakdowns
                   // above it are visible and the Export PNG button is in frame.
                   document.querySelector(".recap-card")?.scrollIntoView({ block: "end" });
+                  await settle();
+                },
+              })
+            : args.walkthrough === "m19"
+            ? m19Steps({
+                // Step 1: open the command palette with a prefilled query ("cool") so
+                // grouped results are visible (authors/works/chapters matching "cool").
+                showCommandPalette: async () => {
+                  setRoute({ kind: "library" });
+                  setQuery("");
+                  setResults(null);
+                  setScopedResults(null);
+                  await settle();
+                  setPaletteQuery("cool");
+                  const pr = await searchLibrary("cool").catch(() => ({ authors: [], works: [], chapters: [] } as SearchResults));
+                  setPaletteResults(pr);
+                  setPaletteOpen(true);
+                  await settle();
+                },
+                // Step 2: scoped search with a duration token — chips are rendered for
+                // the parsed filter and the results grid shows matched works.
+                showScopedSearch: async () => {
+                  setPaletteOpen(false);
+                  setPaletteQuery("");
+                  setPaletteResults(null);
+                  const q = "duration:<15m";
+                  setQuery(q);
+                  const sr = await advancedSearch(q);
+                  setScopedResults(sr);
+                  setResults(null);
+                  setTranscriptResults(null);
+                  setSelectMode(false);
+                  setSelectedWorkIds([]);
+                  setRoute({ kind: "library" });
+                  await settle();
+                },
+                // Step 3: save the current scoped search as "Short reads" so the saved-
+                // searches list has an entry that can be recalled.
+                showSavedSearches: async () => {
+                  await createSavedSearch("Short reads", "duration:<15m", Date.now());
+                  const list = await listSavedSearches().catch(() => [] as SavedSearch[]);
+                  setSavedSearches(list);
+                  setRoute({ kind: "library" });
+                  await settle();
+                },
+                // Step 4: seed a collection ("tag:cozy") and open the Collections view.
+                showCollections: async () => {
+                  // Ensure the "cozy" tag exists on some works before seeding the collection.
+                  const list = await getAuthors();
+                  for (const a of list.slice(0, 3)) await setAuthorTags(a.id, ["cozy"]);
+                  await refreshTags();
+                  await createCollection("Cozy picks", "tag:cozy", Date.now()).catch(() => {});
+                  const cols = await listCollections().catch(() => [] as Collection[]);
+                  setCollections(cols);
+                  // Resolve all collections so the expanded result list renders.
+                  const resolvedMap: Record<number, ScopedResults | undefined> = {};
+                  for (const col of cols) {
+                    const r = await resolveCollection(col.id).catch(() => undefined);
+                    resolvedMap[col.id] = r;
+                  }
+                  setResolvedCollections(resolvedMap);
+                  setRoute({ kind: "collections" });
+                  await settle();
+                },
+                // Step 5: enter scoped select mode with one work selected so the bulk bar
+                // (count + "Tag…" button) is visible.
+                showBulkSelect: async () => {
+                  const q = "duration:<15m";
+                  setQuery(q);
+                  const sr = await advancedSearch(q);
+                  setScopedResults(sr);
+                  setResults(null);
+                  setTranscriptResults(null);
+                  setRoute({ kind: "library" });
+                  await settle();
+                  setSelectMode(true);
+                  // Select the first work from the scoped results if any; fallback to first author's first work.
+                  const firstId = sr.works[0]?.workId ?? null;
+                  if (firstId !== null) {
+                    setSelectedWorkIds([firstId]);
+                  } else {
+                    const authors2 = await getAuthors();
+                    if (authors2.length > 0) {
+                      const d = await getAuthorDetail(authors2[0].id);
+                      if (d.works[0]) setSelectedWorkIds([d.works[0].id]);
+                    }
+                  }
+                  await settle();
+                },
+                // Step 6: change density to "spacious" so the grid is visibly looser.
+                showDensitySpacious: async () => {
+                  setSelectMode(false);
+                  setSelectedWorkIds([]);
+                  setQuery("");
+                  setResults(null);
+                  setScopedResults(null);
+                  onDensityChange("spacious");
+                  setRoute({ kind: "library" });
+                  await settle();
+                },
+                // Step 7: open the first author and set its first work's chapter sort to
+                // "title-az" so the sort control is visible in AuthorDetail.
+                // We navigate first (so the route is set), then set chapter sort and
+                // refresh the detail — avoiding a second openAuthor call that re-runs
+                // detectSeries (already applied in earlier steps).
+                showChapterSort: async () => {
+                  const list = await getAuthors();
+                  if (list.length > 0) {
+                    const d0 = await getAuthorDetail(list[0].id);
+                    setDetail(d0);
+                    setRoute({ kind: "author" });
+                    const work = d0.works[0];
+                    if (work) {
+                      await setWorkChapterSort(work.id, "title_asc").catch(() => {});
+                      const d1 = await getAuthorDetail(list[0].id);
+                      setDetail(d1);
+                    }
+                  }
+                  await settle();
+                },
+                // Step 8: open Settings with the Backup & maintenance section visible
+                // (all five action buttons: export JSON, export snapshot, import JSON,
+                // restore snapshot, health scan).
+                showBackupMaintenance: async () => {
+                  setHealthReport(null);
+                  setImportReport(null);
+                  setRestoreStaged(false);
+                  setRoute({ kind: "settings", firstRun: false });
+                  await settle();
+                  // Scroll the backup section into view.
+                  document.querySelector(".backup-maintenance")?.scrollIntoView({ block: "start" });
+                  await settle();
+                },
+                // Step 9: run the health scan so the HealthReport panel renders (counts +
+                // any issue lists + schema version banner). Over synthetic fixtures some
+                // checks may return zero issues — the shot proves the surface renders.
+                showHealthReport: async () => {
+                  const report = await libraryHealthScan();
+                  setHealthReport(report);
+                  setRoute({ kind: "settings", firstRun: false });
+                  await settle();
+                  document.querySelector(".health-report")?.scrollIntoView({ block: "start" });
                   await settle();
                 },
               })
