@@ -257,4 +257,33 @@ describe("LibraryView", () => {
     );
     expect(screen.getByText("No matches.")).toBeInTheDocument();
   });
+
+  it("inline save-search works without window.prompt", async () => {
+    const onSaveSearch = vi.fn();
+    render(
+      <LibraryView
+        {...baseProps({ scoped: true, onSaveSearch, query: "tag:cozy" })}
+      />,
+    );
+    // Click "Save search" to open the inline form
+    await userEvent.click(screen.getByRole("button", { name: "Save search" }));
+    // Type a name into the inline input
+    const input = screen.getByRole("textbox", { name: "Name this search" });
+    await userEvent.type(input, "My cozy list");
+    // Submit the form
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSaveSearch).toHaveBeenCalledWith("My cozy list", "tag:cozy");
+  });
+
+  it("Search tips toggle reveals the tag: example", async () => {
+    render(<LibraryView {...baseProps()} />);
+    // The tag: example should not be visible initially
+    expect(screen.queryByText(/tag:cozy/)).not.toBeInTheDocument();
+    // Click "Search tips" to expand
+    await userEvent.click(screen.getByRole("button", { name: "Search tips" }));
+    // Now the tag: example should be visible
+    expect(screen.getByText(/tag:cozy/)).toBeInTheDocument();
+    // The button text flips to "Hide tips"
+    expect(screen.getByRole("button", { name: "Hide tips" })).toBeInTheDocument();
+  });
 });

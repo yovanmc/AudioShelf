@@ -197,3 +197,7 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
   color: var(--color-text-muted);
 }
 .settings-group:first-of-type { margin-top: var(--space-3); }
+/* ---- Search tips (M22 Task 6) ---- */
+.search-tips__list { margin: 6px 0 0; padding-inline-start: 18px; font-size: 0.82em; line-height: 1.7; }
+.search-tips__list code { font-size: 0.95em; }
+.link-button { background: none; border: none; padding: 0; color: var(--color-accent); font: inherit; cursor: pointer; text-decoration: underline; }
