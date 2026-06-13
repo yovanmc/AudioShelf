@@ -2504,6 +2504,40 @@ pub fn export_recap_png(path: String, bytes: Vec<u8>) -> Result<String, String> 
     Ok(path)
 }
 
+/// Additive bulk work-tagging: INSERT OR IGNORE the `add` tags and DELETE the `remove` tags
+/// for each work id. Skips empty/whitespace tags. Never a blanket replace.
+pub(crate) fn bulk_set_work_tags_rows(
+    conn: &rusqlite::Connection,
+    work_ids: &[i64],
+    add: &[String],
+    remove: &[String],
+) -> rusqlite::Result<()> {
+    for &wid in work_ids {
+        for raw in add {
+            let t = raw.trim();
+            if t.is_empty() { continue; }
+            conn.execute("INSERT OR IGNORE INTO work_tags(work_id, tag) VALUES (?1, ?2)", params![wid, t])?;
+        }
+        for raw in remove {
+            let t = raw.trim();
+            if t.is_empty() { continue; }
+            conn.execute("DELETE FROM work_tags WHERE work_id=?1 AND tag=?2", params![wid, t])?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn bulk_set_work_tags(
+    state: tauri::State<DbState>,
+    work_ids: Vec<i64>,
+    add: Vec<String>,
+    remove: Vec<String>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    bulk_set_work_tags_rows(&conn, &work_ids, &add, &remove).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4121,6 +4155,25 @@ mod tests {
         super::reorder_collections_rows(&conn, &[b, a]).unwrap();
         let names: Vec<String> = super::list_collections_rows(&conn).unwrap().into_iter().map(|c| c.name).collect();
         assert_eq!(names, vec!["B".to_string(), "A".to_string()]);
+    }
+
+    // ---- M19 Task 5: bulk_set_work_tags -----------------------------------------------
+    // (implementation is above the mod tests block)
+
+    #[test]
+    fn bulk_tag_adds_and_removes_per_work() {
+        let conn = crate::db::open_at_version(7).unwrap();
+        conn.execute_batch(
+            "INSERT INTO authors(id, folder_name, status) VALUES (1,'a','active');
+             INSERT INTO works(id, author_id, base_title, status, sort_key) VALUES (1,1,'W1','active','w1'),(2,1,'W2','active','w2');
+             INSERT INTO work_tags(work_id, tag) VALUES (1,'old'),(2,'old');",
+        ).unwrap();
+        super::bulk_set_work_tags_rows(&conn, &[1, 2], &["fresh".into()], &["old".into()]).unwrap();
+        let t1: Vec<String> = conn.prepare("SELECT tag FROM work_tags WHERE work_id=1 ORDER BY tag").unwrap()
+            .query_map([], |r| r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+        assert_eq!(t1, vec!["fresh".to_string()]);
+        let total: i64 = conn.query_row("SELECT COUNT(*) FROM work_tags WHERE tag='old'", [], |r| r.get(0)).unwrap();
+        assert_eq!(total, 0);
     }
 }
 
