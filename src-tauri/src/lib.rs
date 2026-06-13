@@ -76,6 +76,7 @@ pub fn run() {
             commands::get_work_cover,
             commands::get_author_cover,
             commands::reset_play_history,
+            commands::seed_play_events,
             commands::list_tags_with_counts,
             commands::rename_tag,
             commands::merge_tags,
@@ -99,7 +100,8 @@ pub fn run() {
             commands::add_bookmark,
             commands::delete_bookmark,
             commands::query_journal,
-            commands::export_journal
+            commands::export_journal,
+            commands::export_recap_png
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
