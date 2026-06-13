@@ -14,6 +14,7 @@ function props(overrides = {}) {
     onRename: vi.fn(),
     onMetadata: vi.fn(),
     onSettings: vi.fn(),
+    onJournal: vi.fn(),
     children: <main>Page</main>,
     player: null,
     ...overrides,
@@ -28,6 +29,7 @@ describe("AppShell", () => {
     expect(screen.getByRole("button", { name: "Discover" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Import tags" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Journal" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
   });
 

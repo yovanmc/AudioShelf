@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { save } from "@tauri-apps/plugin-dialog";
 import {
   getLaunchArgs, scanLibrary, getAuthors, getAuthorDetail,
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
@@ -14,12 +15,14 @@ import {
   setChapterSummary, setChapterTakeaway, setChapterFavorite,
   setWorkReEntryNote, setWorkRating,
   getChapterJournal, addChapterNote, deleteChapterNote, addBookmark, deleteBookmark,
+  queryJournal, exportJournal,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
-  type SeriesView, type TranscriptHit, type ChapterJournal,
+  type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
 } from "./lib/api";
 import { HomeView } from "./views/HomeView";
+import { JournalView } from "./views/JournalView";
 import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
 import { DiscoveryView } from "./views/DiscoveryView";
@@ -80,7 +83,8 @@ type Route =
   | { kind: "discovery" }
   | { kind: "rename" }
   | { kind: "metadata" }
-  | { kind: "settings"; firstRun: boolean };
+  | { kind: "settings"; firstRun: boolean }
+  | { kind: "journal" };
 
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
@@ -88,6 +92,7 @@ function shellRoute(route: Route): ShellRoute {
   if (route.kind === "rename") return "rename";
   if (route.kind === "metadata") return "metadata";
   if (route.kind === "settings") return "settings";
+  if (route.kind === "journal") return "journal";
   return "library";
 }
 
@@ -171,6 +176,17 @@ export default function App() {
   const [openJournal, setOpenJournal] = useState<ChapterJournal | null>(null);
   const [journalChapterId, setJournalChapterId] = useState<number | null>(null);
 
+  // ---- M17: journal view state ----
+  const [journal, setJournal] = useState<JournalResults | null>(null);
+  const [journalQuery, setJournalQuery] = useState("");
+  const [journalExportStatus, setJournalExportStatus] = useState<string | null>(null);
+
+  // ---- M17: chapter journal for NowPlayingPanel (keyed on current chapter) ----
+  const [currentChapterJournal, setCurrentChapterJournal] = useState<ChapterJournal | null>(null);
+
+  // ---- M17: pending seek ref for jump-to-bookmark ----
+  const pendingSeekRef = useRef<number | null>(null);
+
   useEffect(() => {
     const ctx = current;
     if (!ctx) { setCurrentWorkChapters([]); return; }
@@ -182,6 +198,17 @@ export default function App() {
     }).catch(() => { if (!cancelled) setCurrentWorkChapters([]); });
     return () => { cancelled = true; };
   }, [current?.workId, current?.authorId]);
+
+  // Fetch chapter journal for the currently playing chapter (for NowPlayingPanel bookmarks).
+  useEffect(() => {
+    const chapterId = current?.chapter.id;
+    if (!chapterId) { setCurrentChapterJournal(null); return; }
+    let cancelled = false;
+    void getChapterJournal(chapterId).then((j) => {
+      if (!cancelled) setCurrentChapterJournal(j);
+    }).catch(() => { if (!cancelled) setCurrentChapterJournal(null); });
+    return () => { cancelled = true; };
+  }, [current?.chapter.id]);
 
   function setSidebarCollapsed(collapsed: boolean) {
     setSidebarCollapsedState(collapsed);
@@ -303,6 +330,94 @@ export default function App() {
   async function handleSetWorkRating(workId: number, rating: string) {
     await setWorkRating(workId, rating);
     await refreshDetailAfterJournalMutation();
+  }
+
+  // ---- M17: journal view helpers ----
+
+  async function loadJournal(q: string) {
+    setJournalQuery(q);
+    const results = await queryJournal(q);
+    setJournal(results);
+  }
+
+  async function openJournalView() {
+    const results = await queryJournal(journalQuery);
+    setJournal(results);
+    setRoute({ kind: "journal" });
+  }
+
+  async function handleExportJournal(format: "markdown" | "json") {
+    const path = await save({
+      defaultPath: format === "markdown" ? "audioshelf-journal.md" : "audioshelf-journal.json",
+      filters: [{ name: format === "markdown" ? "Markdown" : "JSON", extensions: [format === "markdown" ? "md" : "json"] }],
+    });
+    if (!path) return;
+    const report = await exportJournal(path, format);
+    setJournalExportStatus(`Exported ${report.entryCount} entries to ${report.path}`);
+    setTimeout(() => setJournalExportStatus(null), 4000);
+  }
+
+  // ---- M17: NowPlayingPanel capture helpers ----
+
+  async function handleAddNoteHere(positionSecs: number) {
+    const ctx = currentRef.current;
+    if (!ctx) return;
+    const body = window.prompt("Add note:");
+    if (!body || !body.trim()) return;
+    await addChapterNote(ctx.chapter.id, positionSecs, body);
+    const j = await getChapterJournal(ctx.chapter.id);
+    setCurrentChapterJournal(j);
+  }
+
+  async function handleAddBookmarkHere(positionSecs: number) {
+    const ctx = currentRef.current;
+    if (!ctx) return;
+    const label = window.prompt("Bookmark label (optional):") ?? "";
+    await addBookmark(ctx.chapter.id, positionSecs, label);
+    const j = await getChapterJournal(ctx.chapter.id);
+    setCurrentChapterJournal(j);
+  }
+
+  async function handleToggleCurrentFavorite(isFavorite: boolean) {
+    const ctx = currentRef.current;
+    if (!ctx) return;
+    await setChapterFavorite(ctx.chapter.id, isFavorite);
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  }
+
+  function jumpToBookmark(b: ChapterBookmark) {
+    const cur = currentRef.current;
+    if (cur && cur.chapter.id === b.chapterId && audioRef.current) {
+      audioRef.current.currentTime = b.positionSecs;
+      return;
+    }
+    pendingSeekRef.current = b.positionSecs;
+    void playChapterById(b.chapterId);
+  }
+
+  async function playChapterById(chapterId: number) {
+    // Resolve the chapter's author and work via getAuthorDetail, mirroring the M14 jumpToChapter pattern.
+    // We need the authorId — find it from the currentChapterJournal entries or look up all authors.
+    // Since we have a chapterId, we scan all authors to find the one that owns this chapter.
+    const allAuthors = await getAuthors();
+    for (const a of allAuthors) {
+      const d = await getAuthorDetail(a.id);
+      for (const w of d.works) {
+        const ch = w.chapters.find((c) => c.id === chapterId);
+        if (ch) {
+          playChapter({
+            chapter: ch,
+            authorId: d.id,
+            authorName: d.name,
+            workId: w.id,
+            workTitle: w.baseTitle,
+            workTotalChapters: w.chapters.length,
+            workPlayedChapters: w.chapters.filter((c) => c.played).length,
+          });
+          return;
+        }
+      }
+    }
   }
 
   async function doRenameTag(from: string, to: string) {
@@ -1164,6 +1279,16 @@ export default function App() {
         />
       );
     }
+    if (route.kind === "journal") {
+      return (
+        <JournalView
+          journal={journal}
+          exportStatus={journalExportStatus}
+          onSearch={loadJournal}
+          onExport={handleExportJournal}
+        />
+      );
+    }
     return (
       <LibraryView
         authors={authors}
@@ -1214,7 +1339,13 @@ export default function App() {
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+        onLoadedMetadata={(e) => {
+          setDuration(e.currentTarget.duration || 0);
+          if (pendingSeekRef.current != null) {
+            try { e.currentTarget.currentTime = pendingSeekRef.current; } catch {}
+            pendingSeekRef.current = null;
+          }
+        }}
         onEnded={handleEnded}
       />
       {standalone ? <div className="standalone-view">{view}</div> : (
@@ -1228,6 +1359,7 @@ export default function App() {
           onRename={openRename}
           onMetadata={openMetadata}
           onSettings={openSettings}
+          onJournal={openJournalView}
           player={player}
         >
           {view}
@@ -1256,6 +1388,11 @@ export default function App() {
           chapters={currentWorkChapters}
           onJumpToChapter={jumpToChapter}
           transcript={currentTranscript}
+          chapterJournal={currentChapterJournal}
+          onAddNoteHere={handleAddNoteHere}
+          onAddBookmarkHere={handleAddBookmarkHere}
+          onToggleFavorite={handleToggleCurrentFavorite}
+          onJumpToBookmark={jumpToBookmark}
         />
       )}
     </div>

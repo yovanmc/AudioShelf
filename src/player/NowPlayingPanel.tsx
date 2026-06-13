@@ -1,9 +1,16 @@
-import type { PlaybackContext, ChapterRow } from "../lib/api";
+import type { PlaybackContext, ChapterRow, ChapterJournal, ChapterBookmark } from "../lib/api";
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
-import { Dialog, ProgressBar } from "../components/ui";
+import { Button, Dialog, ProgressBar } from "../components/ui";
 import { formatTime, timeLabel, type TimeLabelMode } from "./playback";
 import { PlaybackButtons, type PlayerControls } from "./PlayerBar";
+
+/** Formats integer seconds as m:ss. */
+function fmtPos(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
 export function NowPlayingPanel(props: PlayerControls & {
   context: PlaybackContext;
@@ -15,6 +22,16 @@ export function NowPlayingPanel(props: PlayerControls & {
   onJumpToChapter?: (c: ChapterRow) => void;
   /** Plain-text transcript for the current chapter, if available. */
   transcript?: string | null;
+  /** Journal data for the currently playing chapter. */
+  chapterJournal?: ChapterJournal | null;
+  /** Called with Math.floor(currentTime) when user clicks "Add note here". */
+  onAddNoteHere?: (positionSecs: number) => void;
+  /** Called with Math.floor(currentTime) when user clicks "Bookmark this moment". */
+  onAddBookmarkHere?: (positionSecs: number) => void;
+  /** Toggle favorite for the current chapter. */
+  onToggleFavorite?: (isFavorite: boolean) => void;
+  /** Jump to a bookmark (seek or load-then-seek). */
+  onJumpToBookmark?: (b: ChapterBookmark) => void;
 }) {
   const { context } = props;
   const progress = context.workTotalChapters > 0
@@ -77,6 +94,57 @@ export function NowPlayingPanel(props: PlayerControls & {
               </ul>
             </section>
           )}
+          {/* Journal capture controls */}
+          <section className="now-playing__journal-capture" aria-label="Journal capture">
+            <h2 className="eyebrow muted">Capture</h2>
+            <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center", marginBottom: "var(--space-2)" }}>
+              <Button
+                variant="secondary"
+                onClick={() => props.onAddNoteHere?.(Math.floor(props.currentTime))}
+              >
+                Add note here
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => props.onAddBookmarkHere?.(Math.floor(props.currentTime))}
+              >
+                Bookmark this moment
+              </Button>
+              <button
+                type="button"
+                className={`chip chip--toggle${props.context.chapter.isFavorite ? " chip--on" : ""}`}
+                aria-pressed={props.context.chapter.isFavorite}
+                aria-label={props.context.chapter.isFavorite ? "Remove from favorites" : "Mark chapter as favorite"}
+                onClick={() => props.onToggleFavorite?.(!props.context.chapter.isFavorite)}
+                style={{ fontSize: "1.1rem" }}
+              >
+                ★ Favorite
+              </button>
+            </div>
+
+            {/* Bookmark list */}
+            {props.chapterJournal && props.chapterJournal.bookmarks.length > 0 && (
+              <div>
+                <div className="muted" style={{ fontSize: "0.82rem", marginBottom: "var(--space-1)" }}>Bookmarks</div>
+                <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+                  {props.chapterJournal.bookmarks.map((bm: ChapterBookmark) => (
+                    <li key={bm.id} style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                      <span className="muted" style={{ minWidth: 36, fontSize: "0.85rem" }}>{fmtPos(bm.positionSecs)}</span>
+                      <span style={{ flex: 1, fontSize: "0.88rem" }}>{bm.label || <em className="muted">—</em>}</span>
+                      <Button
+                        variant="ghost"
+                        aria-label={`Jump to bookmark at ${fmtPos(bm.positionSecs)}`}
+                        onClick={() => props.onJumpToBookmark?.(bm)}
+                      >
+                        Jump
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+
           {props.transcript && (
             <section className="now-playing__transcript" aria-label="Transcript">
               <h2 className="eyebrow muted">Transcript</h2>
