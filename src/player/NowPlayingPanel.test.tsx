@@ -137,4 +137,24 @@ describe("NowPlayingPanel", () => {
     render(<NowPlayingPanel {...props({ chapters })} />);
     expect(screen.queryByText("In this work", { exact: false })).not.toBeInTheDocument();
   });
+
+  // ---- transcript panel tests ----
+
+  it("renders the Transcript section when transcript prop is provided", () => {
+    render(<NowPlayingPanel {...props({ transcript: "Hello world transcript text." })} />);
+    expect(screen.getByRole("region", { name: "Transcript" })).toBeInTheDocument();
+    expect(screen.getByText("Transcript")).toBeInTheDocument();
+    expect(screen.getByText("Hello world transcript text.")).toBeInTheDocument();
+  });
+
+  it("does not render the Transcript section when transcript prop is absent", () => {
+    render(<NowPlayingPanel {...props()} />);
+    expect(screen.queryByRole("region", { name: "Transcript" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Transcript")).not.toBeInTheDocument();
+  });
+
+  it("does not render the Transcript section when transcript prop is null", () => {
+    render(<NowPlayingPanel {...props({ transcript: null })} />);
+    expect(screen.queryByText("Transcript")).not.toBeInTheDocument();
+  });
 });

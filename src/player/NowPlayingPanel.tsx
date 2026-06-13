@@ -13,6 +13,8 @@ export function NowPlayingPanel(props: PlayerControls & {
   onCycleTimeLabel?: () => void;
   chapters?: ChapterRow[];
   onJumpToChapter?: (c: ChapterRow) => void;
+  /** Plain-text transcript for the current chapter, if available. */
+  transcript?: string | null;
 }) {
   const { context } = props;
   const progress = context.workTotalChapters > 0
@@ -73,6 +75,17 @@ export function NowPlayingPanel(props: PlayerControls & {
                   );
                 })}
               </ul>
+            </section>
+          )}
+          {props.transcript && (
+            <section className="now-playing__transcript" aria-label="Transcript">
+              <h2 className="eyebrow muted">Transcript</h2>
+              <div
+                className="muted"
+                style={{ fontSize: "0.85rem", whiteSpace: "pre-wrap", maxHeight: "200px", overflowY: "auto" }}
+              >
+                {props.transcript}
+              </div>
             </section>
           )}
         </div>
