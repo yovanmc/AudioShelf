@@ -92,9 +92,14 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .chapter-jump:hover { background: var(--color-surface-hover); }
 .chapter-jump--current { background: var(--color-accent-soft); }
 .chapter-jump__title { flex: 1; }
-.chapter-jump__dot { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: var(--color-border-strong); flex: none; color: var(--color-surface); }
-.chapter-jump__dot--played { background: var(--color-accent); }
-.chapter-jump__dot-icon { width: 12px; height: 12px; }
+/* chapter-jump status indicator: shape-distinct so colorblind users can tell
+   played vs unplayed without relying on color alone.
+   - Unplayed: a hollow ring (circle icon, muted border color, no fill)
+   - Played:   a solid check icon (accent color, high contrast)
+   The icon IS the indicator; no solid disc background is used. */
+.chapter-jump__dot { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex: none; color: var(--color-text-muted); }
+.chapter-jump__dot--played { color: var(--color-accent); }
+.chapter-jump__dot-icon { width: 18px; height: 18px; }
 .button:focus-visible, .icon-button:focus-visible, .chip--toggle:focus-visible,
 .sidebar__item:focus-visible, input:focus-visible, [role="menuitem"]:focus-visible,
 .time-label:focus-visible, a:focus-visible, select:focus-visible,

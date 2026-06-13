@@ -1654,6 +1654,7 @@ export default function App() {
                 },
                 // Step 4: dyslexia font.
                 showDyslexiaFont: async () => {
+                  setPlayerExpanded(false);
                   setA11y({ ...DEFAULT_A11Y, dyslexiaFont: true });
                   setRoute({ kind: "home" });
                   await settle();
@@ -1696,15 +1697,20 @@ export default function App() {
                   await settle(); // let currentWorkChapters fetch resolve
                 },
                 // Step 7: focus the skip link so it slides into view (top: var(--space-3)).
+                // Close the Now Playing panel opened by step 6 before navigating.
                 showSkipLinkFocus: async () => {
+                  setPlayerExpanded(false);
                   setA11y({ ...DEFAULT_A11Y });
+                  await loadHome();
                   setRoute({ kind: "home" });
                   await settle();
                   document.querySelector<HTMLElement>(".skip-link")?.focus();
                   await settle();
                 },
-                // Step 8: navigate to author detail — the role="tree" work/chapter list is there.
+                // Step 8: navigate to Author/Creator Detail — the role="tree" work/chapter
+                // browse tree is rendered there. Close the Now Playing panel first.
                 showSrTree: async () => {
+                  setPlayerExpanded(false);
                   setA11y({ ...DEFAULT_A11Y });
                   const list = await getAuthors();
                   if (list.length > 0) await openAuthor(list[0].id);
