@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -152,6 +152,33 @@ export function tagsSteps(nav: {
     { name: "seed", run: nav.seed },
     { name: "detail", run: nav.openDetail },
     { name: "search-by-tag", run: nav.searchByTag },
+  ];
+}
+
+/**
+ * Build the "m16" walkthrough: six new surfaces introduced in M16 — manage-tags
+ * (Settings tag manager with seeded tag stats), metadata diff-preview
+ * (MetadataView in its empty/honest state), series spine (AuthorDetail — empty
+ * when no numeric series detected in fixtures), transcript search (Library search
+ * with a transcript bucket, empty because no sidecar fixtures), forgotten shelf
+ * (Home with a dormant work seeded via a far-past play event), and discover reasons
+ * (DiscoveryView cards showing the reason string after seeding play history + tags).
+ */
+export function m16Steps(nav: {
+  showManageTags: () => Promise<void>;
+  showMetadataDiff: () => Promise<void>;
+  showSeriesSpine: () => Promise<void>;
+  showTranscriptSearch: () => Promise<void>;
+  showForgottenShelf: () => Promise<void>;
+  showDiscoverReasons: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "manage-tags", run: nav.showManageTags },
+    { name: "metadata-diff", run: nav.showMetadataDiff },
+    { name: "series-spine", run: nav.showSeriesSpine },
+    { name: "transcript-search", run: nav.showTranscriptSearch },
+    { name: "forgotten-shelf", run: nav.showForgottenShelf },
+    { name: "discover-reasons", run: nav.showDiscoverReasons },
   ];
 }
 

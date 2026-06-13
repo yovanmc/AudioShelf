@@ -29,7 +29,7 @@ import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
 import { clampSeek, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -806,6 +806,89 @@ export default function App() {
                   setRoute({ kind: "library" });
                   setQuery("mystery");
                   setResults(await searchLibrary("mystery"));
+                },
+              })
+            : args.walkthrough === "m16"
+            ? m16Steps({
+                // Surface 1: Settings tag manager — seed tags on a few authors/works so
+                // tagStats has real usage counts before opening Settings.
+                showManageTags: async () => {
+                  const list = await getAuthors();
+                  if (list.length > 0) {
+                    await setAuthorTags(list[0].id, ["cozy", "drama"]);
+                    const d = await getAuthorDetail(list[0].id);
+                    if (d.works[0]) await setWorkTags(d.works[0].id, ["cozy"]);
+                    if (d.works[0]?.chapters[0]) await setChapterTags(d.works[0].chapters[0].id, ["intro"]);
+                  }
+                  if (list.length > 1) await setAuthorTags(list[1].id, ["drama"]);
+                  await refreshTags();
+                  setRoute({ kind: "settings", firstRun: false });
+                },
+                // Surface 2: MetadataView — WAV fixtures carry no embedded tags so the
+                // diff list will be empty (no proposals). Capture honest empty state.
+                showMetadataDiff: async () => {
+                  setMetadataResult(null);
+                  setMetadataProposals(await previewMetadata());
+                  setRoute({ kind: "metadata" });
+                },
+                // Surface 3: Series spine in AuthorDetail — openAuthor already runs
+                // detectSeries/applySeries; with the numeric fixtures the series may or
+                // may not be detected. Either way the author detail renders correctly.
+                showSeriesSpine: async () => {
+                  const list = await getAuthors();
+                  if (list.length > 0) await openAuthor(list[0].id);
+                },
+                // Surface 4: Transcript search bucket in Library — no sidecar .vtt
+                // fixtures exist so transcriptResults will be empty. Capture the search
+                // state (query entered, transcript section absent/empty) as the honest state.
+                showTranscriptSearch: async () => {
+                  const q = "cool";
+                  setRoute({ kind: "library" });
+                  setQuery(q);
+                  const [r, tr] = await Promise.all([searchLibrary(q), searchTranscripts(q)]);
+                  setResults(r);
+                  setTranscriptResults(tr);
+                },
+                // Surface 5: Forgotten shelf on Home — seed a play event far in the past
+                // (91 days ago) so getDormantWorks(now, 30) returns it, then open Home.
+                // Self-contained: reset first, then seed exactly one old event.
+                showForgottenShelf: async () => {
+                  await resetPlayHistory();
+                  const list = await getAuthors();
+                  if (list.length > 0) {
+                    const d = await getAuthorDetail(list[0].id);
+                    const ch = d.works[0]?.chapters[0];
+                    const ninetyOneDaysAgo = Date.now() - 91 * 86_400_000;
+                    if (ch) await markChapterFinished(ch.id, ninetyOneDaysAgo);
+                  }
+                  // Re-fetch dormant works with the freshly seeded history before loading home.
+                  const now = Date.now();
+                  const dormant = await getDormantWorks(now, 30).catch(() => [] as DormantWork[]);
+                  setDormantWorks(dormant);
+                  setHomeNow(now);
+                  setHome(await queryHome(now, new Date().getTimezoneOffset()));
+                  setRoute({ kind: "home" });
+                },
+                // Surface 6: Discovery cards with reason strings — seed play history + tags
+                // so getDiscovery returns cards with populated reason fields.
+                showDiscoverReasons: async () => {
+                  // Re-seed: reset first (step 5 wiped history), then mark two chapters
+                  // finished and tag all authors "cozy" so the recommendation engine
+                  // has both a played signal and a tag to generate reason strings.
+                  const list = await getAuthors();
+                  for (const a of list) await setAuthorTags(a.id, ["cozy"]);
+                  if (list.length > 0) {
+                    const d = await getAuthorDetail(list[0].id);
+                    const chapters = d.works.flatMap((w) => w.chapters);
+                    const day = 86_400_000;
+                    if (chapters[0]) await markChapterFinished(chapters[0].id, Date.now() - day);
+                    if (chapters[1]) await markChapterFinished(chapters[1].id, Date.now());
+                  }
+                  await refreshTags();
+                  setForYou(await getDiscovery());
+                  setByTags([]);
+                  setPickedTags([]);
+                  setRoute({ kind: "discovery" });
                 },
               })
             : browseSteps({

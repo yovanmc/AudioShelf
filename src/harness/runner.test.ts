@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps } from "./walkthroughs";
+import { m12Steps, m16Steps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -37,6 +37,27 @@ describe("m12Steps", () => {
       "home-empty", "home", "home-shelves", "home-sidebar-collapsed", "library", "search",
       "author-detail", "discovery", "discovery-by-tag", "rename-preview",
       "settings", "player-compact", "player-expanded", "player-chapters", "context-menu",
+    ]);
+  });
+});
+
+describe("m16Steps", () => {
+  it("captures the six new M16 surfaces in order", () => {
+    const noop = async () => {};
+    expect(m16Steps({
+      showManageTags: noop,
+      showMetadataDiff: noop,
+      showSeriesSpine: noop,
+      showTranscriptSearch: noop,
+      showForgottenShelf: noop,
+      showDiscoverReasons: noop,
+    }).map((step) => step.name)).toEqual([
+      "manage-tags",
+      "metadata-diff",
+      "series-spine",
+      "transcript-search",
+      "forgotten-shelf",
+      "discover-reasons",
     ]);
   });
 });
