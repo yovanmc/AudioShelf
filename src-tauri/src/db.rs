@@ -88,11 +88,19 @@ fn migration_v2_tag_taxonomy(conn: &Connection) -> rusqlite::Result<()> {
     )
 }
 
+/// Add metadata_source columns introduced in migration v3.
+fn migration_v3_metadata_source(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "ALTER TABLE works    ADD COLUMN metadata_source TEXT NOT NULL DEFAULT 'filename';
+         ALTER TABLE chapters ADD COLUMN metadata_source TEXT NOT NULL DEFAULT 'filename';",
+    )
+}
+
 /// Ordered, idempotent migration runner. Each step bumps user_version inside its own
 /// transaction so a crash mid-migration leaves the DB at the last fully-applied version.
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    const LATEST: i64 = 2; // bump as later tasks add steps
+    const LATEST: i64 = 3; // bump as later tasks add steps
     if current < 1 {
         run_step(conn, 1, |c| {
             c.execute_batch(SCHEMA_V1)?;
@@ -101,6 +109,9 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     }
     if current < 2 {
         run_step(conn, 2, migration_v2_tag_taxonomy)?;
+    }
+    if current < 3 {
+        run_step(conn, 3, migration_v3_metadata_source)?;
     }
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES ('schema_version', ?1)",
@@ -147,6 +158,9 @@ pub fn open_at_version(version: i64) -> rusqlite::Result<Connection> {
     if version >= 2 {
         run_step(&conn, 2, migration_v2_tag_taxonomy)?;
     }
+    if version >= 3 {
+        run_step(&conn, 3, migration_v3_metadata_source)?;
+    }
     Ok(conn)
 }
 
@@ -182,18 +196,18 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 2);
+        assert_eq!(ver, 3);
     }
 
     #[test]
     fn migrate_from_v1_is_noop_when_current() {
         let conn = open_in_memory().unwrap();
-        // Running migrate a second time must leave user_version at 2 without error.
+        // Running migrate a second time must leave user_version at 3 without error.
         super::migrate(&conn).unwrap();
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 2);
+        assert_eq!(ver, 3);
     }
 
     #[test]
@@ -212,7 +226,7 @@ mod tests {
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 2);
+        assert_eq!(post, 3);
     }
 
     #[test]
@@ -245,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn open_in_memory_has_v2_tables_and_user_version_2() {
+    fn open_in_memory_has_v2_tables_and_user_version_3() {
         let conn = open_in_memory().unwrap();
         let v2_count: i64 = conn
             .query_row(
@@ -259,23 +273,23 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 2);
+        assert_eq!(ver, 3);
     }
 
     #[test]
     fn upgrade_from_v1_to_v2() {
-        // Open at v1 (no tag_aliases/tag_parents), then run migrate to reach v2.
+        // Open at v1 (no tag_aliases/tag_parents), then run migrate to reach v3.
         let conn = open_at_version(1).unwrap();
         let pre: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(pre, 1);
-        // Run full migration — should add v2 tables.
+        // Run full migration — should add v2 tables and v3 columns.
         super::migrate(&conn).unwrap();
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 2);
+        assert_eq!(post, 3);
         let v2_count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table'
@@ -285,5 +299,67 @@ mod tests {
             )
             .unwrap();
         assert_eq!(v2_count, 2);
+    }
+
+    #[test]
+    fn upgrade_from_v2() {
+        // Open at v2 (has tag_aliases/tag_parents but no metadata_source columns),
+        // then upgrade to v3 and confirm the column exists with a 'filename' default.
+        let conn = open_at_version(2).unwrap();
+        let pre: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(pre, 2);
+
+        // The metadata_source column must NOT exist yet at v2.
+        let has_col: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info('works') WHERE name='metadata_source'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_col, 0, "metadata_source must not exist before v3 migration");
+
+        // Run the full migration to reach v3.
+        super::migrate(&conn).unwrap();
+        let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(post, 3);
+
+        // Now both tables must have the column.
+        let works_col: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info('works') WHERE name='metadata_source'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(works_col, 1, "works must have metadata_source after v3");
+
+        let chapters_col: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info('chapters') WHERE name='metadata_source'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(chapters_col, 1, "chapters must have metadata_source after v3");
+
+        // Insert a row to verify the default is 'filename'.
+        conn.execute(
+            "INSERT INTO authors(folder_name, status) VALUES ('Test Author', 'active')",
+            [],
+        )
+        .unwrap();
+        let author_id: i64 =
+            conn.query_row("SELECT id FROM authors WHERE folder_name='Test Author'", [], |r| r.get(0))
+                .unwrap();
+        conn.execute(
+            "INSERT INTO works(author_id, base_title, sort_key) VALUES (?1, 'Test Work', 'test work')",
+            rusqlite::params![author_id],
+        )
+        .unwrap();
+        let src: String = conn
+            .query_row("SELECT metadata_source FROM works WHERE base_title='Test Work'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(src, "filename");
     }
 }

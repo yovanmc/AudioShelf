@@ -190,3 +190,24 @@ pub struct HomeData {
     pub recommendations: Vec<RecommendationWork>,
     pub stats: ListeningStats,
 }
+
+/// One field proposed to change based on embedded audio metadata.
+/// `field` is one of: "title" (work base_title), "order" (chapter_no), "tag" (genre).
+#[derive(Serialize, serde::Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataProposal {
+    pub chapter_id: i64,
+    pub work_id: i64,
+    pub field: String,      // "title" | "order" | "tag"
+    pub current: String,
+    pub proposed: String,
+    pub source: String,     // always "embedded"
+}
+
+/// Result of applying a set of metadata proposals.
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataApplyReport {
+    pub applied: i64,
+    pub skipped: i64,
+}

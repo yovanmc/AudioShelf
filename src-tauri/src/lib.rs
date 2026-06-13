@@ -74,7 +74,9 @@ pub fn run() {
             commands::set_tag_alias,
             commands::clear_tag_alias,
             commands::set_tag_parent,
-            commands::clear_tag_parent
+            commands::clear_tag_parent,
+            commands::preview_metadata,
+            commands::apply_metadata
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -82,12 +84,13 @@ pub fn run() {
 
 // Exposed for integration tests.
 pub mod testing {
-    pub use crate::commands::{query_author_detail, query_authors};
+    pub use crate::commands::{apply_metadata_proposals, build_metadata_proposals, query_author_detail, query_authors};
     pub use crate::covers::{
         cover_cache_for_chapter, find_folder_image, make_thumbnail_png, read_embedded_picture,
         CoverPriority,
     };
     pub use crate::db::{open_at_version, open_in_memory};
+    pub use crate::model::{MetadataApplyReport, MetadataProposal};
     pub use crate::regroup::regroup_author;
     pub use crate::rename::{build_plan, execute, undo, ItemStatus};
     pub use crate::scan::scan_into;
