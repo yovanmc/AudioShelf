@@ -35,7 +35,7 @@ import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
 import { clampSeek, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -1076,6 +1076,82 @@ export default function App() {
                   setByTags([]);
                   setPickedTags([]);
                   setRoute({ kind: "discovery" });
+                },
+              })
+            : args.walkthrough === "journal"
+            ? journalSteps({
+                // Step 1: open Journal view before any seeding → empty state.
+                showJournalEmpty: async () => {
+                  await resetPlayHistory();
+                  const results = await queryJournal("");
+                  setJournal(results);
+                  setRoute({ kind: "journal" });
+                },
+                // Step 2: open first author, open the first chapter's journal dialog,
+                // seed summary + takeaway + favorite + note (12s) + bookmark (30s).
+                showChapterJournalDialog: async () => {
+                  const list = await getAuthors();
+                  if (list.length === 0) return;
+                  const d = await getAuthorDetail(list[0].id);
+                  setDetail(d);
+                  setRoute({ kind: "author" });
+                  const work = d.works[0];
+                  const ch = work?.chapters[0];
+                  if (!ch) return;
+                  await setChapterSummary(ch.id, "A compelling opening chapter that sets the tone for the whole work.");
+                  await setChapterTakeaway(ch.id, "First impressions matter.");
+                  await setChapterFavorite(ch.id, true);
+                  await addChapterNote(ch.id, 12, "The narrator's voice really draws you in here.");
+                  await addBookmark(ch.id, 30, "key idea");
+                  await handleOpenJournal(ch.id);
+                },
+                // Step 3: set re-entry note + one-word rating on the first work, capture work header.
+                showWorkMeta: async () => {
+                  const list = await getAuthors();
+                  if (list.length === 0) return;
+                  const d = await getAuthorDetail(list[0].id);
+                  setDetail(d);
+                  setRoute({ kind: "author" });
+                  const work = d.works[0];
+                  if (!work) return;
+                  await setWorkReEntryNote(work.id, "Resume from the chapter about the journey.");
+                  await setWorkRating(work.id, "captivating");
+                  setDetail(await getAuthorDetail(list[0].id));
+                },
+                // Step 4: open Journal view (now populated) — grouped entries, kind chips.
+                showJournalBrowse: async () => {
+                  const results = await queryJournal("");
+                  setJournal(results);
+                  setRoute({ kind: "journal" });
+                },
+                // Step 5: type a word from the seeded note → filtered results.
+                showJournalSearch: async () => {
+                  const results = await queryJournal("narrator");
+                  setJournal(results);
+                  setJournalQuery("narrator");
+                  setRoute({ kind: "journal" });
+                },
+                // Step 6: play the seeded chapter, open Now Playing, show bookmarks + jump + capture controls.
+                showNowPlayingBookmarks: async () => {
+                  const list = await getAuthors();
+                  if (list.length === 0) return;
+                  const d = await getAuthorDetail(list[0].id);
+                  const work = d.works[0];
+                  const ch = work?.chapters[0];
+                  if (!work || !ch) return;
+                  setDetail(d);
+                  setRoute({ kind: "author" });
+                  playChapter({
+                    chapter: ch,
+                    authorId: d.id,
+                    authorName: d.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(true);
+                  await settle();
                 },
               })
             : browseSteps({

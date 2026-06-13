@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -58,6 +58,27 @@ describe("m16Steps", () => {
       "transcript-search",
       "forgotten-shelf",
       "discover-reasons",
+    ]);
+  });
+});
+
+describe("journalSteps", () => {
+  it("captures the six M17 journal surfaces in order", () => {
+    const noop = async () => {};
+    expect(journalSteps({
+      showJournalEmpty: noop,
+      showChapterJournalDialog: noop,
+      showWorkMeta: noop,
+      showJournalBrowse: noop,
+      showJournalSearch: noop,
+      showNowPlayingBookmarks: noop,
+    }).map((step) => step.name)).toEqual([
+      "journal-empty",
+      "journal-chapter-edit",
+      "journal-work-meta",
+      "journal-browse",
+      "journal-search",
+      "now-playing-bookmarks",
     ]);
   });
 });
