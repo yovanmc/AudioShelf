@@ -432,7 +432,7 @@ export function SettingsView(props: {
           <h2>Tag manager</h2>
           <p className="muted">
             Rename or merge tags across your entire library. Aliases let you type an
-            alternate name and have it resolve to the canonical form automatically.
+            alternate name and have it resolve to the standardized form automatically.
           </p>
           <TagManagerView
             tags={props.tagStats}
@@ -446,7 +446,7 @@ export function SettingsView(props: {
 
       {!firstRun && props.metaTerms !== undefined && props.onCreateMetaTerm && props.onRenameMetaTerm && props.onDeleteMetaTerm && props.onMergeMetaTerms && (
         <Card style={{ padding: 24, marginTop: 16 }}>
-          <h2>Metadata vocabulary</h2>
+          <h2>Narrator, Language &amp; Mood</h2>
           <p className="muted">
             Create narrator, language, and mood values you can apply to files and creators.
           </p>
@@ -546,7 +546,7 @@ export function SettingsView(props: {
               {props.healthReport.schemaDrift && (
                 <div style={{ marginBottom: 12 }}>
                   <Notice tone="error">
-                    Schema drift detected — DB version {props.healthReport.schemaVersion}, expected {props.healthReport.latestSchema}.
+                    Database version mismatch — DB version {props.healthReport.schemaVersion}, expected {props.healthReport.latestSchema}.
                   </Notice>
                 </div>
               )}
@@ -630,7 +630,7 @@ function CollectionsManager({
     <Card style={{ padding: 24, marginTop: 16 }}>
       <h2>Collections</h2>
       <p className="muted">
-        Saved smart filters — each collection runs a scoped query against your library and updates automatically.
+        A collection is a saved filter — it runs against your library and updates itself as your library changes.
       </p>
 
       {collections.length === 0 && (
@@ -688,13 +688,13 @@ function CollectionsManager({
             />
           </label>
           <label>
-            Query
+            Filter
             <input
               type="text"
               value={newQuery}
               onChange={(e) => setNewQuery(e.target.value)}
               placeholder="tag:cozy status:unplayed"
-              aria-label="Collection query"
+              aria-label="Collection filter"
               style={{ marginLeft: 6 }}
             />
           </label>

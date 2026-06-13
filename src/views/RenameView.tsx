@@ -22,7 +22,7 @@ export function RenameView(props: {
       <PageHeader eyebrow="Tidy up your file names — changes are reversible" title="Rename tool" actions={props.onBack ? <Button variant="ghost" onClick={props.onBack}>← Back to Settings</Button> : undefined} />
       <Card className="view-section" style={{ padding: 20 }}>
       <p className="rename-blurb">
-        Preview canonical filenames below. Only <strong>{pluralFiles(okItems.length)}</strong> will
+        Preview standardized filenames below. Only <strong>{pluralFiles(okItems.length)}</strong> will
         change; conflicts and already-clean files are skipped. Renames are reversible — an Undo
         button appears after you apply.
       </p>

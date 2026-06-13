@@ -91,7 +91,7 @@ function AliasRow({
         data-autofocus
         type="text"
         value={canonical}
-        placeholder="canonical (blank = clear)"
+        placeholder="standardized name (blank = clear)"
         aria-label={`Set ${tag} as alias of`}
         onChange={(e) => setCanonical(e.target.value)}
         onKeyDown={(e) => {
