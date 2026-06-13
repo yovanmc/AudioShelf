@@ -2,6 +2,7 @@ import type { PlaybackContext, ChapterRow, ChapterJournal, ChapterBookmark } fro
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
 import { Button, Dialog, ProgressBar } from "../components/ui";
+import { Icon } from "../components/Icon";
 import { formatTime, timeLabel, type TimeLabelMode } from "./playback";
 import { PlaybackButtons, type PlayerControls } from "./PlayerBar";
 
@@ -84,9 +85,12 @@ export function NowPlayingPanel(props: PlayerControls & {
                         className={`chapter-jump${isCurrent ? " chapter-jump--current" : ""}`}
                         aria-current={isCurrent ? "true" : undefined}
                         onClick={() => props.onJumpToChapter?.(c)}>
-                        <span className={`chapter-jump__dot${c.played ? " chapter-jump__dot--played" : ""}`} aria-hidden />
+                        <span className={`chapter-jump__dot${c.played ? " chapter-jump__dot--played" : ""}`}>
+                          <Icon name={c.played ? "check" : "circle"} className="chapter-jump__dot-icon" />
+                          <span className="visually-hidden">{c.played ? "Played" : "Not played"}</span>
+                        </span>
                         <span className="chapter-jump__title">Ch {c.chapterNo} — {c.title}</span>
-                        {c.played ? <span className="muted">played</span> : null}
+                        {c.played ? <span className="muted" aria-hidden="true">played</span> : null}
                       </button>
                     </li>
                   );
