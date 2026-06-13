@@ -125,6 +125,27 @@ fn migration_v5_transcripts(conn: &Connection) -> rusqlite::Result<()> {
     )
 }
 
+/// Add saved_searches, smart_collections tables and works.chapter_sort column (migration v7).
+fn migration_v7_power_scale(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS saved_searches (
+           id         INTEGER PRIMARY KEY,
+           name       TEXT    NOT NULL,
+           query      TEXT    NOT NULL,
+           created_at INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS smart_collections (
+           id         INTEGER PRIMARY KEY,
+           name       TEXT    NOT NULL,
+           query      TEXT    NOT NULL,
+           position   INTEGER NOT NULL DEFAULT 0,
+           created_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_smart_collections_pos ON smart_collections(position);
+         ALTER TABLE works ADD COLUMN chapter_sort TEXT NOT NULL DEFAULT '';",
+    )
+}
+
 /// Add the journal tables and columns introduced in migration v6.
 fn migration_v6_journal(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
@@ -156,7 +177,7 @@ fn migration_v6_journal(conn: &Connection) -> rusqlite::Result<()> {
 /// transaction so a crash mid-migration leaves the DB at the last fully-applied version.
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    const LATEST: i64 = 6; // bump as later tasks add steps
+    const LATEST: i64 = 7; // bump as later tasks add steps
     if current < 1 {
         run_step(conn, 1, |c| {
             c.execute_batch(SCHEMA_V1)?;
@@ -177,6 +198,9 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     }
     if current < 6 {
         run_step(conn, 6, migration_v6_journal)?;
+    }
+    if current < 7 {
+        run_step(conn, 7, migration_v7_power_scale)?;
     }
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES ('schema_version', ?1)",
@@ -235,6 +259,9 @@ pub fn open_at_version(version: i64) -> rusqlite::Result<Connection> {
     if version >= 6 {
         run_step(&conn, 6, migration_v6_journal)?;
     }
+    if version >= 7 {
+        run_step(&conn, 7, migration_v7_power_scale)?;
+    }
     Ok(conn)
 }
 
@@ -270,18 +297,18 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 6);
+        assert_eq!(ver, 7);
     }
 
     #[test]
     fn migrate_from_v1_is_noop_when_current() {
         let conn = open_in_memory().unwrap();
-        // Running migrate a second time must leave user_version at 6 without error.
+        // Running migrate a second time must leave user_version at 7 without error.
         super::migrate(&conn).unwrap();
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 6);
+        assert_eq!(ver, 7);
     }
 
     #[test]
@@ -300,7 +327,7 @@ mod tests {
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 6);
+        assert_eq!(post, 7);
     }
 
     #[test]
@@ -333,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn open_in_memory_has_v2_tables_and_user_version_6() {
+    fn open_in_memory_has_v2_tables_and_user_version_7() {
         let conn = open_in_memory().unwrap();
         let v2_count: i64 = conn
             .query_row(
@@ -347,7 +374,7 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 6);
+        assert_eq!(ver, 7);
     }
 
     #[test]
@@ -358,12 +385,12 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(pre, 1);
-        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal.
+        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale.
         super::migrate(&conn).unwrap();
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 6);
+        assert_eq!(post, 7);
         let v2_count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table'
@@ -393,10 +420,10 @@ mod tests {
             .unwrap();
         assert_eq!(has_col, 0, "metadata_source must not exist before v3 migration");
 
-        // Run the full migration to reach v6.
+        // Run the full migration to reach v7.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 6);
+        assert_eq!(post, 7);
 
         // Now both tables must have the column.
         let works_col: i64 = conn
@@ -451,10 +478,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist before v4 migration");
 
-        // Run the full migration to reach v6.
+        // Run the full migration to reach v7.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 6);
+        assert_eq!(post, 7);
 
         // Both tables must now exist.
         let series_count: i64 = conn.query_row(
@@ -514,7 +541,7 @@ mod tests {
         // Run the full migration.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 6);
+        assert_eq!(post, 7);
 
         // transcripts must now exist.
         let has_transcripts: i64 = conn
@@ -575,10 +602,10 @@ mod tests {
 
     #[test]
     fn legacy_db_upgrades_through_v6() {
-        // Open at v1 (legacy), run full migrate(), expect LATEST and journal columns present.
+        // Open at v1 (legacy), run full migrate(), expect LATEST (v7) and journal columns present.
         let conn = open_at_version(1).unwrap();
         migrate(&conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 6);
+        assert_eq!(v, 7);
     }
 }
