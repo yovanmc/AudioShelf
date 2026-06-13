@@ -296,6 +296,8 @@ export default function App() {
     void setSetting("library_density", d);
   }
 
+  const updateA11y = (next: A11yPrefs) => { setA11y(next); void setSetting("a11y_prefs", JSON.stringify(next)); };
+
   async function loadHome() {
     const now = Date.now();
     setHomeNow(now);
@@ -1863,6 +1865,8 @@ export default function App() {
           onReorderCollections={handleReorderCollections}
           density={density}
           onDensityChange={onDensityChange}
+          a11y={a11y}
+          onA11yChange={updateA11y}
           onExportJson={onExportJson}
           onExportSnapshot={onExportSnapshot}
           onImportJson={onImportJson}

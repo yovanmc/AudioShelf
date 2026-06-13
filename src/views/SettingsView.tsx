@@ -6,6 +6,7 @@ import type { HomeShelf, ShelfKind } from "../lib/shelves";
 import type { PlayedStatus } from "../lib/browse";
 import { TagManagerView } from "./TagManagerView";
 import type { Density } from "../lib/density";
+import type { A11yPrefs, Theme, TextSize } from "../lib/a11y";
 
 const STATUS_LABELS: Record<PlayedStatus, string> = {
   all: "All",
@@ -190,6 +191,9 @@ export function SettingsView(props: {
   // Density (optional — existing tests omit these)
   density?: Density;
   onDensityChange?: (d: Density) => void;
+  // Accessibility (optional — existing tests omit these)
+  a11y?: A11yPrefs;
+  onA11yChange?: (next: A11yPrefs) => void;
   // Backup & maintenance (optional — existing tests omit these)
   onExportJson?: () => void;
   onExportSnapshot?: () => void;
@@ -264,6 +268,68 @@ export function SettingsView(props: {
                 {d.charAt(0).toUpperCase() + d.slice(1)}
               </button>
             ))}
+          </div>
+        </Card>
+      )}
+
+      {!firstRun && props.onA11yChange && props.a11y && (
+        <Card style={{ padding: 24, marginTop: 16 }}>
+          <h2>Accessibility</h2>
+
+          <div style={{ marginTop: 12 }}>
+            <p className="muted" style={{ marginBottom: 4 }}>Theme</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              {(["dark", "light", "high-contrast"] as Theme[]).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`button button--secondary${props.a11y!.theme === t ? " button--active" : ""}`}
+                  aria-pressed={props.a11y!.theme === t}
+                  onClick={() => props.onA11yChange!({ ...props.a11y!, theme: t })}
+                  style={props.a11y!.theme === t ? { borderColor: "var(--color-accent)", background: "var(--color-accent-soft)" } : undefined}
+                >
+                  {t === "dark" ? "Dark" : t === "light" ? "Light" : "High contrast"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <p className="muted" style={{ marginBottom: 4 }}>Text size</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              {(["normal", "large", "xlarge"] as TextSize[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`button button--secondary${props.a11y!.textSize === s ? " button--active" : ""}`}
+                  aria-pressed={props.a11y!.textSize === s}
+                  onClick={() => props.onA11yChange!({ ...props.a11y!, textSize: s })}
+                  style={props.a11y!.textSize === s ? { borderColor: "var(--color-accent)", background: "var(--color-accent-soft)" } : undefined}
+                >
+                  {s === "normal" ? "Normal" : s === "large" ? "Large" : "Extra large"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 10 }}>
+            <input
+              id="a11y-dyslexia-font"
+              type="checkbox"
+              checked={props.a11y.dyslexiaFont}
+              onChange={() => props.onA11yChange!({ ...props.a11y!, dyslexiaFont: !props.a11y!.dyslexiaFont })}
+            />
+            <label htmlFor="a11y-dyslexia-font">Dyslexia-friendly font</label>
+          </div>
+
+          <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
+            <input
+              id="a11y-reduce-motion"
+              type="checkbox"
+              checked={props.a11y.reducedMotion}
+              onChange={() => props.onA11yChange!({ ...props.a11y!, reducedMotion: !props.a11y!.reducedMotion })}
+            />
+            <label htmlFor="a11y-reduce-motion">Reduce motion</label>
           </div>
         </Card>
       )}
