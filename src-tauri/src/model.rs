@@ -288,3 +288,89 @@ pub struct MetadataApplyReport {
     pub applied: i64,
     pub skipped: i64,
 }
+
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DayCell {
+    pub day: i64,      // local-day index (days since 1970-01-01, local)
+    pub date_ms: i64,  // UTC ms of local midnight (FE labels with getUTC*)
+    pub count: i64,    // chapters finished that local day
+}
+
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PeriodSummary {
+    pub label: String, // e.g. "June 2026"
+    pub chapters: i64,
+    pub secs: i64,
+    pub active_days: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WeekPoint {
+    pub week_start_day: i64, // local-day index of the week's Sunday
+    pub chapters: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatorStat {
+    pub author_id: i64,
+    pub author_name: String,
+    pub chapters: i64, // chapters finished (play_events)
+    pub secs: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TagStat {
+    pub tag: String,
+    pub owned: i64,    // works carrying the tag (work_tags ∪ author_tags)
+    pub finished: i64, // those fully played
+}
+
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RecapData {
+    pub year: i64,
+    pub total_secs: i64,
+    pub total_chapters: i64,
+    pub active_days: i64,
+    pub longest_streak: i64,
+    pub top_creator: Option<String>,
+    pub top_creator_chapters: i64,
+    pub top_tag: Option<String>,
+    pub busiest_month: Option<String>,
+    pub busiest_weekday: Option<String>,
+    pub first_play_ms: Option<i64>,
+    pub last_play_ms: Option<i64>,
+}
+
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightsData {
+    pub generated_at: i64,
+    pub total_secs: i64,     // activity total (replays included) — "time listened"
+    pub total_chapters: i64, // total play_events
+    pub active_days: i64,
+    pub current_streak: i64,
+    pub longest_streak: i64,
+    pub heatmap: Vec<DayCell>,   // 371 cells (53 weeks) ending today, oldest→newest
+    pub by_weekday: Vec<i64>,    // 7 (Sun=0..Sat=6)
+    pub by_hour: Vec<i64>,       // 24 (local hour)
+    pub this_month: PeriodSummary,
+    pub last_month: PeriodSummary,
+    pub rhythm: Vec<WeekPoint>,  // last 16 weeks ending current week
+    pub top_creators: Vec<CreatorStat>, // ≤8
+    pub top_tags: Vec<TagStat>,         // ≤8 by owned
+    pub recap: RecapData,
+}
+
+// Harness-only seeding payload (insights walkthrough). Deserialize from camelCase JS.
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SeedPlayEvent {
+    pub chapter_id: i64,
+    pub played_at: i64,
+}

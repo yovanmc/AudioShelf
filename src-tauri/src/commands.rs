@@ -949,6 +949,16 @@ pub fn query_home(state: tauri::State<DbState>, now_ms: i64, tz_offset_minutes: 
 }
 
 #[tauri::command]
+pub fn query_insights(
+    state: tauri::State<DbState>,
+    now_ms: i64,
+    tz_offset_minutes: i64,
+) -> Result<crate::model::InsightsData, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    crate::insights::compute_insights(&conn, now_ms, tz_offset_minutes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn get_discovery(state: tauri::State<DbState>) -> Result<Vec<DiscoveryWork>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     discovery_for_you(&conn).map_err(|e| e.to_string())

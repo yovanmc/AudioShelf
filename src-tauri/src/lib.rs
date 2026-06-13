@@ -3,6 +3,7 @@ mod commands;
 mod covers;
 mod db;
 mod grouping;
+mod insights;
 mod launch;
 mod model;
 mod natsort;
@@ -65,6 +66,7 @@ pub fn run() {
             commands::get_discovery_by_tags,
             commands::get_more_from_author,
             commands::query_home,
+            commands::query_insights,
             commands::preview_renames,
             commands::apply_renames,
             commands::undo_renames,
@@ -111,6 +113,7 @@ pub mod testing {
         CoverPriority,
     };
     pub use crate::db::{open_at_version, open_in_memory};
+    pub use crate::insights::{build_insights, civil_from_days, compute_insights, longest_run, weekday_of, Ev, WorkAgg};
     pub use crate::model::{MetadataApplyReport, MetadataProposal};
     pub use crate::regroup::regroup_author;
     pub use crate::rename::{build_plan, execute, undo, ItemStatus};
