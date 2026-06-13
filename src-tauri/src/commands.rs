@@ -445,6 +445,33 @@ pub fn search_library(state: tauri::State<DbState>, query: String) -> Result<Sea
     search(&conn, &query, SEARCH_CAP).map_err(|e| e.to_string())
 }
 
+fn duration_label(d: &crate::query::DurationFilter) -> String {
+    use crate::query::CmpOp::*;
+    let op = match d.op { Lt => "<", Le => "≤", Gt => ">", Ge => "≥" };
+    let (n, unit) = if d.secs % 3600 == 0 { (d.secs / 3600, "h") }
+        else if d.secs % 60 == 0 { (d.secs / 60, "m") } else { (d.secs, "s") };
+    format!("{op} {n}{unit}")
+}
+
+#[tauri::command]
+pub fn advanced_search(state: tauri::State<DbState>, query: String) -> Result<crate::model::ScopedResults, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let parsed = crate::query::parse_query(&query);
+    let works = crate::scoped::run_scoped_query(&conn, &parsed, SEARCH_CAP).map_err(|e| e.to_string())?;
+    Ok(crate::model::ScopedResults {
+        works,
+        tags: parsed.tags.clone(),
+        text: parsed.text.clone(),
+        duration_label: parsed.duration.as_ref().map(duration_label).unwrap_or_default(),
+        status_label: match parsed.status {
+            Some(crate::query::StatusFilter::Unstarted) => "Unstarted",
+            Some(crate::query::StatusFilter::InProgress) => "In progress",
+            Some(crate::query::StatusFilter::Done) => "Done",
+            None => "",
+        }.to_string(),
+    })
+}
+
 /// Works (with unplayed chapters) whose author OR the work itself carries any of
 /// `tags`, ranked by shared-tag count then unplayed count. `exclude_authors` are
 /// filtered out. `sharedTags` is the union of matching author- and work-level tags.

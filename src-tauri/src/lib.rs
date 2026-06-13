@@ -9,6 +9,7 @@ mod model;
 mod natsort;
 mod query;
 mod regroup;
+mod scoped;
 mod rename;
 mod scan;
 mod transcripts;
@@ -102,7 +103,8 @@ pub fn run() {
             commands::delete_bookmark,
             commands::query_journal,
             commands::export_journal,
-            commands::export_recap_png
+            commands::export_recap_png,
+            commands::advanced_search
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -122,5 +124,6 @@ pub mod testing {
     pub use crate::rename::{build_plan, execute, undo, ItemStatus};
     pub use crate::query::{parse_query, CmpOp, DurationFilter, ParsedQuery, StatusFilter};
     pub use crate::scan::scan_into;
+    pub use crate::scoped::run_scoped_query;
     pub use crate::transcripts::parse_srt_vtt;
 }

@@ -374,3 +374,26 @@ pub struct SeedPlayEvent {
     pub chapter_id: i64,
     pub played_at: i64,
 }
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopedWork {
+    pub work_id: i64,
+    pub base_title: String,
+    pub author_id: i64,
+    pub author_name: String,
+    pub total_secs: i64,
+    pub chapter_count: i64,
+    pub played_count: i64,
+    pub tags: Vec<String>,
+}
+
+#[derive(Serialize, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopedResults {
+    pub works: Vec<ScopedWork>,
+    pub tags: Vec<String>,           // echo parsed tag filters (for FE chips)
+    pub text: String,                // echo parsed free text
+    pub duration_label: String,      // human label e.g. "≤ 15m" or "" if none
+    pub status_label: String,        // "Unstarted" | "In progress" | "Done" | ""
+}
