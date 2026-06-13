@@ -58,6 +58,9 @@ CREATE TABLE IF NOT EXISTS grouping_overrides (
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 "#;
 
+/// The current schema version. Bump this constant whenever a new migration step is added.
+pub(crate) const LATEST: i64 = 7;
+
 /// Open a file-backed connection and ensure the schema exists (idempotent).
 pub fn open(path: &str) -> rusqlite::Result<Connection> {
     let conn = Connection::open(path)?;
@@ -177,7 +180,6 @@ fn migration_v6_journal(conn: &Connection) -> rusqlite::Result<()> {
 /// transaction so a crash mid-migration leaves the DB at the last fully-applied version.
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    const LATEST: i64 = 7; // bump as later tasks add steps
     if current < 1 {
         run_step(conn, 1, |c| {
             c.execute_batch(SCHEMA_V1)?;

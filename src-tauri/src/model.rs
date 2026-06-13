@@ -406,3 +406,25 @@ pub struct SavedSearch { pub id: i64, pub name: String, pub query: String }
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Collection { pub id: i64, pub name: String, pub query: String, pub position: i64 }
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthItem {
+    pub chapter_id: i64,
+    pub title: String,
+    pub work_title: String,
+    pub author_name: String,
+    pub file_path: String,
+    pub size_bytes: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthReport {
+    pub missing_files: Vec<HealthItem>,
+    pub zero_byte: Vec<HealthItem>,
+    pub unreadable: Vec<HealthItem>,
+    pub schema_version: i64,
+    pub latest_schema: i64,
+    pub schema_drift: bool,
+}

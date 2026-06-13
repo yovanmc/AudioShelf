@@ -4213,6 +4213,30 @@ mod tests {
         let nums: Vec<i64> = detail.works[0].chapters.iter().map(|c| c.chapter_no).collect();
         assert_eq!(nums, vec![2, 1]); // descending
     }
+
+    // ---- M19 Task 7: library_health_scan ------------------------------------------------
+
+    #[test]
+    fn health_scan_flags_missing_and_zero_byte() {
+        let dir = std::env::temp_dir().join(format!("ashm19_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let zero = dir.join("zero.mp3");
+        std::fs::write(&zero, b"").unwrap();
+        let missing = dir.join("gone.mp3");
+
+        let conn = crate::db::open_at_version(7).unwrap();
+        conn.execute_batch("INSERT INTO authors(id, folder_name, status) VALUES (1,'a','active');
+            INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active');").unwrap();
+        conn.execute("INSERT INTO chapters(id, work_id, raw_filename, chapter_no, format, duration_secs, file_path, status, played, user_summary, takeaway, is_favorite) VALUES (1,1,'zero.mp3',1,'mp3',0,?1,'active',0,'','',0)", params![zero.to_string_lossy()]).unwrap();
+        conn.execute("INSERT INTO chapters(id, work_id, raw_filename, chapter_no, format, duration_secs, file_path, status, played, user_summary, takeaway, is_favorite) VALUES (2,1,'gone.mp3',2,'mp3',0,?1,'active',0,'','',0)", params![missing.to_string_lossy()]).unwrap();
+
+        let rep = library_health_scan_rows(&conn).unwrap();
+        assert_eq!(rep.zero_byte.len(), 1);
+        assert_eq!(rep.missing_files.len(), 1);
+        assert_eq!(rep.zero_byte[0].chapter_id, 1);
+        assert_eq!(rep.missing_files[0].chapter_id, 2);
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
 
 /// Max thumbnail edge in pixels (square-bounded, aspect preserved).
@@ -4312,4 +4336,58 @@ pub fn get_author_cover(
         COVER_MAX,
     );
     Ok(p.map(|x| x.to_string_lossy().to_string()))
+}
+
+// ---- M19 Task 7: library health scan -----------------------------------------------
+
+/// Core read-only health triage: orphan, zero-byte, unreadable, schema-drift checks.
+pub(crate) fn library_health_scan_rows(conn: &rusqlite::Connection) -> rusqlite::Result<crate::model::HealthReport> {
+    use crate::model::{HealthItem, HealthReport};
+    let mut rep = HealthReport { latest_schema: crate::db::LATEST, ..Default::default() };
+    rep.schema_version = get_setting_value(conn, "schema_version")?
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(0);
+    rep.schema_drift = rep.schema_version != rep.latest_schema;
+
+    let mut stmt = conn.prepare(
+        "SELECT c.id, c.raw_filename, w.base_title, COALESCE(a.display_name, a.folder_name), c.file_path
+         FROM chapters c JOIN works w ON c.work_id=w.id JOIN authors a ON w.author_id=a.id
+         WHERE c.status='active'",
+    )?;
+    let rows: Vec<(i64, String, String, String, String)> = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+
+    for (chapter_id, raw, work_title, author_name, file_path) in rows {
+        let title = std::path::Path::new(&raw)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or(raw);
+        let item = |size_bytes: i64| HealthItem {
+            chapter_id,
+            title: title.clone(),
+            work_title: work_title.clone(),
+            author_name: author_name.clone(),
+            file_path: file_path.clone(),
+            size_bytes,
+        };
+        match std::fs::metadata(&file_path) {
+            Err(_) => rep.missing_files.push(item(-1)),
+            Ok(md) => {
+                let len = md.len() as i64;
+                if len == 0 {
+                    rep.zero_byte.push(item(0));
+                } else if std::fs::File::open(&file_path).is_err() {
+                    rep.unreadable.push(item(len));
+                }
+            }
+        }
+    }
+    Ok(rep)
+}
+
+#[tauri::command]
+pub fn library_health_scan(state: tauri::State<DbState>) -> Result<crate::model::HealthReport, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    library_health_scan_rows(&conn).map_err(|e| e.to_string())
 }
