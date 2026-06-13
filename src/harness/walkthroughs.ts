@@ -207,6 +207,18 @@ export function journalSteps(nav: {
   ];
 }
 
+export function insightsSteps(nav: {
+  showInsightsEmpty: () => Promise<void>;
+  showInsightsPopulated: () => Promise<void>;
+  showInsightsRecap: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "insights-empty", run: nav.showInsightsEmpty },
+    { name: "insights-populated", run: nav.showInsightsPopulated },
+    { name: "insights-recap", run: nav.showInsightsRecap },
+  ];
+}
+
 export function m12Steps(nav: {
   showEmptyHome: () => Promise<void>;
   showHome: () => Promise<void>;

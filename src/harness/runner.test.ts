@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps, journalSteps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps, insightsSteps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -79,6 +79,21 @@ describe("journalSteps", () => {
       "journal-browse",
       "journal-search",
       "now-playing-bookmarks",
+    ]);
+  });
+});
+
+describe("insightsSteps", () => {
+  it("captures the three M18 insights surfaces in order", () => {
+    const noop = async () => {};
+    expect(insightsSteps({
+      showInsightsEmpty: noop,
+      showInsightsPopulated: noop,
+      showInsightsRecap: noop,
+    }).map((step) => step.name)).toEqual([
+      "insights-empty",
+      "insights-populated",
+      "insights-recap",
     ]);
   });
 });

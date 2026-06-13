@@ -16,12 +16,16 @@ import {
   setWorkReEntryNote, setWorkRating,
   getChapterJournal, addChapterNote, deleteChapterNote, addBookmark, deleteBookmark,
   queryJournal, exportJournal,
+  queryInsights, exportRecapPng, seedPlayEvents,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
   type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
+  type InsightsData,
 } from "./lib/api";
+import { buildRecapSvg } from "./lib/recap";
 import { HomeView } from "./views/HomeView";
+import { InsightsView } from "./views/InsightsView";
 import { JournalView } from "./views/JournalView";
 import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
@@ -35,7 +39,7 @@ import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
 import { clampSeek, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -84,7 +88,8 @@ type Route =
   | { kind: "rename" }
   | { kind: "metadata" }
   | { kind: "settings"; firstRun: boolean }
-  | { kind: "journal" };
+  | { kind: "journal" }
+  | { kind: "insights" };
 
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
@@ -93,7 +98,33 @@ function shellRoute(route: Route): ShellRoute {
   if (route.kind === "metadata") return "metadata";
   if (route.kind === "settings") return "settings";
   if (route.kind === "journal") return "journal";
+  if (route.kind === "insights") return "insights";
   return "library";
+}
+
+// SVG string → PNG bytes via the WebView canvas. The SVG is self-contained (no external
+// images) so the canvas is never tainted and toBlob succeeds. Returns null on failure.
+async function rasterizeSvgToPng(svg: string, w: number, h: number): Promise<Uint8Array | null> {
+  try {
+    const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("svg decode failed"));
+      img.src = url;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) return null;
+    return new Uint8Array(await blob.arrayBuffer());
+  } catch {
+    return null;
+  }
 }
 
 export default function App() {
@@ -164,6 +195,9 @@ export default function App() {
 
   const [home, setHome] = useState<HomeData | null>(null);
   const [homeNow, setHomeNow] = useState(0);
+  const [insights, setInsights] = useState<InsightsData | null>(null);
+  const [insightsNow, setInsightsNow] = useState<number>(() => Date.now());
+  const [recapStatus, setRecapStatus] = useState<string | null>(null);
   const routeRef = useRef<Route>(route);
   routeRef.current = route;
 
@@ -225,6 +259,35 @@ export default function App() {
   async function openHome() {
     await loadHome();
     setRoute({ kind: "home" });
+  }
+
+  async function loadInsights(nowMs?: number) {
+    const now = nowMs ?? Date.now();
+    setInsightsNow(now);
+    const data = await queryInsights(now, new Date().getTimezoneOffset());
+    setInsights(data);
+  }
+  function openInsights() {
+    void loadInsights();
+    setRoute({ kind: "insights" });
+  }
+  async function handleExportRecap() {
+    if (!insights) return;
+    const svg = buildRecapSvg(insights.recap);
+    const bytes = await rasterizeSvgToPng(svg, 1080, 1350);
+    if (!bytes) {
+      setRecapStatus("Could not render the recap image.");
+      setTimeout(() => setRecapStatus(null), 4000);
+      return;
+    }
+    const path = await save({
+      defaultPath: `audioshelf-year-in-listening-${insights.recap.year}.png`,
+      filters: [{ name: "PNG image", extensions: ["png"] }],
+    });
+    if (!path) return;
+    const saved = await exportRecapPng(path, Array.from(bytes));
+    setRecapStatus(`Saved recap to ${saved}`);
+    setTimeout(() => setRecapStatus(null), 4000);
   }
 
   async function requestMoreLikeThis(workId: number) {
@@ -1172,6 +1235,50 @@ export default function App() {
                   await settle();
                 },
               })
+            : args.walkthrough === "insights"
+            ? insightsSteps({
+                // Fixed anchor (UTC) so the heatmap/trends are identical every run.
+                // 2026-06-12T18:00:00Z.
+                showInsightsEmpty: async () => {
+                  await resetPlayHistory();
+                  await loadInsights(Date.UTC(2026, 5, 12, 18, 0, 0));
+                  setRoute({ kind: "insights" });
+                },
+                showInsightsPopulated: async () => {
+                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0);
+                  const DAY = 86_400_000;
+                  const authors = await getAuthors();
+                  // Collect a handful of real chapter ids to attribute events to.
+                  const chapterIds: number[] = [];
+                  for (const a of authors.slice(0, 3)) {
+                    const d = await getAuthorDetail(a.id);
+                    for (const w of d.works) for (const c of w.chapters) chapterIds.push(c.id);
+                  }
+                  if (chapterIds.length === 0) return;
+                  // Deterministic spread: vary day offset (0..90), hour, and chapter — no RNG.
+                  const events: { chapterId: number; playedAt: number }[] = [];
+                  for (let i = 0; i < 120; i++) {
+                    const dayOffset = (i * 7) % 90;            // spreads across ~13 weeks
+                    const hour = 8 + (i % 12);                 // daytime/evening spread
+                    const chapterId = chapterIds[i % chapterIds.length];
+                    events.push({ chapterId, playedAt: NOW - dayOffset * DAY - hour * 3_600_000 });
+                  }
+                  // A short current streak ending "today".
+                  for (let k = 0; k < 4; k++) {
+                    events.push({ chapterId: chapterIds[k % chapterIds.length], playedAt: NOW - k * DAY - 3_600_000 });
+                  }
+                  await seedPlayEvents(events);
+                  await loadInsights(NOW);
+                  setRoute({ kind: "insights" });
+                  await settle();
+                },
+                showInsightsRecap: async () => {
+                  // Same seeded state; just re-render Insights (the recap card is in-view).
+                  await loadInsights(Date.UTC(2026, 5, 12, 18, 0, 0));
+                  setRoute({ kind: "insights" });
+                  await settle();
+                },
+              })
             : browseSteps({
                 // Seed tags on a few authors + a played chapter so sort-by-length,
                 // played%, the tag filter, and the status filter all have signal.
@@ -1384,6 +1491,16 @@ export default function App() {
         />
       );
     }
+    if (route.kind === "insights") {
+      return (
+        <InsightsView
+          data={insights}
+          now={insightsNow}
+          onExportRecap={handleExportRecap}
+          recapStatus={recapStatus}
+        />
+      );
+    }
     return (
       <LibraryView
         authors={authors}
@@ -1455,6 +1572,7 @@ export default function App() {
           onMetadata={openMetadata}
           onSettings={openSettings}
           onJournal={openJournalView}
+          onInsights={openInsights}
           player={player}
         >
           {view}
