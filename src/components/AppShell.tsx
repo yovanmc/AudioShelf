@@ -49,6 +49,7 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
   );
   return (
     <div className={`app-shell${collapsed ? " app-shell--collapsed" : ""}`} data-density={density} {...a11yDataAttrs(a11y)}>
+      <a className="skip-link" href="#main-content">Skip to content</a>
       <aside className="sidebar" aria-label="Primary navigation">
         <div className="sidebar__brand">
           <span className="sidebar__wordmark">AudioShelf</span>
@@ -67,7 +68,7 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
           <span className="sidebar__label">Settings</span>
         </button>
       </aside>
-      <div className="app-main">{children}</div>
+      <main id="main-content" className="app-main" tabIndex={-1}>{children}</main>
       {player}
     </div>
   );

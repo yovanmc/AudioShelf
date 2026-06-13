@@ -1687,6 +1687,26 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Global playback keyboard shortcuts (Space = toggle, ArrowLeft/Right = skip).
+  // Uses refs so the empty-deps effect always sees the current values.
+  const toggleRef = useRef(toggle);
+  toggleRef.current = toggle;
+  const skipRef = useRef(skip);
+  skipRef.current = skip;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!currentRef.current) return;
+      if (e.key === " ") { e.preventDefault(); toggleRef.current(); }
+      else if (e.key === "ArrowLeft")  { e.preventDefault(); skipRef.current(e.shiftKey ? -30 : -15); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); skipRef.current(e.shiftKey ?  30 :  15); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // Debounced command palette search (mirrors the 150ms library search pattern).
   useEffect(() => {
     if (!paletteOpen) return;
