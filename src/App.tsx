@@ -1652,11 +1652,14 @@ export default function App() {
                   setRoute({ kind: "home" });
                   await settle();
                 },
-                // Step 4: dyslexia font.
+                // Step 4: dyslexia font — navigate to Settings so the multi-line
+                // card descriptions (section h2 + muted paragraphs) render in the
+                // wider Verdana face with visibly looser letter-spacing and taller
+                // line-height across several wrapped text rows.
                 showDyslexiaFont: async () => {
                   setPlayerExpanded(false);
                   setA11y({ ...DEFAULT_A11Y, dyslexiaFont: true });
-                  setRoute({ kind: "home" });
+                  setRoute({ kind: "settings", firstRun: false });
                   await settle();
                 },
                 // Step 5: reduced-motion on; navigate to Settings so the toggle is visibly ON.
