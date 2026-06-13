@@ -225,10 +225,17 @@ export function SettingsView(props: {
       <PageHeader eyebrow={firstRun ? "Welcome to AudioShelf" : "Library preferences"} title={firstRun ? "Choose your audio library" : "Settings"} />
 
       {firstRun && (
-        <p className="muted">
-          Choose the folder that holds your audio library
-          (one subfolder per author) to get started.
-        </p>
+        <>
+          <p className="muted">
+            Choose the folder that holds your audio library — one subfolder per creator.
+            AudioShelf reads your files to build your shelf; it never moves, renames, or
+            changes them.
+          </p>
+          <p className="muted">
+            Next, we'll scan the folder and group chapters into works automatically. You can
+            fine-tune anything later.
+          </p>
+        </>
       )}
 
       {!firstRun && <h2 className="settings-group">Library</h2>}

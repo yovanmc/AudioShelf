@@ -3,7 +3,7 @@ import { Card, StatCard } from "../components/ui";
 
 export function ScanView(props: { result: ScanResult | null }) {
   if (!props.result) {
-    return <Card className="scan empty-state"><h1>Scanning library</h1><p className="muted">Reading creator folders and grouping chapters...</p></Card>;
+    return <Card className="scan empty-state"><h1>Scanning your library</h1><p className="muted">Reading your creator folders and grouping chapters into works. Your files are never changed — this just builds your shelf.</p></Card>;
   }
   const { authors, works, chapters } = props.result;
   return (
