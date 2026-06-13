@@ -1,7 +1,7 @@
 //! Tauri commands and the shared DB state.
 
 use crate::db;
-use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterHit, ChapterRow, ContinueItem, DiscoveryWork, HomeData, ListeningStats, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
+use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterHit, ChapterRow, ContinueItem, DiscoveryWork, DormantWork, HomeData, ListeningStats, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
 use crate::natsort::natural_cmp;
 use crate::regroup;
 use crate::rename;
@@ -452,6 +452,7 @@ pub(crate) fn discovery_for_tags(
         if shared.is_empty() {
             continue;
         }
+        let reason = recommendation_reason(&shared, false);
         works.push(DiscoveryWork {
             work_id,
             base_title,
@@ -459,6 +460,7 @@ pub(crate) fn discovery_for_tags(
             author_name,
             unplayed_count: unplayed,
             shared_tags: shared,
+            reason,
         });
     }
 
@@ -1754,6 +1756,196 @@ pub fn get_chapter_transcript(
     get_chapter_transcript_inner(&conn, chapter_id).map_err(|e| e.to_string())
 }
 
+// ---- M16 Task 10: intelligence backend -----------------------------------------------
+
+/// Returns works that had at least one chapter played but whose last play event is
+/// older than `now_ms - days * 86_400_000`. Sorted by played_fraction DESC.
+pub fn query_dormant_works(
+    conn: &rusqlite::Connection,
+    now_ms: i64,
+    days: i64,
+) -> rusqlite::Result<Vec<DormantWork>> {
+    let cutoff = now_ms - days * 86_400_000;
+    // Aggregate per-work: last play event, total chapters, played chapters.
+    let mut stmt = conn.prepare(
+        "SELECT w.id, w.base_title, w.author_id,
+                COALESCE(a.display_name, a.folder_name),
+                MAX(pe.played_at) AS last_played,
+                COUNT(DISTINCT c2.id) AS total_chs,
+                COUNT(DISTINCT CASE WHEN c2.played=1 THEN c2.id END) AS played_chs
+         FROM play_events pe
+         JOIN chapters c  ON pe.chapter_id=c.id
+         JOIN works w      ON c.work_id=w.id
+         JOIN authors a    ON w.author_id=a.id
+         JOIN chapters c2  ON c2.work_id=w.id AND c2.status='active'
+         WHERE w.status='active' AND a.status='active'
+         GROUP BY w.id, w.base_title, w.author_id, a.display_name, a.folder_name
+         HAVING MAX(pe.played_at) < ?1",
+    )?;
+    let rows = stmt
+        .query_map(params![cutoff], |r| {
+            let total: i64 = r.get(5)?;
+            let played: i64 = r.get(6)?;
+            let played_fraction = if total > 0 { played as f64 / total as f64 } else { 0.0 };
+            Ok(DormantWork {
+                work_id: r.get(0)?,
+                base_title: r.get(1)?,
+                author_id: r.get(2)?,
+                author_name: r.get(3)?,
+                last_played_at: r.get(4)?,
+                played_fraction,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut result = rows;
+    result.sort_by(|a, b| b.played_fraction.partial_cmp(&a.played_fraction).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn get_dormant_works(state: tauri::State<DbState>, now_ms: i64, days: i64) -> Result<Vec<DormantWork>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    query_dormant_works(&conn, now_ms, days).map_err(|e| e.to_string())
+}
+
+/// Return works similar to `work_id`: take that work's tags (author ∪ work, alias-resolved),
+/// then call `discovery_for_tags` excluding the source work's author.
+pub fn more_like_this(
+    conn: &rusqlite::Connection,
+    work_id: i64,
+    cap: usize,
+) -> rusqlite::Result<Vec<DiscoveryWork>> {
+    // Fetch the author of the source work.
+    let author_id: i64 = conn.query_row(
+        "SELECT author_id FROM works WHERE id=?1",
+        params![work_id],
+        |r| r.get(0),
+    )?;
+    // Collect raw tags (author ∪ work).
+    let mut raw_tags: Vec<String> = Vec::new();
+    let mut at = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1")?;
+    for t in at.query_map(params![author_id], |r| r.get::<_, String>(0))? {
+        raw_tags.push(t?);
+    }
+    let mut wt = conn.prepare("SELECT tag FROM work_tags WHERE work_id=?1")?;
+    for t in wt.query_map(params![work_id], |r| r.get::<_, String>(0))? {
+        raw_tags.push(t?);
+    }
+    if raw_tags.is_empty() {
+        return Ok(Vec::new());
+    }
+    let resolved = resolve_aliases(conn, &raw_tags)?;
+    // Exclude the source work's author; discovery_for_tags will also exclude works with 0 unplayed.
+    let mut results = discovery_for_tags(conn, &resolved, &[author_id], cap)?;
+    // Also filter out the source work itself if it somehow slipped through (different author edge case).
+    results.retain(|w| w.work_id != work_id);
+    Ok(results)
+}
+
+#[tauri::command]
+pub fn get_more_like_this(state: tauri::State<DbState>, work_id: i64, cap: usize) -> Result<Vec<DiscoveryWork>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    more_like_this(&conn, work_id, cap).map_err(|e| e.to_string())
+}
+
+/// Pure logic: given filename/folder tokens, an existing vocabulary, and a work's current
+/// tags, return suggested tags (vocab matches + novel tokens), deduped, excluding existing.
+pub fn suggest_tags_from(tokens: &[String], vocabulary: &[String], existing: &[String]) -> Vec<String> {
+    let existing_set: std::collections::BTreeSet<&str> = existing.iter().map(|s| s.as_str()).collect();
+    let vocab_set: std::collections::BTreeSet<&str> = vocabulary.iter().map(|s| s.as_str()).collect();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut suggestions: Vec<String> = Vec::new();
+    // First: vocabulary matches (tokens that appear in the user's existing tag vocabulary).
+    for t in tokens {
+        let t_lc = t.to_lowercase();
+        if !existing_set.contains(t_lc.as_str()) && vocab_set.contains(t_lc.as_str()) && seen.insert(t_lc.clone()) {
+            suggestions.push(t_lc);
+        }
+    }
+    // Then: novel tokens (not in vocabulary, not existing).
+    for t in tokens {
+        let t_lc = t.to_lowercase();
+        if !existing_set.contains(t_lc.as_str()) && !vocab_set.contains(t_lc.as_str()) && seen.insert(t_lc.clone()) {
+            suggestions.push(t_lc);
+        }
+    }
+    suggestions
+}
+
+/// Tokenise a file path (folder name + file stem) and return tag suggestions for `work_id`.
+pub(crate) fn suggest_tags_for_work(
+    conn: &rusqlite::Connection,
+    work_id: i64,
+) -> rusqlite::Result<Vec<String>> {
+    // Get work's folder path via its first active chapter.
+    let file_path: Option<String> = conn
+        .query_row(
+            "SELECT c.file_path FROM chapters c WHERE c.work_id=?1 AND c.status='active' ORDER BY c.chapter_no LIMIT 1",
+            params![work_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let file_path = match file_path {
+        Some(p) => p,
+        None => return Ok(Vec::new()),
+    };
+    // Also get the work's base_title.
+    let base_title: String = conn.query_row(
+        "SELECT base_title FROM works WHERE id=?1",
+        params![work_id],
+        |r| r.get(0),
+    )?;
+
+    // Collect tokens from folder name + file stem + base_title.
+    let path = std::path::Path::new(&file_path);
+    let mut source_parts: Vec<String> = Vec::new();
+    if let Some(parent) = path.parent() {
+        if let Some(folder) = parent.file_name() {
+            source_parts.push(folder.to_string_lossy().to_string());
+        }
+    }
+    source_parts.push(base_title);
+
+    // Split on separators [ _\-.] and filter: drop pure-numerics and short (<3 char) tokens.
+    let stopwords: std::collections::BTreeSet<&str> =
+        ["the", "a", "an", "of", "in", "on", "at", "to", "and", "or", "for", "by"].iter().cloned().collect();
+    let mut tokens: Vec<String> = Vec::new();
+    for part in &source_parts {
+        for tok in part.split(|c: char| c == ' ' || c == '_' || c == '-' || c == '.') {
+            let t = tok.trim().to_lowercase();
+            if t.len() < 3 { continue; }
+            if t.chars().all(|c| c.is_ascii_digit()) { continue; }
+            if stopwords.contains(t.as_str()) { continue; }
+            tokens.push(t);
+        }
+    }
+    tokens.dedup();
+
+    // Get all known tags (vocabulary) and the work's current tags.
+    let vocabulary: Vec<String> = {
+        let mut s = conn.prepare(
+            "SELECT tag FROM author_tags UNION SELECT tag FROM work_tags UNION SELECT tag FROM chapter_tags ORDER BY tag",
+        )?;
+        let result = s.query_map([], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        result
+    };
+    let existing: Vec<String> = {
+        let mut s = conn.prepare("SELECT tag FROM work_tags WHERE work_id=?1")?;
+        let result = s.query_map(params![work_id], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        result
+    };
+
+    Ok(suggest_tags_from(&tokens, &vocabulary, &existing))
+}
+
+#[tauri::command]
+pub fn suggest_tags(state: tauri::State<DbState>, work_id: i64) -> Result<Vec<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    suggest_tags_for_work(&conn, work_id).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2861,6 +3053,106 @@ mod tests {
         assert!(snippet.contains("target"), "snippet: {snippet}");
         // Snippet should be significantly shorter than the full content.
         assert!(snippet.len() < content.len(), "snippet should be truncated");
+    }
+
+    // ---- M16 Task 10 intelligence backend tests ----------------------------------------
+
+    #[test]
+    fn dormant_works_surfaces_old_play_not_recent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Alice").join("Old Book.mp3"));
+        touch(&root.join("Bob").join("New Book.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+        let alice_detail = query_author_detail(&conn, ids["Alice"]).unwrap();
+        let bob_detail = query_author_detail(&conn, ids["Bob"]).unwrap();
+
+        const DAY: i64 = 86_400_000;
+        let now_ms: i64 = 100 * DAY;
+        // Alice played 50 days ago (old — should surface)
+        mark_finished(&conn, alice_detail.works[0].chapters[0].id, now_ms - 50 * DAY).unwrap();
+        // Bob played yesterday (recent — should NOT surface with 30-day threshold)
+        mark_finished(&conn, bob_detail.works[0].chapters[0].id, now_ms - 1 * DAY).unwrap();
+
+        let dormant = super::query_dormant_works(&conn, now_ms, 30).unwrap();
+        let names: Vec<&str> = dormant.iter().map(|d| d.author_name.as_str()).collect();
+        assert!(names.contains(&"Alice"), "Alice should be dormant");
+        assert!(!names.contains(&"Bob"), "Bob should not be dormant");
+    }
+
+    #[test]
+    fn dormant_works_empty_when_no_play_events() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Alice").join("Unplayed.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let dormant = super::query_dormant_works(&conn, 1_000_000_000_000, 30).unwrap();
+        assert!(dormant.is_empty(), "no play events means no dormant works");
+    }
+
+    #[test]
+    fn more_like_this_excludes_source_author_and_source_work() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Alice").join("Tale.mp3"));
+        touch(&root.join("Bob").join("Saga.mp3"));
+        touch(&root.join("Carol").join("Epic.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+        // Tag all three with "cozy" so discovery would normally surface all of them.
+        super::set_tags(&conn, ids["Alice"], &["cozy".into()]).unwrap();
+        super::set_tags(&conn, ids["Bob"], &["cozy".into()]).unwrap();
+        super::set_tags(&conn, ids["Carol"], &["cozy".into()]).unwrap();
+        let alice_detail = query_author_detail(&conn, ids["Alice"]).unwrap();
+        let alice_work_id = alice_detail.works[0].id;
+
+        let results = super::more_like_this(&conn, alice_work_id, 50).unwrap();
+        // Alice's own work must not appear (excluded via author exclusion).
+        assert!(results.iter().all(|w| w.work_id != alice_work_id), "source work must not appear");
+        assert!(results.iter().all(|w| w.author_id != ids["Alice"]), "source author must not appear");
+        // Bob and Carol should appear.
+        assert!(results.iter().any(|w| w.author_name == "Bob"), "Bob should appear");
+        assert!(results.iter().any(|w| w.author_name == "Carol"), "Carol should appear");
+    }
+
+    #[test]
+    fn discovery_for_tags_populates_reason_field() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Alice").join("Tale.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+        super::set_tags(&conn, ids["Alice"], &["cozy".into()]).unwrap();
+        let results = super::discovery_for_tags(&conn, &["cozy".into()], &[], 50).unwrap();
+        assert!(!results.is_empty(), "should find at least one result");
+        assert!(!results[0].reason.is_empty(), "reason field must be populated");
+        assert!(results[0].reason.contains("cozy"), "reason should mention the tag");
+    }
+
+    #[test]
+    fn suggest_tags_from_returns_vocab_matches_then_novel_excluding_existing() {
+        let vocab = vec!["mystery".to_string(), "thriller".to_string(), "calm".to_string()];
+        let existing = vec!["calm".to_string()];
+        let tokens = vec!["mystery".to_string(), "calm".to_string(), "adventure".to_string()];
+        let suggestions = super::suggest_tags_from(&tokens, &vocab, &existing);
+        // "mystery" is in vocab and not in existing → should appear.
+        assert!(suggestions.contains(&"mystery".to_string()), "vocab match must appear");
+        // "calm" is in existing → must not appear.
+        assert!(!suggestions.contains(&"calm".to_string()), "existing tag must not appear");
+        // "adventure" is novel (not in vocab, not in existing) → should appear.
+        assert!(suggestions.contains(&"adventure".to_string()), "novel token must appear");
+        // vocab matches come before novel tokens.
+        let mystery_pos = suggestions.iter().position(|s| s == "mystery").unwrap();
+        let adventure_pos = suggestions.iter().position(|s| s == "adventure").unwrap();
+        assert!(mystery_pos < adventure_pos, "vocab match should rank before novel token");
     }
 }
 

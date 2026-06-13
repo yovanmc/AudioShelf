@@ -53,6 +53,22 @@ pub struct DiscoveryWork {
     pub author_name: String,
     pub unplayed_count: i64,
     pub shared_tags: Vec<String>,
+    /// Human-readable reason this work was surfaced (empty string if unavailable).
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// A work that was played at some point but not touched for `days` days.
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DormantWork {
+    pub work_id: i64,
+    pub base_title: String,
+    pub author_id: i64,
+    pub author_name: String,
+    pub last_played_at: i64,
+    /// Fraction of the work's chapters that have been played (0.0–1.0).
+    pub played_fraction: f64,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
