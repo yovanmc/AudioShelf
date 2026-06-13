@@ -1,10 +1,11 @@
 import { FixedSizeList as List, type ListChildComponentProps } from "react-window";
-import type { AuthorRow, SearchResults, TranscriptHit } from "../lib/api";
+import type { AuthorRow, SearchResults, TranscriptHit, ScopedResults, SavedSearch } from "../lib/api";
 import { summarizeAuthor } from "../lib/library";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
 import { EmptyState, PageHeader, TagGroup } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { WorkCard } from "../components/WorkCard";
+import { ScopedResults as ScopedResultsPanel } from "../components/ScopedResults";
 import { SortFilterBar } from "./SortFilterBar";
 import { filterAuthors, sortAuthors, type AuthorSort, type PlayedStatus } from "../lib/browse";
 
@@ -21,6 +22,15 @@ export function LibraryView(props: {
   onPlayNextOfWork?: (workId: number, authorId: number) => void;
   /** Transcript search hits to show in the search results panel (optional). */
   transcriptResults?: TranscriptHit[] | null;
+  /** Advanced scoped-search results (tag/duration/status tokens). */
+  scopedResults?: ScopedResults | null;
+  /** True when the current query contains scoped tokens. */
+  scoped?: boolean;
+  /** Saved searches for this library. */
+  savedSearches?: SavedSearch[];
+  onSaveSearch?: (name: string, query: string) => void;
+  onRunSavedSearch?: (query: string) => void;
+  onDeleteSavedSearch?: (id: number) => void;
 }) {
   const searching = props.query.trim() !== "";
   const visible = filterAuthors(sortAuthors(props.authors, props.sort), { tag: props.filterTag, status: props.filterStatus });
@@ -49,8 +59,45 @@ export function LibraryView(props: {
           <span className="visually-hidden">Search library</span>
           <input style={{ width: "100%" }} aria-label="Search library" placeholder="Search authors, works, chapters" value={props.query} onChange={(event) => props.onQueryChange(event.target.value)} />
         </label>
+        {props.scoped && props.onSaveSearch && (
+          <button className="button button--ghost" style={{ marginLeft: 8, whiteSpace: "nowrap" }}
+            onClick={() => {
+              const name = window.prompt("Save search as:");
+              if (name && name.trim()) props.onSaveSearch!(name.trim(), props.query);
+            }}>
+            Save search
+          </button>
+        )}
       </div>
-      {searching ? <SearchResultsPanel results={props.results} transcriptHits={props.transcriptResults} onOpenAuthor={props.onOpenAuthor} onPlayNextOfWork={props.onPlayNextOfWork} /> : (
+      {!searching && (
+        <p className="muted" style={{ fontSize: "0.85em", margin: "4px 0 0" }}>
+          Try <code>tag:cozy duration:&lt;15m status:unplayed</code>
+        </p>
+      )}
+      {props.savedSearches && props.savedSearches.length > 0 && (
+        <div className="scoped-chips" style={{ marginTop: 8 }}>
+          <span className="muted" style={{ fontSize: "0.82em" }}>Saved:</span>
+          {props.savedSearches.map((s) => (
+            <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <button className="chip chip--toggle" onClick={() => props.onRunSavedSearch && props.onRunSavedSearch(s.query)}>
+                {s.name}
+              </button>
+              {props.onDeleteSavedSearch && (
+                <button
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", padding: "0 2px" }}
+                  aria-label={`Delete saved search "${s.name}"`}
+                  onClick={() => props.onDeleteSavedSearch!(s.id)}
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      {props.scoped && props.scopedResults ? (
+        <ScopedResultsPanel results={props.scopedResults} onOpenAuthor={props.onOpenAuthor} />
+      ) : searching ? <SearchResultsPanel results={props.results} transcriptHits={props.transcriptResults} onOpenAuthor={props.onOpenAuthor} onPlayNextOfWork={props.onPlayNextOfWork} /> : (
         <>
           <div className="tabs" role="tablist" aria-label="Played status">
             {([

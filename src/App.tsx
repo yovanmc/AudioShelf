@@ -17,12 +17,14 @@ import {
   getChapterJournal, addChapterNote, deleteChapterNote, addBookmark, deleteBookmark,
   queryJournal, exportJournal,
   queryInsights, exportRecapPng, seedPlayEvents,
+  advancedSearch, listSavedSearches, createSavedSearch, deleteSavedSearch,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
   type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
-  type InsightsData,
+  type InsightsData, type ScopedResults, type SavedSearch,
 } from "./lib/api";
+import { hasScopedTokens } from "./lib/query";
 import { buildRecapSvg } from "./lib/recap";
 import { HomeView } from "./views/HomeView";
 import { InsightsView } from "./views/InsightsView";
@@ -149,6 +151,12 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults | null>(null);
   const [transcriptResults, setTranscriptResults] = useState<TranscriptHit[] | null>(null);
+
+  // ---- M19 scoped search (tag/duration/status tokens) ----
+  const [scopedResults, setScopedResults] = useState<ScopedResults | null>(null);
+
+  // ---- M19 saved searches ----
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
 
   // ---- command palette (Ctrl+K) ----
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -754,6 +762,26 @@ export default function App() {
     if (routeRef.current.kind === "home") await loadHome();
     // Stop after each chapter — no auto-advance.
   }
+
+  async function refreshSavedSearches() {
+    const list = await listSavedSearches().catch(() => [] as SavedSearch[]);
+    setSavedSearches(list);
+  }
+
+  async function handleSaveSearch(name: string, q: string) {
+    await createSavedSearch(name, q, Date.now());
+    await refreshSavedSearches();
+  }
+
+  async function handleDeleteSavedSearch(id: number) {
+    await deleteSavedSearch(id);
+    await refreshSavedSearches();
+  }
+
+  useEffect(() => {
+    void refreshSavedSearches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -1385,14 +1413,29 @@ export default function App() {
   }, [paletteQuery, paletteOpen]);
 
   // Debounced backend search. Empty query clears results (list shows instead).
+  // When the query contains scoped tokens (tag:/duration:/status:) → advancedSearch;
+  // otherwise → the existing searchLibrary + searchTranscripts path.
   useEffect(() => {
     const q = query.trim();
     if (q === "") {
       setResults(null);
       setTranscriptResults(null);
+      setScopedResults(null);
       return;
     }
     let cancelled = false;
+    if (hasScopedTokens(q)) {
+      const t = setTimeout(async () => {
+        const sr = await advancedSearch(q);
+        if (!cancelled) {
+          setScopedResults(sr);
+          setResults(null);
+          setTranscriptResults(null);
+        }
+      }, 150);
+      return () => { cancelled = true; clearTimeout(t); };
+    }
+    setScopedResults(null);
     const t = setTimeout(async () => {
       const [r, tr] = await Promise.all([searchLibrary(q), searchTranscripts(q)]);
       if (!cancelled) {
@@ -1558,6 +1601,12 @@ export default function App() {
         query={query}
         results={results}
         transcriptResults={transcriptResults}
+        scopedResults={scopedResults}
+        scoped={hasScopedTokens(query)}
+        savedSearches={savedSearches}
+        onSaveSearch={handleSaveSearch}
+        onRunSavedSearch={setQuery}
+        onDeleteSavedSearch={handleDeleteSavedSearch}
         onQueryChange={setQuery}
         onOpenAuthor={openAuthor}
         sort={browsePrefs.authorSort}
