@@ -1696,11 +1696,17 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      const typing = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
       if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
       if (!currentRef.current) return;
-      if (e.key === " ") { e.preventDefault(); toggleRef.current(); }
-      else if (e.key === "ArrowLeft")  { e.preventDefault(); skipRef.current(e.shiftKey ? -30 : -15); }
+      // Space natively activates buttons/links/interactive-role elements — don't hijack it from them.
+      const role = t?.getAttribute("role");
+      const activatable = !!t && (t.tagName === "BUTTON" || t.tagName === "A" ||
+        role === "button" || role === "menuitem" || role === "tab" || role === "treeitem" || role === "option");
+      if (e.key === " ") {
+        if (activatable) return;          // let the focused control handle Space
+        e.preventDefault(); toggleRef.current();
+      } else if (e.key === "ArrowLeft")  { e.preventDefault(); skipRef.current(e.shiftKey ? -30 : -15); }
       else if (e.key === "ArrowRight") { e.preventDefault(); skipRef.current(e.shiftKey ?  30 :  15); }
     };
     window.addEventListener("keydown", onKey);
