@@ -36,6 +36,7 @@ pub struct ChapterRow {
     pub user_summary: String,
     pub takeaway: String,
     pub is_favorite: bool,
+    pub metadata: Vec<MetaTag>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -48,6 +49,7 @@ pub struct WorkRow {
     pub re_entry_note: String,
     pub completion_rating: String,
     pub chapter_sort: String,   // NEW: per-work chapter ordering preference
+    pub metadata: Vec<MetaTag>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -92,6 +94,7 @@ pub struct AuthorDetail {
     pub name: String,
     pub tags: Vec<String>,
     pub works: Vec<WorkRow>,
+    pub metadata: Vec<MetaTag>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -374,6 +377,27 @@ pub struct InsightsData {
 pub struct SeedPlayEvent {
     pub chapter_id: i64,
     pub played_at: i64,
+}
+
+/// A single applied metadata value (a narrator / language / mood term attached to an
+/// entity). `facet` is one of metadata::FACETS.
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaTag {
+    pub term_id: i64,
+    pub facet: String,
+    pub value: String,
+}
+
+/// A vocabulary term plus usage counts (for the metadata manager UI).
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaTerm {
+    pub id: i64,
+    pub facet: String,
+    pub value: String,
+    pub chapter_count: i64,
+    pub author_count: i64,
 }
 
 #[derive(Serialize, Debug, PartialEq)]

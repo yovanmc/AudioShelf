@@ -305,6 +305,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                 re_entry_note: r.get::<_, String>(2).unwrap_or_default(),
                 completion_rating: r.get::<_, String>(3).unwrap_or_default(),
                 chapter_sort: r.get::<_, String>(4).unwrap_or_default(),
+                metadata: Vec::new(),
             })
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -335,6 +336,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                     user_summary: r.get::<_, String>(7).unwrap_or_default(),
                     takeaway: r.get::<_, String>(8).unwrap_or_default(),
                     is_favorite: r.get::<_, i64>(9).unwrap_or(0) != 0,
+                    metadata: Vec::new(),
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -368,7 +370,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
         .query_map(params![author_id], |r| r.get::<_, String>(0))?
         .collect::<rusqlite::Result<_>>()?;
 
-    Ok(AuthorDetail { id: author_id, name, tags, works })
+    Ok(AuthorDetail { id: author_id, name, tags, works, metadata: Vec::new() })
 }
 
 const SEARCH_CAP: usize = 50;
@@ -730,6 +732,7 @@ fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::R
                 user_summary: r.get::<_, String>(7).unwrap_or_default(),
                 takeaway: r.get::<_, String>(8).unwrap_or_default(),
                 is_favorite: r.get::<_, i64>(9).unwrap_or(0) != 0,
+                metadata: Vec::new(),
             })
         },
     )?;
