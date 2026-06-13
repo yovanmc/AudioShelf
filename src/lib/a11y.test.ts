@@ -28,8 +28,12 @@ describe("parseA11yPrefs", () => {
 });
 
 describe("a11yDataAttrs", () => {
-  it("returns empty object for dark theme, normal size, no flags", () => {
-    expect(a11yDataAttrs(DEFAULT_A11Y)).toEqual({});
+  it("returns all four keys with undefined for dark/normal defaults (so React removes stale attrs)", () => {
+    const attrs = a11yDataAttrs(DEFAULT_A11Y);
+    expect(attrs["data-theme"]).toBeUndefined();
+    expect(attrs["data-text-size"]).toBeUndefined();
+    expect(attrs["data-font"]).toBeUndefined();
+    expect(attrs["data-reduced-motion"]).toBeUndefined();
   });
 
   it("returns all four keys for non-default values", () => {
@@ -40,5 +44,13 @@ describe("a11yDataAttrs", () => {
       "data-font": "dyslexia",
       "data-reduced-motion": "true",
     });
+  });
+
+  it("uses undefined (not omission) for each key at its default so React removes stale DOM attrs", () => {
+    // dark theme only, xlarge text
+    const attrs = a11yDataAttrs({ theme: "dark", textSize: "xlarge", dyslexiaFont: false, reducedMotion: false });
+    expect(Object.keys(attrs)).toContain("data-theme");
+    expect(attrs["data-theme"]).toBeUndefined();
+    expect(attrs["data-text-size"]).toBe("xlarge");
   });
 });

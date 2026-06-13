@@ -1666,13 +1666,34 @@ export default function App() {
                   document.querySelector(".a11y-section")?.scrollIntoView({ block: "start" });
                   await settle();
                 },
-                // Step 6: colorblind-safe status icons — reset a11y, open author detail
-                // (work rows show status dots/icons from Task 6).
+                // Step 6: colorblind-safe status icons — open the NowPlayingPanel "In
+                // this work" chapter list, which uses explicit check/circle shape icons
+                // (not color alone) for played vs. unplayed status.
                 showColorblindStatus: async () => {
                   setA11y({ ...DEFAULT_A11Y });
                   const list = await getAuthors();
-                  if (list.length > 0) await openAuthor(list[0].id);
-                  await settle();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  // Pick the work with the most chapters so the list is populated.
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  setDetail(creator);
+                  setRoute({ kind: "author" });
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((item) => item.played).length,
+                  });
+                  setPlayerExpanded(true);
+                  await settle(); // let currentWorkChapters fetch resolve
                 },
                 // Step 7: focus the skip link so it slides into view (top: var(--space-3)).
                 showSkipLinkFocus: async () => {
