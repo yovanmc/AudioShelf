@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Core defaults plus the folder-picker dialog for the main window.",
-  "windows": ["main"],
+  "windows": ["main", "miniplayer"],
   "permissions": ["core:default", "dialog:default", "dialog:allow-save", "dialog:allow-open"]
 }

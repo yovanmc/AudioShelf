@@ -123,7 +123,9 @@ pub fn run() {
             commands::export_curation_json,
             commands::export_db_snapshot,
             commands::import_curation_json,
-            commands::stage_db_restore
+            commands::stage_db_restore,
+            commands::open_mini_player,
+            commands::close_mini_player
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

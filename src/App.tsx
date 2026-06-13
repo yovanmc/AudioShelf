@@ -21,6 +21,7 @@ import {
   listCollections, createCollection, deleteCollection, reorderCollections, resolveCollection,
   bulkSetWorkTags, setWorkChapterSort,
   exportCurationJson, exportDbSnapshot, importCurationJson, stageDbRestore, libraryHealthScan,
+  openMiniPlayer,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
@@ -66,6 +67,7 @@ import {
   type ShelfItem,
 } from "./lib/shelves";
 import { applyMediaSession, updatePosition, type NowPlayingMeta } from "./lib/mediaSession";
+import { emit, listen } from "@tauri-apps/api/event";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -1721,6 +1723,74 @@ export default function App() {
   currentWorkChaptersRef.current = currentWorkChapters;
   const isPlayingRef = useRef(isPlaying);
   isPlayingRef.current = isPlaying;
+
+  // Stable refs for prev/next chapter — shared by Media Session and mini-player command listener.
+  const playPrevChapterRef = useRef(() => {
+    const ctx = currentRef.current;
+    const chapters = currentWorkChaptersRef.current;
+    if (!ctx || chapters.length === 0) return;
+    const idx = chapters.findIndex((c) => c.id === ctx.chapter.id);
+    const prev = idx > 0 ? chapters[idx - 1] : chapters[0];
+    if (prev) {
+      playChapter({
+        chapter: prev,
+        authorId: ctx.authorId, authorName: ctx.authorName,
+        workId: ctx.workId, workTitle: ctx.workTitle,
+        workTotalChapters: chapters.length,
+        workPlayedChapters: chapters.filter((c) => c.played).length,
+      });
+    }
+  });
+  const playNextChapterRef = useRef(() => {
+    const ctx = currentRef.current;
+    const chapters = currentWorkChaptersRef.current;
+    if (!ctx || chapters.length === 0) return;
+    const idx = chapters.findIndex((c) => c.id === ctx.chapter.id);
+    const next = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1] : null;
+    if (next) {
+      playChapter({
+        chapter: next,
+        authorId: ctx.authorId, authorName: ctx.authorName,
+        workId: ctx.workId, workTitle: ctx.workTitle,
+        workTotalChapters: chapters.length,
+        workPlayedChapters: chapters.filter((c) => c.played).length,
+      });
+    }
+  });
+  // Keep the refs current each render so they always close over the latest playChapter.
+  playPrevChapterRef.current = () => {
+    const ctx = currentRef.current;
+    const chapters = currentWorkChaptersRef.current;
+    if (!ctx || chapters.length === 0) return;
+    const idx = chapters.findIndex((c) => c.id === ctx.chapter.id);
+    const prev = idx > 0 ? chapters[idx - 1] : chapters[0];
+    if (prev) {
+      playChapter({
+        chapter: prev,
+        authorId: ctx.authorId, authorName: ctx.authorName,
+        workId: ctx.workId, workTitle: ctx.workTitle,
+        workTotalChapters: chapters.length,
+        workPlayedChapters: chapters.filter((c) => c.played).length,
+      });
+    }
+  };
+  playNextChapterRef.current = () => {
+    const ctx = currentRef.current;
+    const chapters = currentWorkChaptersRef.current;
+    if (!ctx || chapters.length === 0) return;
+    const idx = chapters.findIndex((c) => c.id === ctx.chapter.id);
+    const next = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1] : null;
+    if (next) {
+      playChapter({
+        chapter: next,
+        authorId: ctx.authorId, authorName: ctx.authorName,
+        workId: ctx.workId, workTitle: ctx.workTitle,
+        workTotalChapters: chapters.length,
+        workPlayedChapters: chapters.filter((c) => c.played).length,
+      });
+    }
+  };
+
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
     if (!current) {
@@ -1745,38 +1815,8 @@ export default function App() {
       {
         onPlay: () => { if (!isPlayingRef.current) toggleRef.current(); },
         onPause: () => { if (isPlayingRef.current) toggleRef.current(); },
-        onPrevChapter: () => {
-          const ctx = currentRef.current;
-          const chapters = currentWorkChaptersRef.current;
-          if (!ctx || chapters.length === 0) return;
-          const idx = chapters.findIndex((c) => c.id === ctx.chapter.id);
-          const prev = idx > 0 ? chapters[idx - 1] : chapters[0];
-          if (prev) {
-            playChapter({
-              chapter: prev,
-              authorId: ctx.authorId, authorName: ctx.authorName,
-              workId: ctx.workId, workTitle: ctx.workTitle,
-              workTotalChapters: chapters.length,
-              workPlayedChapters: chapters.filter((c) => c.played).length,
-            });
-          }
-        },
-        onNextChapter: () => {
-          const ctx = currentRef.current;
-          const chapters = currentWorkChaptersRef.current;
-          if (!ctx || chapters.length === 0) return;
-          const idx = chapters.findIndex((c) => c.id === ctx.chapter.id);
-          const next = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1] : null;
-          if (next) {
-            playChapter({
-              chapter: next,
-              authorId: ctx.authorId, authorName: ctx.authorName,
-              workId: ctx.workId, workTitle: ctx.workTitle,
-              workTotalChapters: chapters.length,
-              workPlayedChapters: chapters.filter((c) => c.played).length,
-            });
-          }
-        },
+        onPrevChapter: () => playPrevChapterRef.current(),
+        onNextChapter: () => playNextChapterRef.current(),
         onSeekBackward: (s) => skipRef.current(-s),
         onSeekForward: (s) => skipRef.current(s),
         onSeekTo: (pos) => { if (audioRef.current) audioRef.current.currentTime = pos; },
@@ -1784,6 +1824,48 @@ export default function App() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, isPlaying]);
+
+  // Mini-player: emit playback:state to the mini window.
+  // Immediate emit on track/play-state change; throttled (~1/sec) position update.
+  useEffect(() => {
+    const payload = currentRef.current ? {
+      title: currentRef.current.chapter.title,
+      author: currentRef.current.authorName,
+      artworkUrl: "",
+      isPlaying: isPlayingRef.current,
+      position: audioRef.current?.currentTime ?? 0,
+      duration: audioRef.current?.duration ?? 0,
+    } : null;
+    void emit("playback:state", payload);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, isPlaying]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const ctx = currentRef.current;
+      if (!ctx) return;
+      void emit("playback:state", {
+        title: ctx.chapter.title,
+        author: ctx.authorName,
+        artworkUrl: "",
+        isPlaying: isPlayingRef.current,
+        position: audioRef.current?.currentTime ?? 0,
+        duration: audioRef.current?.duration ?? 0,
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Mini-player: receive commands from the mini window.
+  useEffect(() => {
+    const un = listen<{ action: "toggle" | "prev" | "next" }>("miniplayer:command", (e) => {
+      const a = e.payload.action;
+      if (a === "toggle") toggleRef.current();
+      else if (a === "prev") playPrevChapterRef.current();
+      else if (a === "next") playNextChapterRef.current();
+    });
+    return () => { void un.then((f) => f()); };
+  }, []);
 
   // Debounced command palette search (mirrors the 150ms library search pattern).
   useEffect(() => {
@@ -2164,6 +2246,7 @@ export default function App() {
           onAddBookmarkHere={handleAddBookmarkHere}
           onToggleFavorite={handleToggleCurrentFavorite}
           onJumpToBookmark={jumpToBookmark}
+          onPopOut={() => { void openMiniPlayer(); }}
         />
       )}
     </div>

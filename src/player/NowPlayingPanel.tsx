@@ -1,7 +1,7 @@
 import type { PlaybackContext, ChapterRow, ChapterJournal, ChapterBookmark } from "../lib/api";
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
-import { Button, Dialog, ProgressBar } from "../components/ui";
+import { Button, Dialog, IconButton, ProgressBar } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { formatTime, timeLabel, type TimeLabelMode } from "./playback";
 import { PlaybackButtons, type PlayerControls } from "./PlayerBar";
@@ -33,6 +33,8 @@ export function NowPlayingPanel(props: PlayerControls & {
   onToggleFavorite?: (isFavorite: boolean) => void;
   /** Jump to a bookmark (seek or load-then-seek). */
   onJumpToBookmark?: (b: ChapterBookmark) => void;
+  /** Open the always-on-top mini player window. */
+  onPopOut?: () => void;
 }) {
   const { context } = props;
   const progress = context.workTotalChapters > 0
@@ -63,6 +65,11 @@ export function NowPlayingPanel(props: PlayerControls & {
           </p>
           <ProgressBar value={progress} label="Work progress" />
           <PlaybackButtons {...props} />
+          {props.onPopOut && (
+            <div style={{ marginTop: "var(--space-2)" }}>
+              <IconButton icon="expand" label="Open mini player" onClick={props.onPopOut} />
+            </div>
+          )}
           <div className="player-bar__seek">
             <button type="button" className="time-label" title="Toggle time display" onClick={props.onCycleTimeLabel}>
               {timeLabel(props.timeLabelMode ?? "elapsed", props.currentTime, props.duration)}

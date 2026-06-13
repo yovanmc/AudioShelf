@@ -159,3 +159,24 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 /* ---- Backup & maintenance / health report (M19) ---- */
 .backup-maintenance { scroll-margin-top: var(--space-4); }
 .health-report { scroll-margin-top: var(--space-4); }
+/* ---- Mini player (M20 Task 11) ---- */
+.mini-player {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3); height: 100%; box-sizing: border-box;
+  background: var(--color-surface); overflow: hidden; user-select: none;
+  -webkit-app-region: drag;
+}
+.mini-player__art {
+  flex: 0 0 56px; width: 56px; height: 56px; border-radius: var(--radius-sm);
+  overflow: hidden; background: var(--color-surface-raised); display: flex;
+  align-items: center; justify-content: center; color: var(--color-text-muted);
+  font-size: 1.4rem; -webkit-app-region: no-drag;
+}
+.mini-player__art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.mini-player__meta { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mini-player__title { font-size: 0.82rem; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-player__author { font-size: 0.75rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-player__progress { height: 2px; border-radius: 99px; background: var(--color-surface-hover); margin-top: var(--space-1); }
+.mini-player__progress-fill { height: 100%; border-radius: inherit; background: var(--color-accent); transition: width 0.5s linear; }
+.mini-player__controls { display: flex; align-items: center; gap: var(--space-1); flex: none; -webkit-app-region: no-drag; }
+.mini-player__empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted); font-size: 0.85rem; background: var(--color-surface); }
