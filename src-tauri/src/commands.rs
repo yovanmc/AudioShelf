@@ -671,6 +671,56 @@ pub(crate) fn discovery_for_tags(
     Ok(works)
 }
 
+/// Works (with >=1 unplayed chapter) carrying the metadata term `facet`/`value` on
+/// any chapter OR on their author, ranked by unplayed count. Mirrors
+/// discovery_for_tags but matches a single facet value (e.g. a narrator).
+pub(crate) fn discovery_for_metadata(
+    conn: &rusqlite::Connection,
+    facet: &str,
+    value: &str,
+    cap: usize,
+) -> rusqlite::Result<Vec<DiscoveryWork>> {
+    let mut stmt = conn.prepare(
+        "SELECT w.id, w.base_title, a.id, COALESCE(a.display_name, a.folder_name),
+                (SELECT count(*) FROM chapters c WHERE c.work_id=w.id AND c.status='active' AND c.played=0)
+         FROM works w JOIN authors a ON w.author_id=a.id
+         WHERE w.status='active' AND a.status='active'
+           AND EXISTS (
+             SELECT 1 FROM metadata_terms mt WHERE mt.facet=?1 AND mt.value=?2 AND (
+               EXISTS (SELECT 1 FROM chapter_metadata cm JOIN chapters mc ON cm.chapter_id=mc.id
+                       WHERE mc.work_id=w.id AND cm.term_id=mt.id)
+               OR EXISTS (SELECT 1 FROM author_metadata am WHERE am.author_id=a.id AND am.term_id=mt.id)))
+         ORDER BY w.base_title",
+    )?;
+    let label = facet_label(facet);
+    let mut works: Vec<DiscoveryWork> = stmt
+        .query_map(params![facet, value], |r| {
+            Ok(DiscoveryWork {
+                work_id: r.get(0)?,
+                base_title: r.get(1)?,
+                author_id: r.get(2)?,
+                author_name: r.get(3)?,
+                unplayed_count: r.get(4)?,
+                shared_tags: vec![value.to_string()],
+                reason: format!("{label}: {value}"),
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    works.retain(|w| w.unplayed_count > 0);
+    works.sort_by(|a, b| {
+        b.unplayed_count.cmp(&a.unplayed_count)
+            .then(a.base_title.to_lowercase().cmp(&b.base_title.to_lowercase()))
+    });
+    works.truncate(cap);
+    Ok(works)
+}
+
+#[tauri::command]
+pub fn get_discovery_by_metadata(state: tauri::State<DbState>, facet: String, value: String) -> Result<Vec<DiscoveryWork>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    discovery_for_metadata(&conn, &facet, &value, 50).map_err(|e| e.to_string())
+}
+
 /// Authors of chapters in play_events, most-recent first.
 pub(crate) fn recent_authors(conn: &rusqlite::Connection, limit: usize) -> rusqlite::Result<Vec<i64>> {
     let mut stmt = conn.prepare(
@@ -4488,6 +4538,22 @@ mod tests {
         assert_eq!(d.metadata.iter().filter(|m| m.facet == "language").count(), 1);
         assert_eq!(d.works[0].chapters[0].metadata[0].value, "Jane Roe");
         assert_eq!(d.works[0].metadata[0].value, "Jane Roe"); // aggregated to the work
+    }
+
+    #[test]
+    fn discovery_for_metadata_finds_works_with_unplayed_chapters() {
+        let conn = crate::db::open_at_version(8).unwrap();
+        conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (1,1,'/x.wav','x.wav',1,'wav',5,0,'active')", []).unwrap();
+        attach_value(&conn, "chapter", 1, "narrator", "Jane Roe").unwrap();
+        let out = discovery_for_metadata(&conn, "narrator", "Jane Roe", 50).unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].work_id, 1);
+        assert!(out[0].reason.contains("Narrator"));
+        // a fully-played work is excluded.
+        conn.execute("UPDATE chapters SET played=1 WHERE id=1", []).unwrap();
+        assert_eq!(discovery_for_metadata(&conn, "narrator", "Jane Roe", 50).unwrap().len(), 0);
     }
 }
 
