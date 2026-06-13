@@ -35,8 +35,8 @@ export function ChapterJournalDialog(props: {
   const [bmkLabel, setBmkLabel] = useState("");
 
   return (
-    <Dialog label={`Journal — ${chapter.title}`} onClose={props.onClose} className="chapter-journal-dialog">
-      <div style={{ padding: "40px 20px 20px", display: "flex", flexDirection: "column", gap: 20, minWidth: 340 }}>
+    <Dialog label="Chapter journal" title={`Journal — ${chapter.title}`} context="Notes, bookmarks, summary, and favorite for this chapter" onClose={props.onClose} className="chapter-journal-dialog">
+      <div style={{ padding: "8px 20px 20px", display: "flex", flexDirection: "column", gap: 20, minWidth: 340 }}>
 
         {/* Favorite toggle */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

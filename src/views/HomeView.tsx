@@ -52,7 +52,7 @@ export function HomeView(props: {
           title="Welcome to AudioShelf"
           action={
             <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-              {props.onOpenSettings && <Button variant="primary" onClick={props.onOpenSettings}>Choose your library / Go to Settings</Button>}
+              {props.onOpenSettings && <Button variant="primary" onClick={props.onOpenSettings}>Set up my library</Button>}
               <Button variant="secondary" onClick={props.onOpenLibrary}>Browse library</Button>
             </div>
           }
@@ -143,14 +143,16 @@ export function HomeView(props: {
           </ul>
         </section>
       )}
-      <section className="view-section">
-        <h2>Your listening</h2>
-        <div className="stats-grid">
-          <StatCard label="Total time" value={formatLong(stats.totalSecs)} />
-          <StatCard label="Chapters finished" value={stats.chaptersFinished} />
-          <StatCard label="Current streak" value={`${stats.streakDays} day${stats.streakDays === 1 ? "" : "s"}`} />
-        </div>
-      </section>
+      {!noHistory && (
+        <section className="view-section">
+          <h2>Your listening</h2>
+          <div className="stats-grid">
+            <StatCard label="Total time" value={formatLong(stats.totalSecs)} />
+            <StatCard label="Chapters finished" value={stats.chaptersFinished} />
+            <StatCard label="Current streak" value={`${stats.streakDays} day${stats.streakDays === 1 ? "" : "s"}`} />
+          </div>
+        </section>
+      )}
     </main>
   );
 }

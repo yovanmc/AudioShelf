@@ -172,4 +172,19 @@ describe("HomeView", () => {
     render(<HomeView {...baseProps()} />);
     expect(screen.queryByRole("heading", { name: "Forgotten" })).not.toBeInTheDocument();
   });
+
+  // CL-2: stats grid visibility tied to listening history
+  it("hides 'Your listening' stats grid when there is no history and shows it when there is", () => {
+    const noHistory: HomeData = {
+      keepListening: null,
+      recommendations: [],
+      stats: { totalSecs: 0, chaptersFinished: 0, streakDays: 0, recent: [] },
+    };
+    const { unmount } = render(<HomeView {...baseProps({ home: noHistory })} />);
+    expect(screen.queryByRole("heading", { name: "Your listening" })).not.toBeInTheDocument();
+    unmount();
+
+    render(<HomeView {...baseProps()} />);
+    expect(screen.getByRole("heading", { name: "Your listening" })).toBeInTheDocument();
+  });
 });

@@ -104,7 +104,7 @@ describe("LibraryView", () => {
 
   it("shows a no-matches message when results are all empty", () => {
     render(<LibraryView {...baseProps({ query: "zzz", results: emptyResults })} />);
-    expect(screen.getByText("No matches.")).toBeInTheDocument();
+    expect(screen.getByText("No matches for that search")).toBeInTheDocument();
   });
 
   it("leaves top-level navigation to the app shell", () => {
@@ -152,7 +152,7 @@ describe("LibraryView", () => {
       { id: 40, name: "Someone", workCount: 1, chapterCount: 1, unplayedCount: 1, totalSecs: 0, tags: [] },
     ];
     render(<LibraryView {...baseProps({ authors: noMatch, filterStatus: "done" })} />);
-    expect(screen.getByText("No authors match the current filters.")).toBeInTheDocument();
+    expect(screen.getByText("No creators match those filters")).toBeInTheDocument();
   });
 
   it("renders all four played-status tabs when not searching", () => {
@@ -255,7 +255,7 @@ describe("LibraryView", () => {
         {...baseProps({ query: "zzz", results: { authors: [], works: [], chapters: [] }, transcriptResults: [] })}
       />,
     );
-    expect(screen.getByText("No matches.")).toBeInTheDocument();
+    expect(screen.getByText("No matches for that search")).toBeInTheDocument();
   });
 
   it("inline save-search works without window.prompt", async () => {

@@ -80,6 +80,10 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .chips--end { margin-inline-start: auto; justify-content: flex-end; }
 .dialog { position: relative; }
 .dialog__close { position: absolute; top: var(--space-3); inset-inline-end: var(--space-3); }
+.dialog__header { margin: 0 0 4px; padding-right: 32px; /* clear the close button */ }
+.dialog__title { margin: 0; font-size: 1.05rem; }
+.dialog__context { margin: 4px 0 0; font-size: 0.85rem; }
+.field-hint { margin: 12px 0 4px; font-size: 0.8rem; }
 .chip--toggle { cursor: pointer; }
 .chip--on { background: var(--color-accent); color: #fff; }
 .player-bar__utility { gap: var(--space-3); border-inline-start: 1px solid var(--color-border); padding-inline-start: var(--space-4); }

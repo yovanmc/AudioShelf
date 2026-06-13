@@ -169,7 +169,7 @@ describe("JournalView", () => {
 
   it("shows empty state when journal has no entries", () => {
     render(<JournalView {...baseProps({ journal: { entries: [] } })} />);
-    expect(screen.getByText("Nothing in your journal yet")).toBeInTheDocument();
+    expect(screen.getByText("Your journal is empty")).toBeInTheDocument();
   });
 
   it("shows export status notice when provided", () => {

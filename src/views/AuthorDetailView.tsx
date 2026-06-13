@@ -226,14 +226,18 @@ export function AuthorDetailView(props: {
           <div className="muted">Creator</div>
           <h1 dir="auto">{detail.name}</h1>
           <p className="muted">{works.length} works · {chapters.length} chapters · {formatLong(totalSecs)} · {progress}% played</p>
+          <p className="muted field-hint">Tags — your own free-form labels (e.g. "cozy", "re-listen").</p>
           <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
           {props.onAddAuthorMeta && props.onRemoveAuthorMeta && (
-            <MetadataEditor
-              applied={detail.metadata}
-              suggestions={props.metaSuggestions ?? []}
-              onAdd={(facet, value) => props.onAddAuthorMeta!(detail.id, facet, value)}
-              onRemove={(termId) => props.onRemoveAuthorMeta!(detail.id, termId)}
-            />
+            <>
+              <p className="muted field-hint">Narrator, language &amp; mood — shared values you can browse and filter by in Discover.</p>
+              <MetadataEditor
+                applied={detail.metadata}
+                suggestions={props.metaSuggestions ?? []}
+                onAdd={(facet, value) => props.onAddAuthorMeta!(detail.id, facet, value)}
+                onRemove={(termId) => props.onRemoveAuthorMeta!(detail.id, termId)}
+              />
+            </>
           )}
           {firstUnplayed && <Button variant="primary" onClick={() => props.onPlayChapter({
             chapter: firstUnplayed.chapter,
@@ -378,7 +382,7 @@ export function AuthorDetailView(props: {
       ))}
       </div>
       {editState && editChapterInfo && editState.mode === "grouping" && (
-        <Dialog label="Edit grouping" onClose={() => setEditState(null)}>
+        <Dialog label="Edit grouping" title="Edit grouping" context={`Chapter ${editChapterInfo.chapter.chapterNo ?? ""} — change which work this chapter belongs to`} onClose={() => setEditState(null)}>
           <ChapterGroupingForm
             work={editChapterInfo.work}
             chapter={editChapterInfo.chapter}
@@ -388,7 +392,7 @@ export function AuthorDetailView(props: {
         </Dialog>
       )}
       {editState && editChapterInfo && editState.mode === "tags" && (
-        <Dialog label="Edit tags" onClose={() => setEditState(null)}>
+        <Dialog label="Edit tags" title="Edit tags & metadata" context={`Tags, narrator, language, and mood for "${editChapterInfo.chapter.title}"`} onClose={() => setEditState(null)}>
           <TagEditor
             tags={editChapterInfo.chapter.tags}
             allTags={props.allTags}
@@ -472,7 +476,7 @@ export function AuthorDetailView(props: {
         </section>
       )}
       {moreLikeThisWorkId !== null && moreLikeThisMap[moreLikeThisWorkId] !== undefined && (
-        <Dialog label="More like this" onClose={() => setMoreLikeThisWorkId(null)}>
+        <Dialog label="More like this" title="More like this" context={`Works similar to "${works.find((w) => w.id === moreLikeThisWorkId)?.baseTitle ?? "this work"}"`} onClose={() => setMoreLikeThisWorkId(null)}>
           <div style={{ padding: 8 }}>
             {moreLikeThisMap[moreLikeThisWorkId].length === 0
               ? <p className="muted">No similar works found in your library.</p>

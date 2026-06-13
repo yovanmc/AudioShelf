@@ -46,7 +46,7 @@ export function NowPlayingPanel(props: PlayerControls & {
     : "Plays this chapter, then stops.";
 
   return (
-    <Dialog label="Now playing" onClose={props.onClose}>
+    <Dialog label="Now playing" title="Now playing" onClose={props.onClose}>
       <div className="now-playing__layout">
         <WorkArtwork workId={context.workId} title={context.workTitle} size={360} />
         <div>

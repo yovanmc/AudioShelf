@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
+import { forwardRef, useEffect, useId, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 
 export function Button({ variant = "secondary", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger" }) {
@@ -66,8 +66,9 @@ export function TagGroup({ tags, max, align }: { tags: string[]; max?: number; a
   );
 }
 
-export function Dialog({ label, onClose, className, children }: { label: string; onClose: () => void; className?: string; children: ReactNode }) {
+export function Dialog({ label, title, context, onClose, className, children }: { label: string; title?: ReactNode; context?: ReactNode; onClose: () => void; className?: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
@@ -97,8 +98,14 @@ export function Dialog({ label, onClose, className, children }: { label: string;
   }, [onClose]);
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={ref} className={`card dialog ${className ?? ""}`} role="dialog" aria-modal="true" aria-label={label}>
+      <div ref={ref} className={`card dialog ${className ?? ""}`} role="dialog" aria-modal="true" aria-label={title ? undefined : label} aria-labelledby={title ? titleId : undefined}>
         <IconButton className="dialog__close" icon="close" label={`Close ${label}`} onClick={onClose} {...{ "data-autofocus": true }} />
+        {title && (
+          <div className="dialog__header">
+            <h2 className="dialog__title" id={titleId}>{title}</h2>
+            {context && <p className="dialog__context muted">{context}</p>}
+          </div>
+        )}
         {children}
       </div>
     </div>

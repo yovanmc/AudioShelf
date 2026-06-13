@@ -176,10 +176,10 @@ export function JournalView(props: {
       {journal === null ? (
         <EmptyState title="Loading…" />
       ) : filtered.length === 0 ? (
-        <EmptyState title="Nothing in your journal yet">
+        <EmptyState title="Your journal is empty">
           {entries.length === 0
-            ? "Open a chapter to add notes, bookmarks, summaries, and more."
-            : "No entries match the current filter."}
+            ? "While listening, open a chapter to jot a note, drop a bookmark, or save a takeaway — they'll collect here."
+            : "No entries match the current filter. Clear the filter to see everything."}
         </EmptyState>
       ) : (
         <div className="journal-groups" style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>

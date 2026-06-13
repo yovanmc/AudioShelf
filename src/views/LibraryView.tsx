@@ -159,7 +159,7 @@ export function LibraryView(props: {
           </div>
           <SortFilterBar sort={props.sort} onSortChange={props.onSortChange} filterTag={props.filterTag} onFilterTagChange={props.onFilterTagChange} allTags={props.allTags} />
           {visible.length === 0
-            ? <EmptyState title="No creators found">No authors match the current filters.</EmptyState>
+            ? <EmptyState title="No creators match those filters">Adjust or clear the filters above to see more of your library.</EmptyState>
             : <List height={LIST_HEIGHT} width="100%" itemCount={visible.length} itemSize={ROW_HEIGHT}>{Row}</List>}
         </>
       )}
@@ -181,7 +181,7 @@ function SearchResultsPanel({
   const hasTranscripts = transcriptHits && transcriptHits.length > 0;
   if (!results) return <div className="card empty-state">Searching...</div>;
   const hasAny = results.authors.length || results.works.length || results.chapters.length || hasTranscripts;
-  if (!hasAny) return <EmptyState title="No matches.">Try another creator, title, chapter, or tag.</EmptyState>;
+  if (!hasAny) return <EmptyState title="No matches for that search">Try another creator, title, chapter, or tag — or clear the search to browse everything.</EmptyState>;
   return (
     <div className="search-results">
       {results.authors.length > 0 && <section className="view-section"><h2>Authors</h2><div className="card">

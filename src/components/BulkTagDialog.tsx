@@ -13,7 +13,7 @@ export function BulkTagDialog({
   const [remove, setRemove] = useState("");
   const split = (s: string) => s.split(",").map((t) => t.trim()).filter(Boolean);
   return (
-    <Dialog label="Bulk tag" onClose={onClose} className="bulk-tag-dialog">
+    <Dialog label="Bulk tag" title="Add tags to selected" context={`Apply tags to ${count} selected work${count !== 1 ? "s" : ""} (existing tags are kept)`} onClose={onClose} className="bulk-tag-dialog">
       <h2>Tag {count} work{count !== 1 ? "s" : ""}</h2>
       <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         Add tags (comma-separated)

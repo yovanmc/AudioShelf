@@ -16,7 +16,7 @@ export function CollectionsView({
     <div className="page">
       <header className="page-header"><h1>Collections</h1>
         <p className="page-header__sub">Saved smart filters that update as your library changes.</p></header>
-      {collections.length === 0 && <p className="empty-note">No collections yet. Create one in Settings → Backup &amp; maintenance.</p>}
+      {collections.length === 0 && <p className="empty-note">No collections yet. A collection is a saved filter that updates itself — create one in Settings → Curation.</p>}
       <ul className="collection-list">
         {collections.map((c) => (
           <li key={c.id}>
