@@ -203,7 +203,7 @@ export function AuthorDetailView(props: {
         <CreatorAvatar authorId={detail.id} name={detail.name} size={112} />
         <div style={{ flex: 1 }}>
           <div className="muted">Creator</div>
-          <h1>{detail.name}</h1>
+          <h1 dir="auto">{detail.name}</h1>
           <p className="muted">{works.length} works · {chapters.length} chapters · {formatLong(totalSecs)} · {progress}% played</p>
           <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
           {firstUnplayed && <Button variant="primary" onClick={() => props.onPlayChapter({
@@ -248,7 +248,7 @@ export function AuthorDetailView(props: {
             </button>
             <WorkArtwork workId={w.id} title={w.baseTitle} size={72} />
             <div style={{ flex: 1 }}>
-              <h2 className="work-title">{w.baseTitle} ({w.chapters.length})</h2>
+              <h2 className="work-title" dir="auto">{w.baseTitle} ({w.chapters.length})</h2>
               <div className="muted">{w.chapters.length} chapters · {w.chapters.filter((chapter) => !chapter.played).length} unplayed · {formatLong(w.chapters.reduce((s, c) => s + c.durationSecs, 0))}</div>
               <ProgressBar value={w.chapters.length ? Math.round((w.chapters.filter((chapter) => chapter.played).length / w.chapters.length) * 100) : 0} label={`${w.baseTitle} progress`} />
             </div>
@@ -328,7 +328,7 @@ export function AuthorDetailView(props: {
                     onChange={(e) => props.onTogglePlayed(c.id, e.target.checked)}
                   />
                 </label>
-                <span style={{ minWidth: 0, flex: 1 }}><span className="chapter-title">{c.title}</span><span className="chapter-duration muted" style={{ display: "block" }}>Chapter {c.chapterNo} · {formatDuration(c.durationSecs)}</span></span>
+                <span style={{ minWidth: 0, flex: 1 }}><span className="chapter-title" dir="auto">{c.title}</span><span className="chapter-duration muted" style={{ display: "block" }}>Chapter {c.chapterNo} · {formatDuration(c.durationSecs)}</span></span>
                 <TagGroup tags={c.tags} />
                 <Menu
                   label={`More options for '${c.title}'`}

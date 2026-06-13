@@ -42,7 +42,7 @@ export function WorkCard({ workId, title, authorId, authorName, tags = [], reaso
             {reason}
           </div>
         )}
-        <h3 className="work-card__title">{title}</h3>
+        <h3 className="work-card__title" dir="auto">{title}</h3>
         <CreatorIdentity authorId={authorId} authorName={authorName} onOpen={onOpenAuthor} />
         {meta && <div className="muted">{meta}</div>}
         <TagGroup tags={tags.slice(0, 4)} />

@@ -7,7 +7,7 @@ export function CreatorIdentity({ authorId, authorName, secondary, size = 32, on
   const content = <>
     <CreatorAvatar authorId={authorId} name={authorName} size={size} decorative />
     <span className="creator-identity__copy">
-      <span className="creator-identity__name">{authorName}</span>
+      <span className="creator-identity__name" dir="auto">{authorName}</span>
       {secondary && <span className="muted">{secondary}</span>}
     </span>
   </>;

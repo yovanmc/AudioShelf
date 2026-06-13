@@ -54,10 +54,10 @@ export function NowPlayingPanel(props: PlayerControls & {
             onClick={() => props.onOpenAuthor(context.authorId)}
             style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer" }}
           >
-            <h1 style={{ margin: 0 }}>{context.workTitle}</h1>
+            <h1 style={{ margin: 0 }} dir="auto">{context.workTitle}</h1>
           </button>
           <CreatorIdentity authorId={context.authorId} authorName={context.authorName} size={44} onOpen={() => props.onOpenAuthor(context.authorId)} />
-          <p>{context.chapter.title} · Chapter {context.chapter.chapterNo}</p>
+          <p><span dir="auto">{context.chapter.title}</span> · Chapter {context.chapter.chapterNo}</p>
           <p className="muted" style={{ fontSize: "0.9rem", margin: 0 }}>
             Chapter {context.chapter.chapterNo} of {context.workTotalChapters}
           </p>
@@ -89,7 +89,7 @@ export function NowPlayingPanel(props: PlayerControls & {
                           <Icon name={c.played ? "check" : "circle"} className="chapter-jump__dot-icon" />
                           <span className="visually-hidden">{c.played ? "Played" : "Not played"}</span>
                         </span>
-                        <span className="chapter-jump__title">Ch {c.chapterNo} — {c.title}</span>
+                        <span className="chapter-jump__title" dir="auto">Ch {c.chapterNo} — {c.title}</span>
                         {c.played ? <span className="muted" aria-hidden="true">played</span> : null}
                       </button>
                     </li>
