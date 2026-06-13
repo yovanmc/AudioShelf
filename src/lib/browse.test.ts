@@ -35,6 +35,8 @@ function makeWork(
     id: Math.random(),
     baseTitle,
     tags: [],
+    reEntryNote: "",
+    completionRating: "",
     chapters: chapters.map((c, i) => ({
       id: i + 1,
       title: `${baseTitle} ch${i + 1}`,
@@ -42,6 +44,9 @@ function makeWork(
       format: "mp3",
       filePath: `x/${baseTitle}_ch${i + 1}.mp3`,
       tags: [],
+      userSummary: "",
+      takeaway: "",
+      isFavorite: false,
       ...c,
     })),
   };

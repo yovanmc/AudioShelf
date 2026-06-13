@@ -9,8 +9,24 @@ export interface AuthorRow {
 export interface ChapterRow {
   id: number; title: string; chapterNo: number; format: string;
   durationSecs: number; filePath: string; played: boolean; tags: string[];
+  userSummary: string; takeaway: string; isFavorite: boolean;
 }
-export interface WorkRow { id: number; baseTitle: string; tags: string[]; chapters: ChapterRow[]; }
+export interface WorkRow {
+  id: number; baseTitle: string; tags: string[]; chapters: ChapterRow[];
+  reEntryNote: string; completionRating: string;
+}
+
+export interface ChapterNote { id: number; chapterId: number; positionSecs: number; body: string; createdAt: number; }
+export interface ChapterBookmark { id: number; chapterId: number; positionSecs: number; label: string; createdAt: number; }
+export interface ChapterJournal { notes: ChapterNote[]; bookmarks: ChapterBookmark[]; }
+export interface JournalEntry {
+  kind: "note" | "bookmark" | "summary" | "takeaway" | "favorite" | "re_entry" | "rating";
+  authorId: number; authorName: string; workId: number; workTitle: string;
+  chapterId: number | null; chapterTitle: string | null;
+  positionSecs: number | null; body: string; createdAt: number | null;
+}
+export interface JournalResults { entries: JournalEntry[]; }
+export interface JournalExportReport { path: string; format: string; entryCount: number; }
 export interface AuthorDetail { id: number; name: string; tags: string[]; works: WorkRow[]; }
 
 export interface AuthorHit { authorId: number; authorName: string; }
@@ -233,6 +249,31 @@ export const searchTranscripts = (query: string) =>
   invoke<TranscriptHit[]>("search_transcripts", { query });
 export const getChapterTranscript = (chapterId: number) =>
   invoke<string | null>("get_chapter_transcript", { chapterId });
+
+export const setChapterSummary = (chapterId: number, summary: string) =>
+  invoke("set_chapter_summary", { chapterId, summary });
+export const setChapterTakeaway = (chapterId: number, takeaway: string) =>
+  invoke("set_chapter_takeaway", { chapterId, takeaway });
+export const setChapterFavorite = (chapterId: number, favorite: boolean) =>
+  invoke("set_chapter_favorite", { chapterId, favorite });
+export const setWorkReEntryNote = (workId: number, note: string) =>
+  invoke("set_work_re_entry_note", { workId, note });
+export const setWorkRating = (workId: number, rating: string) =>
+  invoke("set_work_rating", { workId, rating });
+export const getChapterJournal = (chapterId: number) =>
+  invoke<ChapterJournal>("get_chapter_journal", { chapterId });
+export const addChapterNote = (chapterId: number, positionSecs: number, body: string) =>
+  invoke<ChapterNote>("add_chapter_note", { chapterId, positionSecs, body, nowMs: Date.now() });
+export const deleteChapterNote = (noteId: number) =>
+  invoke("delete_chapter_note", { noteId });
+export const addBookmark = (chapterId: number, positionSecs: number, label: string) =>
+  invoke<ChapterBookmark>("add_bookmark", { chapterId, positionSecs, label, nowMs: Date.now() });
+export const deleteBookmark = (bookmarkId: number) =>
+  invoke("delete_bookmark", { bookmarkId });
+export const queryJournal = (query: string) =>
+  invoke<JournalResults>("query_journal", { query });
+export const exportJournal = (path: string, format: "markdown" | "json") =>
+  invoke<JournalExportReport>("export_journal", { path, format });
 
 export const fileUrl = (p: string) => convertFileSrc(p);
 

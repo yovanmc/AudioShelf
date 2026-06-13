@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AuthorDetail, ChapterRow, DiscoveryWork, PlaybackContext, SeriesView, WorkRow } from "../lib/api";
+import type { AuthorDetail, ChapterRow, ChapterJournal, DiscoveryWork, PlaybackContext, SeriesView, WorkRow } from "../lib/api";
 import { TagEditor } from "./TagEditor";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
 import { Button, Dialog, ProgressBar, SectionHeading, TagGroup } from "../components/ui";
@@ -8,6 +8,64 @@ import { Menu } from "../components/Menu";
 import { Icon } from "../components/Icon";
 import { formatDuration, formatLong } from "../lib/time";
 import { sortWorks, type WorkSort } from "../lib/browse";
+import { ChapterJournalDialog } from "./ChapterJournalDialog";
+
+/** Compact inline "Where I left off" note field. */
+function WorkReEntryField(props: {
+  workId: number;
+  value: string;
+  onSave: (workId: number, note: string) => void;
+}) {
+  const [text, setText] = useState(props.value);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <span className="muted" style={{ fontSize: "0.82rem", whiteSpace: "nowrap" }}>Where I left off:</span>
+      <input
+        aria-label="Where I left off note"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        style={{ fontSize: "0.85rem", minWidth: 120, maxWidth: 240 }}
+      />
+      <button
+        type="button"
+        className="chip chip--toggle"
+        aria-label="Save re-entry note"
+        onClick={() => props.onSave(props.workId, text)}
+      >
+        Save
+      </button>
+    </span>
+  );
+}
+
+/** Compact inline one-word rating field. */
+function WorkRatingField(props: {
+  workId: number;
+  value: string;
+  onSave: (workId: number, rating: string) => void;
+}) {
+  const [text, setText] = useState(props.value);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <span className="muted" style={{ fontSize: "0.82rem", whiteSpace: "nowrap" }}>Rating:</span>
+      <input
+        aria-label="Completion rating"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        style={{ fontSize: "0.85rem", width: 90 }}
+        placeholder="one word…"
+      />
+      <button
+        type="button"
+        className="chip chip--toggle"
+        aria-label="Save rating"
+        onClick={() => props.onSave(props.workId, text)}
+      >
+        Save
+      </button>
+    </span>
+  );
+}
 
 function ChapterGroupingForm(props: {
   work: WorkRow;
@@ -48,7 +106,7 @@ function ChapterGroupingForm(props: {
   );
 }
 
-type EditState = { chapterId: number; mode: "grouping" | "tags" } | null;
+type EditState = { chapterId: number; mode: "grouping" | "tags" | "journal" } | null;
 
 export function AuthorDetailView(props: {
   detail: AuthorDetail;
@@ -75,6 +133,20 @@ export function AuthorDetailView(props: {
   workTagSuggestions?: Record<number, string[]>;
   /** Called to open the author detail of another suggested work. */
   onOpenAuthor?: (authorId: number) => void;
+  // ---- M17 journal props (all optional so existing tests stay unbroken) ----
+  /** Journal data for the currently open chapter journal dialog. Fetched + supplied by App. */
+  openJournal?: ChapterJournal | null;
+  /** Called when the Journal dialog is opened so App can fetch the journal for the chapter. */
+  onOpenJournal?: (chapterId: number) => void;
+  onSetChapterSummary?: (chapterId: number, text: string) => void;
+  onSetChapterTakeaway?: (chapterId: number, text: string) => void;
+  onSetChapterFavorite?: (chapterId: number, isFavorite: boolean) => void;
+  onAddChapterNote?: (chapterId: number, positionSecs: number, body: string) => void;
+  onDeleteChapterNote?: (noteId: number) => void;
+  onAddBookmark?: (chapterId: number, positionSecs: number, label: string) => void;
+  onDeleteBookmark?: (bookmarkId: number) => void;
+  onSetWorkReEntryNote?: (workId: number, note: string) => void;
+  onSetWorkRating?: (workId: number, rating: string) => void;
 }) {
   const { detail, series = [], moreLikeThisMap = {}, workTagSuggestions = {} } = props;
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
@@ -184,6 +256,24 @@ export function AuthorDetailView(props: {
               >More like this</button>
             )}
           </div>
+          {(props.onSetWorkReEntryNote || props.onSetWorkRating) && (
+            <div className="work-journal-meta" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginTop: 8 }}>
+              {props.onSetWorkReEntryNote && (
+                <WorkReEntryField
+                  workId={w.id}
+                  value={w.reEntryNote}
+                  onSave={props.onSetWorkReEntryNote}
+                />
+              )}
+              {props.onSetWorkRating && (
+                <WorkRatingField
+                  workId={w.id}
+                  value={w.completionRating}
+                  onSave={props.onSetWorkRating}
+                />
+              )}
+            </div>
+          )}
           {!collapsed.has(w.id) && (
           <ul className="recent-list">
             {w.chapters.map((c) => (
@@ -211,6 +301,7 @@ export function AuthorDetailView(props: {
                   items={[
                     { label: "Edit grouping", onSelect: () => setEditState({ chapterId: c.id, mode: "grouping" }) },
                     { label: "Edit tags", onSelect: () => setEditState({ chapterId: c.id, mode: "tags" }) },
+                    { label: "Journal", onSelect: () => { setEditState({ chapterId: c.id, mode: "journal" }); props.onOpenJournal?.(c.id); } },
                   ]}
                 />
               </li>
@@ -237,6 +328,20 @@ export function AuthorDetailView(props: {
             onChange={(t) => props.onSetChapterTags(editChapterInfo.chapter.id, t)}
           />
         </Dialog>
+      )}
+      {editState && editChapterInfo && editState.mode === "journal" && props.openJournal && (
+        <ChapterJournalDialog
+          chapter={editChapterInfo.chapter}
+          journal={props.openJournal}
+          onClose={() => setEditState(null)}
+          onSetSummary={props.onSetChapterSummary ?? (() => {})}
+          onSetTakeaway={props.onSetChapterTakeaway ?? (() => {})}
+          onSetFavorite={props.onSetChapterFavorite ?? (() => {})}
+          onAddNote={props.onAddChapterNote ?? (() => {})}
+          onDeleteNote={props.onDeleteChapterNote ?? (() => {})}
+          onAddBookmark={props.onAddBookmark ?? (() => {})}
+          onDeleteBookmark={props.onDeleteBookmark ?? (() => {})}
+        />
       )}
       {series.length > 0 && (
         <section className="series-section view-section">

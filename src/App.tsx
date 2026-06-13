@@ -11,10 +11,13 @@ import {
   listTagsWithCounts, renameTag, mergeTags, setTagAlias, clearTagAlias,
   detectSeries, applySeries, getAuthorSeries,
   searchTranscripts, getChapterTranscript,
+  setChapterSummary, setChapterTakeaway, setChapterFavorite,
+  setWorkReEntryNote, setWorkRating,
+  getChapterJournal, addChapterNote, deleteChapterNote, addBookmark, deleteBookmark,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
-  type SeriesView, type TranscriptHit,
+  type SeriesView, type TranscriptHit, type ChapterJournal,
 } from "./lib/api";
 import { HomeView } from "./views/HomeView";
 import { LibraryView } from "./views/LibraryView";
@@ -164,6 +167,10 @@ export default function App() {
   const [moreLikeThisMap, setMoreLikeThisMap] = useState<Record<number, DiscoveryWork[]>>({});
   const [workTagSuggestions, setWorkTagSuggestions] = useState<Record<number, string[]>>({});
 
+  // ---- M17: chapter journal state ----
+  const [openJournal, setOpenJournal] = useState<ChapterJournal | null>(null);
+  const [journalChapterId, setJournalChapterId] = useState<number | null>(null);
+
   useEffect(() => {
     const ctx = current;
     if (!ctx) { setCurrentWorkChapters([]); return; }
@@ -231,6 +238,71 @@ export default function App() {
     await setChapterTags(chapterId, tags);
     setDetail(await getAuthorDetail(detailRef.current.id));
     await refreshTags();
+  }
+
+  // ---- M17 journal helpers ----
+
+  async function refreshJournal(chapterId: number) {
+    const j = await getChapterJournal(chapterId);
+    setOpenJournal(j);
+  }
+
+  async function refreshDetailAfterJournalMutation() {
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  }
+
+  async function handleOpenJournal(chapterId: number) {
+    setJournalChapterId(chapterId);
+    const j = await getChapterJournal(chapterId);
+    setOpenJournal(j);
+  }
+
+  async function handleSetChapterSummary(chapterId: number, text: string) {
+    await setChapterSummary(chapterId, text);
+    await refreshDetailAfterJournalMutation();
+    await refreshJournal(chapterId);
+  }
+
+  async function handleSetChapterTakeaway(chapterId: number, text: string) {
+    await setChapterTakeaway(chapterId, text);
+    await refreshDetailAfterJournalMutation();
+    await refreshJournal(chapterId);
+  }
+
+  async function handleSetChapterFavorite(chapterId: number, isFavorite: boolean) {
+    await setChapterFavorite(chapterId, isFavorite);
+    await refreshDetailAfterJournalMutation();
+    await refreshJournal(chapterId);
+  }
+
+  async function handleAddChapterNote(chapterId: number, positionSecs: number, body: string) {
+    await addChapterNote(chapterId, positionSecs, body);
+    await refreshJournal(chapterId);
+  }
+
+  async function handleDeleteChapterNote(noteId: number) {
+    await deleteChapterNote(noteId);
+    if (journalChapterId !== null) await refreshJournal(journalChapterId);
+  }
+
+  async function handleAddBookmark(chapterId: number, positionSecs: number, label: string) {
+    await addBookmark(chapterId, positionSecs, label);
+    await refreshJournal(chapterId);
+  }
+
+  async function handleDeleteBookmark(bookmarkId: number) {
+    await deleteBookmark(bookmarkId);
+    if (journalChapterId !== null) await refreshJournal(journalChapterId);
+  }
+
+  async function handleSetWorkReEntryNote(workId: number, note: string) {
+    await setWorkReEntryNote(workId, note);
+    await refreshDetailAfterJournalMutation();
+  }
+
+  async function handleSetWorkRating(workId: number, rating: string) {
+    await setWorkRating(workId, rating);
+    await refreshDetailAfterJournalMutation();
   }
 
   async function doRenameTag(from: string, to: string) {
@@ -1019,6 +1091,17 @@ export default function App() {
           onRequestMoreLikeThis={requestMoreLikeThis}
           workTagSuggestions={workTagSuggestions}
           onOpenAuthor={openAuthor}
+          openJournal={openJournal}
+          onOpenJournal={handleOpenJournal}
+          onSetChapterSummary={handleSetChapterSummary}
+          onSetChapterTakeaway={handleSetChapterTakeaway}
+          onSetChapterFavorite={handleSetChapterFavorite}
+          onAddChapterNote={handleAddChapterNote}
+          onDeleteChapterNote={handleDeleteChapterNote}
+          onAddBookmark={handleAddBookmark}
+          onDeleteBookmark={handleDeleteBookmark}
+          onSetWorkReEntryNote={handleSetWorkReEntryNote}
+          onSetWorkRating={handleSetWorkRating}
         />
       );
     }

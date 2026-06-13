@@ -14,6 +14,9 @@ const nextChapter: ChapterRow = {
   filePath: "/lib/Alice/Tale 2.mp3",
   played: false,
   tags: [],
+  userSummary: "",
+  takeaway: "",
+  isFavorite: false,
 };
 
 const home: HomeData = {
