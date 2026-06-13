@@ -212,6 +212,33 @@ pub struct HomeData {
     pub stats: ListeningStats,
 }
 
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ChapterNote {
+    pub id: i64,
+    pub chapter_id: i64,
+    pub position_secs: i64,
+    pub body: String,
+    pub created_at: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ChapterBookmark {
+    pub id: i64,
+    pub chapter_id: i64,
+    pub position_secs: i64,
+    pub label: String,
+    pub created_at: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChapterJournal {
+    pub notes: Vec<ChapterNote>,
+    pub bookmarks: Vec<ChapterBookmark>,
+}
+
 /// One field proposed to change based on embedded audio metadata.
 /// `field` is one of: "title" (work base_title), "order" (chapter_no), "tag" (genre).
 #[derive(Serialize, serde::Deserialize, Debug, PartialEq, Clone)]

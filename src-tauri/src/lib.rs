@@ -90,7 +90,12 @@ pub fn run() {
             commands::get_chapter_transcript,
             commands::get_dormant_works,
             commands::get_more_like_this,
-            commands::suggest_tags
+            commands::suggest_tags,
+            commands::get_chapter_journal,
+            commands::add_chapter_note,
+            commands::delete_chapter_note,
+            commands::add_bookmark,
+            commands::delete_bookmark
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
