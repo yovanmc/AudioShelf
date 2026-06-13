@@ -18,11 +18,12 @@ import {
   queryJournal, exportJournal,
   queryInsights, exportRecapPng, seedPlayEvents,
   advancedSearch, listSavedSearches, createSavedSearch, deleteSavedSearch,
+  listCollections, createCollection, deleteCollection, reorderCollections, resolveCollection,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
   type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
-  type InsightsData, type ScopedResults, type SavedSearch,
+  type InsightsData, type ScopedResults, type SavedSearch, type Collection,
 } from "./lib/api";
 import { hasScopedTokens } from "./lib/query";
 import { buildRecapSvg } from "./lib/recap";
@@ -36,6 +37,7 @@ import { RenameView } from "./views/RenameView";
 import { MetadataView } from "./views/MetadataView";
 import { SettingsView } from "./views/SettingsView";
 import { ScanView } from "./views/ScanView";
+import { CollectionsView } from "./components/CollectionsView";
 import { PlayerBar } from "./player/PlayerBar";
 import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
@@ -92,7 +94,8 @@ type Route =
   | { kind: "metadata" }
   | { kind: "settings"; firstRun: boolean }
   | { kind: "journal" }
-  | { kind: "insights" };
+  | { kind: "insights" }
+  | { kind: "collections" };
 
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
@@ -102,6 +105,7 @@ function shellRoute(route: Route): ShellRoute {
   if (route.kind === "settings") return "settings";
   if (route.kind === "journal") return "journal";
   if (route.kind === "insights") return "insights";
+  if (route.kind === "collections") return "collections";
   return "library";
 }
 
@@ -157,6 +161,10 @@ export default function App() {
 
   // ---- M19 saved searches ----
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+
+  // ---- M19 smart collections ----
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [resolvedCollections, setResolvedCollections] = useState<Record<number, ScopedResults | undefined>>({});
 
   // ---- command palette (Ctrl+K) ----
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -778,8 +786,38 @@ export default function App() {
     await refreshSavedSearches();
   }
 
+  async function refreshCollections() {
+    const list = await listCollections().catch(() => [] as Collection[]);
+    setCollections(list);
+  }
+
+  function openCollections() {
+    void listCollections().then(setCollections);
+    setRoute({ kind: "collections" });
+  }
+
+  const onResolveCollection = (id: number) => {
+    void resolveCollection(id).then((r) => setResolvedCollections((m) => ({ ...m, [id]: r })));
+  };
+
+  async function handleCreateCollection(name: string, query: string) {
+    await createCollection(name, query, Date.now());
+    await refreshCollections();
+  }
+
+  async function handleDeleteCollection(id: number) {
+    await deleteCollection(id);
+    await refreshCollections();
+  }
+
+  async function handleReorderCollections(ids: number[]) {
+    await reorderCollections(ids);
+    await refreshCollections();
+  }
+
   useEffect(() => {
     void refreshSavedSearches();
+    void refreshCollections();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1572,6 +1610,10 @@ export default function App() {
           onMergeTags={doMergeTags}
           onSetTagAlias={doSetTagAlias}
           onClearTagAlias={doClearTagAlias}
+          collections={collections}
+          onCreateCollection={handleCreateCollection}
+          onDeleteCollection={handleDeleteCollection}
+          onReorderCollections={handleReorderCollections}
         />
       );
     }
@@ -1592,6 +1634,16 @@ export default function App() {
           now={insightsNow}
           onExportRecap={handleExportRecap}
           recapStatus={recapStatus}
+        />
+      );
+    }
+    if (route.kind === "collections") {
+      return (
+        <CollectionsView
+          collections={collections}
+          resolved={resolvedCollections}
+          onResolve={onResolveCollection}
+          onOpenAuthor={openAuthor}
         />
       );
     }
@@ -1673,6 +1725,7 @@ export default function App() {
           onSettings={openSettings}
           onJournal={openJournalView}
           onInsights={openInsights}
+          onCollections={openCollections}
           player={player}
         >
           {view}

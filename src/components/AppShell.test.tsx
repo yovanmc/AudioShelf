@@ -16,6 +16,7 @@ function props(overrides = {}) {
     onSettings: vi.fn(),
     onJournal: vi.fn(),
     onInsights: vi.fn(),
+    onCollections: vi.fn(),
     children: <main>Page</main>,
     player: null,
     ...overrides,

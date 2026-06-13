@@ -4,7 +4,7 @@ export type IconName =
   | "play" | "pause" | "back15" | "back30" | "forward15" | "forward30"
   | "volume" | "sleep" | "search" | "check" | "tag"
   | "expand" | "collapse" | "close" | "refresh" | "folder"
-  | "journal" | "insights";
+  | "journal" | "insights" | "collections";
 
 const paths: Record<IconName, string> = {
   home: "M3 11.5 12 4l9 7.5V21h-6v-6H9v6H3z",
@@ -35,6 +35,7 @@ const paths: Record<IconName, string> = {
   folder: "M3 6h7l2 2h9v11H3z",
   journal: "M4 3h12l4 4v14H4zM4 3v18m8-18v5H8m4 0h4M8 12h8m-8 4h5",
   insights: "M5 13v7m7-11v11m7-15v15M3 20h18",
+  collections: "M3 7h18M3 12h18M3 17h18m-9-14v4m-6 0v4m12-4v4",
 };
 
 export function Icon({ name, className = "" }: { name: IconName; className?: string }) {

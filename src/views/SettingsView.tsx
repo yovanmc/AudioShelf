@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ScanResult, TagStat } from "../lib/api";
+import type { ScanResult, TagStat, Collection } from "../lib/api";
 import { Button, Card, Notice, PageHeader } from "../components/ui";
 import { Icon } from "../components/Icon";
 import type { HomeShelf, ShelfKind } from "../lib/shelves";
@@ -181,6 +181,11 @@ export function SettingsView(props: {
   onMergeTags?: (sources: string[], target: string) => void;
   onSetTagAlias?: (alias: string, canonical: string) => void;
   onClearTagAlias?: (alias: string) => void;
+  // Smart collections (optional — existing tests omit these)
+  collections?: Collection[];
+  onCreateCollection?: (name: string, query: string) => void;
+  onDeleteCollection?: (id: number) => void;
+  onReorderCollections?: (ids: number[]) => void;
 }) {
   const { root, lastScan, scanError, busy, firstRun } = props;
   const shelves = props.shelves ?? [];
@@ -303,6 +308,127 @@ export function SettingsView(props: {
           />
         </Card>
       )}
+
+      {!firstRun && props.collections !== undefined && (
+        <CollectionsManager
+          collections={props.collections}
+          onCreateCollection={props.onCreateCollection}
+          onDeleteCollection={props.onDeleteCollection}
+          onReorderCollections={props.onReorderCollections}
+        />
+      )}
     </main>
+  );
+}
+
+function CollectionsManager({
+  collections,
+  onCreateCollection,
+  onDeleteCollection,
+  onReorderCollections,
+}: {
+  collections: Collection[];
+  onCreateCollection?: (name: string, query: string) => void;
+  onDeleteCollection?: (id: number) => void;
+  onReorderCollections?: (ids: number[]) => void;
+}) {
+  const [newName, setNewName] = useState("");
+  const [newQuery, setNewQuery] = useState("");
+
+  function handleCreate() {
+    const name = newName.trim();
+    const query = newQuery.trim();
+    if (!name || !query) return;
+    onCreateCollection?.(name, query);
+    setNewName("");
+    setNewQuery("");
+  }
+
+  function moveCollection(id: number, dir: -1 | 1) {
+    const ids = collections.map((c) => c.id);
+    const i = ids.indexOf(id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    const next = [...ids];
+    [next[i], next[j]] = [next[j], next[i]];
+    onReorderCollections?.(next);
+  }
+
+  return (
+    <Card style={{ padding: 24, marginTop: 16 }}>
+      <h2>Collections</h2>
+      <p className="muted">
+        Saved smart filters — each collection runs a scoped query against your library and updates automatically.
+      </p>
+
+      {collections.length === 0 && (
+        <p className="muted">No collections yet. Add one below.</p>
+      )}
+
+      {collections.map((c, index) => (
+        <div
+          key={c.id}
+          className="shelf-row card"
+          style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", marginBottom: 6 }}
+        >
+          <span style={{ flex: 1 }}>
+            <strong>{c.name}</strong>{" "}
+            <code className="muted" style={{ fontSize: "0.85em" }}>{c.query}</code>
+          </span>
+          <Button
+            variant="secondary"
+            onClick={() => moveCollection(c.id, -1)}
+            disabled={index === 0}
+            aria-label={`Move ${c.name} up`}
+          >
+            ▲
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => moveCollection(c.id, 1)}
+            disabled={index === collections.length - 1}
+            aria-label={`Move ${c.name} down`}
+          >
+            ▼
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => onDeleteCollection?.(c.id)}
+            aria-label={`Delete ${c.name}`}
+          >
+            Delete
+          </Button>
+        </div>
+      ))}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+        <h3 style={{ margin: 0 }}>New collection</h3>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <label>
+            Name
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="My collection"
+              aria-label="Collection name"
+              style={{ marginLeft: 6 }}
+            />
+          </label>
+          <label>
+            Query
+            <input
+              type="text"
+              value={newQuery}
+              onChange={(e) => setNewQuery(e.target.value)}
+              placeholder="tag:cozy status:unplayed"
+              aria-label="Collection query"
+              style={{ marginLeft: 6 }}
+            />
+          </label>
+          <Button variant="primary" onClick={handleCreate}>Add</Button>
+        </div>
+      </div>
+    </Card>
   );
 }
