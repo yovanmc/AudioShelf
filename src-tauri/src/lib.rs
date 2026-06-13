@@ -7,6 +7,7 @@ mod insights;
 mod launch;
 mod model;
 mod natsort;
+mod query;
 mod regroup;
 mod rename;
 mod scan;
@@ -119,6 +120,7 @@ pub mod testing {
     pub use crate::model::{MetadataApplyReport, MetadataProposal};
     pub use crate::regroup::regroup_author;
     pub use crate::rename::{build_plan, execute, undo, ItemStatus};
+    pub use crate::query::{parse_query, CmpOp, DurationFilter, ParsedQuery, StatusFilter};
     pub use crate::scan::scan_into;
     pub use crate::transcripts::parse_srt_vtt;
 }
