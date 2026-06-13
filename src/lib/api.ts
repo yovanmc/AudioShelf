@@ -13,7 +13,7 @@ export interface ChapterRow {
 }
 export interface WorkRow {
   id: number; baseTitle: string; tags: string[]; chapters: ChapterRow[];
-  reEntryNote: string; completionRating: string;
+  reEntryNote: string; completionRating: string; chapterSort: string;
 }
 
 export interface ChapterNote { id: number; chapterId: number; positionSecs: number; body: string; createdAt: number; }
@@ -326,6 +326,60 @@ export const fileUrl = (p: string) => convertFileSrc(p);
 export const getSetting = (key: string) => invoke<string | null>("get_setting", { key });
 export const setSetting = (key: string, value: string) =>
   invoke("set_setting", { key, value });
+
+// M19 Power & Scale — interfaces
+export interface ScopedWork {
+  workId: number; baseTitle: string; authorId: number; authorName: string;
+  totalSecs: number; chapterCount: number; playedCount: number; tags: string[];
+}
+export interface ScopedResults {
+  works: ScopedWork[]; tags: string[]; text: string; durationLabel: string; statusLabel: string;
+}
+export interface SavedSearch { id: number; name: string; query: string; }
+export interface Collection { id: number; name: string; query: string; position: number; }
+export interface HealthItem {
+  chapterId: number; title: string; workTitle: string; authorName: string; filePath: string; sizeBytes: number;
+}
+export interface HealthReport {
+  missingFiles: HealthItem[]; zeroByte: HealthItem[]; unreadable: HealthItem[];
+  schemaVersion: number; latestSchema: number; schemaDrift: boolean;
+}
+export interface ImportReport {
+  tagsAdded: number; playedMarked: number; favoritesMarked: number; journalFieldsFilled: number;
+  notesAdded: number; bookmarksAdded: number; collectionsAdded: number; searchesAdded: number;
+  unmatchedAuthors: number; unmatchedWorks: number; unmatchedChapters: number;
+}
+
+// M19 Power & Scale — invoke wrappers
+export const advancedSearch = (query: string) => invoke<ScopedResults>("advanced_search", { query });
+
+export const createSavedSearch = (name: string, query: string, createdAt: number) =>
+  invoke<number>("create_saved_search", { name, query, createdAt });
+export const listSavedSearches = () => invoke<SavedSearch[]>("list_saved_searches");
+export const deleteSavedSearch = (id: number) => invoke("delete_saved_search", { id });
+
+export const createCollection = (name: string, query: string, createdAt: number) =>
+  invoke<number>("create_collection", { name, query, createdAt });
+export const listCollections = () => invoke<Collection[]>("list_collections");
+export const updateCollection = (id: number, name: string, query: string) =>
+  invoke("update_collection", { id, name, query });
+export const deleteCollection = (id: number) => invoke("delete_collection", { id });
+export const reorderCollections = (ids: number[]) => invoke("reorder_collections", { ids });
+export const resolveCollection = (id: number) => invoke<ScopedResults>("resolve_collection", { id });
+
+export const bulkSetWorkTags = (workIds: number[], add: string[], remove: string[]) =>
+  invoke("bulk_set_work_tags", { workIds, add, remove });
+
+export const setWorkChapterSort = (workId: number, sort: string) =>
+  invoke("set_work_chapter_sort", { workId, sort });
+
+export const libraryHealthScan = () => invoke<HealthReport>("library_health_scan");
+
+export const exportCurationJson = (path: string, exportedAt: number) =>
+  invoke("export_curation_json", { path, exportedAt });
+export const exportDbSnapshot = (path: string) => invoke("export_db_snapshot", { path });
+export const importCurationJson = (path: string) => invoke<ImportReport>("import_curation_json", { path });
+export const stageDbRestore = (src: string) => invoke("stage_db_restore", { src });
 
 /**
  * Open the OS folder picker. Resolves to the chosen absolute path, or `null` if

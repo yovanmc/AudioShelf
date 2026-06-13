@@ -192,6 +192,7 @@ describe("loadShelfItems — creator", () => {
           tags: ["fiction"],
           reEntryNote: "",
           completionRating: "",
+          chapterSort: "",
           chapters: [
             { id: 1, title: "Ch 1", chapterNo: 1, format: "mp3", durationSecs: 300, filePath: "a.mp3", played: true, tags: [], userSummary: "", takeaway: "", isFavorite: false },
             { id: 2, title: "Ch 2", chapterNo: 2, format: "mp3", durationSecs: 400, filePath: "b.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
@@ -203,6 +204,7 @@ describe("loadShelfItems — creator", () => {
           tags: [],
           reEntryNote: "",
           completionRating: "",
+          chapterSort: "",
           chapters: [
             { id: 3, title: "Ch 1", chapterNo: 1, format: "mp3", durationSecs: 600, filePath: "c.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false },
           ],
