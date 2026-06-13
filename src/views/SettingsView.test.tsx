@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SettingsView } from "./SettingsView";
 import type { HomeShelf } from "../lib/shelves";
@@ -237,6 +237,52 @@ describe("SettingsView — Home shelves", () => {
       />,
     );
     expect(screen.getByText(/no shelves yet/i)).toBeInTheDocument();
+  });
+});
+
+describe("SettingsView — Library tools", () => {
+  it("renders both Library tools buttons and fires their callbacks", () => {
+    const onOpenRename = vi.fn();
+    const onOpenMetadata = vi.fn();
+    render(
+      <SettingsView
+        {...baseSettingsProps({ onOpenRename, onOpenMetadata })}
+      />,
+    );
+    const renameBtn = screen.getByRole("button", { name: "Standardize file names…" });
+    const metaBtn = screen.getByRole("button", { name: "Import metadata from files…" });
+    expect(renameBtn).toBeInTheDocument();
+    expect(metaBtn).toBeInTheDocument();
+    fireEvent.click(renameBtn);
+    expect(onOpenRename).toHaveBeenCalledOnce();
+    fireEvent.click(metaBtn);
+    expect(onOpenMetadata).toHaveBeenCalledOnce();
+  });
+
+  it("does not render Library tools section on first run", () => {
+    const onOpenRename = vi.fn();
+    const onOpenMetadata = vi.fn();
+    render(
+      <SettingsView
+        {...baseSettingsProps({ firstRun: true, onOpenRename, onOpenMetadata })}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Standardize file names…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Import metadata from files…" })).toBeNull();
+  });
+});
+
+describe("SettingsView — Settings group headings", () => {
+  it("shows Curation and Maintenance group headings on non-first-run", () => {
+    render(<SettingsView {...baseSettingsProps()} />);
+    expect(screen.getByText("Curation")).toBeInTheDocument();
+    expect(screen.getByText("Maintenance")).toBeInTheDocument();
+  });
+
+  it("does not show group headings on first run", () => {
+    render(<SettingsView {...baseSettingsProps({ firstRun: true })} />);
+    expect(screen.queryByText("Curation")).toBeNull();
+    expect(screen.queryByText("Maintenance")).toBeNull();
   });
 });
 

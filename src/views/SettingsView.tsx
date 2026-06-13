@@ -196,6 +196,9 @@ export function SettingsView(props: {
   onCreateCollection?: (name: string, query: string) => void;
   onDeleteCollection?: (id: number) => void;
   onReorderCollections?: (ids: number[]) => void;
+  // Library tools (optional — existing tests omit these)
+  onOpenRename?: () => void;
+  onOpenMetadata?: () => void;
   // Density (optional — existing tests omit these)
   density?: Density;
   onDensityChange?: (d: Density) => void;
@@ -228,6 +231,8 @@ export function SettingsView(props: {
         </p>
       )}
 
+      {!firstRun && <h2 className="settings-group">Library</h2>}
+
       <Card className="settings-root" style={{ padding: 24 }}>
         <h2>Library folder</h2>
         {root ? <p className="current-root">{root}</p> : <p>No library folder chosen yet.</p>}
@@ -244,6 +249,17 @@ export function SettingsView(props: {
         )}
       </Card>
 
+      {!firstRun && (props.onOpenRename || props.onOpenMetadata) && (
+        <Card style={{ padding: 24, marginTop: 16 }}>
+          <h2>Library tools</h2>
+          <p className="muted">Occasional maintenance. Nothing changes your audio files unless you preview and confirm.</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+            {props.onOpenRename && <Button variant="secondary" onClick={props.onOpenRename}>Standardize file names…</Button>}
+            {props.onOpenMetadata && <Button variant="secondary" onClick={props.onOpenMetadata}>Import metadata from files…</Button>}
+          </div>
+        </Card>
+      )}
+
       {busy && <p className="settings-busy">Scanning…</p>}
 
       {scanError && (
@@ -258,6 +274,8 @@ export function SettingsView(props: {
           {lastScan.chapters} chapters.
         </Notice>
       )}
+
+      {!firstRun && <h2 className="settings-group">Display</h2>}
 
       {!firstRun && props.onDensityChange && (
         <Card style={{ padding: 24, marginTop: 16 }}>
@@ -400,6 +418,8 @@ export function SettingsView(props: {
         </Card>
       )}
 
+      {!firstRun && <h2 className="settings-group">Curation</h2>}
+
       {!firstRun && props.tagStats !== undefined && props.onRenameTag && props.onMergeTags && props.onSetTagAlias && props.onClearTagAlias && (
         <Card style={{ padding: 24, marginTop: 16 }}>
           <h2>Tag manager</h2>
@@ -441,6 +461,8 @@ export function SettingsView(props: {
           onReorderCollections={props.onReorderCollections}
         />
       )}
+
+      {!firstRun && <h2 className="settings-group">Maintenance</h2>}
 
       {!firstRun && (props.onExportJson || props.onExportSnapshot || props.onImportJson || props.onRestoreSnapshot || props.onHealthScan) && (
         <Card className="backup-maintenance" style={{ padding: 24, marginTop: 16 }}>

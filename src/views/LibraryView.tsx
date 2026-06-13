@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { FixedSizeList as List, type ListChildComponentProps } from "react-window";
 import type { AuthorRow, SearchResults, TranscriptHit, ScopedResults, SavedSearch } from "../lib/api";
 import { summarizeAuthor } from "../lib/library";
@@ -37,6 +38,9 @@ export function LibraryView(props: {
   selectedWorkIds?: number[];
   onToggleWork?: (workId: number) => void;
 }) {
+  const [showTips, setShowTips] = useState(false);
+  const [savingSearch, setSavingSearch] = useState(false);
+  const [saveName, setSaveName] = useState("");
   const searching = props.query.trim() !== "";
   const visible = filterAuthors(sortAuthors(props.authors, props.sort), { tag: props.filterTag, status: props.filterStatus });
   const Row = ({ index, style }: ListChildComponentProps) => {
@@ -65,13 +69,17 @@ export function LibraryView(props: {
           <input style={{ width: "100%" }} aria-label="Search library" placeholder="Search authors, works, chapters" value={props.query} onChange={(event) => props.onQueryChange(event.target.value)} />
         </label>
         {props.scoped && props.onSaveSearch && (
-          <button className="button button--ghost" style={{ marginLeft: 8, whiteSpace: "nowrap" }}
-            onClick={() => {
-              const name = window.prompt("Save search as:");
-              if (name && name.trim()) props.onSaveSearch!(name.trim(), props.query);
-            }}>
-            Save search
-          </button>
+          savingSearch ? (
+            <form className="save-search" style={{ marginLeft: 8, display: "inline-flex", gap: 6 }}
+              onSubmit={(e) => { e.preventDefault(); const n = saveName.trim(); if (n) { props.onSaveSearch!(n, props.query); setSavingSearch(false); setSaveName(""); } }}>
+              <input autoFocus aria-label="Name this search" placeholder="Name this search"
+                value={saveName} onChange={(e) => setSaveName(e.target.value)} />
+              <button type="submit" className="button button--primary">Save</button>
+              <button type="button" className="button button--ghost" onClick={() => { setSavingSearch(false); setSaveName(""); }}>Cancel</button>
+            </form>
+          ) : (
+            <button className="button button--ghost" style={{ marginLeft: 8, whiteSpace: "nowrap" }} onClick={() => setSavingSearch(true)}>Save search</button>
+          )
         )}
         {props.scoped && props.onSelectModeChange && (
           <button
@@ -84,9 +92,23 @@ export function LibraryView(props: {
         )}
       </div>
       {!searching && (
-        <p className="muted" style={{ fontSize: "0.85em", margin: "4px 0 0" }}>
-          Try <code>tag:cozy duration:&lt;15m status:unplayed</code>
-        </p>
+        <div className="search-tips">
+          <span className="muted" style={{ fontSize: "0.85em" }}>
+            Search by name, or filter by tag, length, narrator, or play status.{" "}
+            <button type="button" className="link-button" aria-expanded={showTips} onClick={() => setShowTips((v) => !v)}>
+              {showTips ? "Hide tips" : "Search tips"}
+            </button>
+          </span>
+          {showTips && (
+            <ul className="search-tips__list muted">
+              <li><code>tag:cozy</code> — only items tagged "cozy"</li>
+              <li><code>duration:&lt;15m</code> — shorter than 15 min (also <code>&gt;</code>, and <code>m</code>/<code>h</code>)</li>
+              <li><code>status:unplayed</code> — unplayed only (or <code>status:played</code>)</li>
+              <li><code>narrator:Jane</code> — read by a narrator</li>
+              <li>Press <kbd>Ctrl</kbd> <kbd>K</kbd> to jump to any creator, work, or chapter</li>
+            </ul>
+          )}
+        </div>
       )}
       {props.savedSearches && props.savedSearches.length > 0 && (
         <div className="scoped-chips" style={{ marginTop: 8 }}>

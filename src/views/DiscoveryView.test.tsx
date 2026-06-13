@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DiscoveryView } from "./DiscoveryView";
-import type { DiscoveryWork } from "../lib/api";
+import type { MetaTerm, DiscoveryWork } from "../lib/api";
 
 const forYou: DiscoveryWork[] = [
   { workId: 1, baseTitle: "Night Walk", authorId: 2, authorName: "Sam Smith", unplayedCount: 2, sharedTags: ["cozy"] },
@@ -12,11 +12,11 @@ const byTagWork: DiscoveryWork[] = [
   { workId: 5, baseTitle: "Area 51", authorId: 3, authorName: "Trap Author", unplayedCount: 1, sharedTags: ["cozy"] },
 ];
 
-// Stub values for the new M21 facet picker props so existing tests don't need to repeat them.
+// Stub values for the facet picker props so existing tests don't need to repeat them.
 const facetStubs = {
-  narratorOptions: [] as string[],
-  languageOptions: [] as string[],
-  moodOptions: [] as string[],
+  narratorTerms: [] as MetaTerm[],
+  languageTerms: [] as MetaTerm[],
+  moodTerms: [] as MetaTerm[],
   pickedFacet: null as { facet: string; value: string } | null,
   byFacet: [] as DiscoveryWork[],
   onPickFacet: () => {},

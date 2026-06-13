@@ -19,7 +19,7 @@ export function RenameView(props: {
 
   return (
     <main className="view rename">
-      <PageHeader eyebrow="Tidy up your file names — changes are reversible" title="Rename tool" />
+      <PageHeader eyebrow="Tidy up your file names — changes are reversible" title="Rename tool" actions={props.onBack ? <Button variant="ghost" onClick={props.onBack}>← Back to Settings</Button> : undefined} />
       <Card className="view-section" style={{ padding: 20 }}>
       <p className="rename-blurb">
         Preview canonical filenames below. Only <strong>{pluralFiles(okItems.length)}</strong> will
