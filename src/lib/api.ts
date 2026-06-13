@@ -9,11 +9,11 @@ export interface AuthorRow {
 export interface ChapterRow {
   id: number; title: string; chapterNo: number; format: string;
   durationSecs: number; filePath: string; played: boolean; tags: string[];
-  userSummary: string; takeaway: string; isFavorite: boolean;
+  userSummary: string; takeaway: string; isFavorite: boolean; metadata: MetaTag[];
 }
 export interface WorkRow {
   id: number; baseTitle: string; tags: string[]; chapters: ChapterRow[];
-  reEntryNote: string; completionRating: string; chapterSort: string;
+  reEntryNote: string; completionRating: string; chapterSort: string; metadata: MetaTag[];
 }
 
 export interface ChapterNote { id: number; chapterId: number; positionSecs: number; body: string; createdAt: number; }
@@ -27,7 +27,7 @@ export interface JournalEntry {
 }
 export interface JournalResults { entries: JournalEntry[]; }
 export interface JournalExportReport { path: string; format: string; entryCount: number; }
-export interface AuthorDetail { id: number; name: string; tags: string[]; works: WorkRow[]; }
+export interface AuthorDetail { id: number; name: string; tags: string[]; works: WorkRow[]; metadata: MetaTag[]; }
 
 export interface AuthorHit { authorId: number; authorName: string; }
 export interface WorkHit { workId: number; baseTitle: string; authorId: number; authorName: string; }
@@ -223,6 +223,8 @@ export const setAuthorDisplayName = (authorId: number, name: string | null) =>
   invoke("set_author_display_name", { authorId, name });
 
 export interface TagStat { tag: string; workCount: number; chapterCount: number; authorCount: number; }
+export interface MetaTag { termId: number; facet: string; value: string; }
+export interface MetaTerm { id: number; facet: string; value: string; chapterCount: number; authorCount: number; }
 
 export const getAllTags = () => invoke<string[]>("get_all_tags");
 export const listTagsWithCounts = () => invoke<TagStat[]>("list_tags_with_counts");
@@ -383,6 +385,22 @@ export const stageDbRestore = (src: string) => invoke("stage_db_restore", { src 
 
 export const openMiniPlayer = () => invoke("open_mini_player");
 export const closeMiniPlayer = () => invoke("close_mini_player");
+
+// M21 Metadata & Discovery — invoke wrappers
+export const listMetadataTerms = () => invoke<MetaTerm[]>("list_metadata_terms");
+export const createMetadataTerm = (facet: string, value: string) =>
+  invoke<MetaTerm>("create_metadata_term", { facet, value });
+export const renameMetadataTerm = (id: number, value: string) =>
+  invoke("rename_metadata_term", { id, value });
+export const deleteMetadataTerm = (id: number) => invoke("delete_metadata_term", { id });
+export const mergeMetadataTerms = (sourceIds: number[], targetId: number) =>
+  invoke("merge_metadata_terms", { sourceIds, targetId });
+export const addMetadataValue = (scope: "chapter" | "author", id: number, facet: string, value: string) =>
+  invoke<MetaTag>("add_metadata_value", { scope, id, facet, value });
+export const removeMetadataValue = (scope: "chapter" | "author", id: number, termId: number) =>
+  invoke("remove_metadata_value", { scope, id, termId });
+export const getDiscoveryByMetadata = (facet: string, value: string) =>
+  invoke<DiscoveryWork[]>("get_discovery_by_metadata", { facet, value });
 
 /**
  * Open the OS folder picker. Resolves to the chosen absolute path, or `null` if

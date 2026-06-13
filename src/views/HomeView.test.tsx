@@ -17,6 +17,7 @@ const nextChapter: ChapterRow = {
   userSummary: "",
   takeaway: "",
   isFavorite: false,
+  metadata: [],
 };
 
 const home: HomeData = {

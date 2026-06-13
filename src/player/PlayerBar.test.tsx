@@ -16,6 +16,7 @@ const context = {
     userSummary: "",
     takeaway: "",
     isFavorite: false,
+    metadata: [],
   },
   authorId: 1,
   authorName: "Jane Doe",

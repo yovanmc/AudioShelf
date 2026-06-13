@@ -16,6 +16,7 @@ const chapter: ChapterRow = {
   userSummary: "My summary",
   takeaway: "My takeaway",
   isFavorite: false,
+  metadata: [],
 };
 
 const seededJournal: ChapterJournal = {
@@ -184,6 +185,7 @@ const workDetail: AuthorDetail = {
   id: 1,
   name: "Jane Doe",
   tags: [],
+  metadata: [],
   works: [
     {
       id: 10,
@@ -192,11 +194,12 @@ const workDetail: AuthorDetail = {
       reEntryNote: "Chapter 3 was where I stopped",
       completionRating: "brilliant",
       chapterSort: "",
+      metadata: [],
       chapters: [
         {
           id: 100, title: "Part One", chapterNo: 1, format: "mp3",
           durationSecs: 60, filePath: "x/1.mp3", played: false, tags: [],
-          userSummary: "", takeaway: "", isFavorite: false,
+          userSummary: "", takeaway: "", isFavorite: false, metadata: [],
         },
       ],
     },
