@@ -6,8 +6,10 @@ body {
     radial-gradient(circle at 75% -15%, rgb(33 139 255 / 14%), transparent 36%),
     var(--color-bg);
   color: var(--color-text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 15px;
+  font-family: var(--font-family);
+  font-size: calc(16px * var(--font-scale));
+  letter-spacing: var(--letter-spacing);
+  word-spacing: var(--word-spacing);
   line-height: 1.5;
 }
 button, input, select, textarea { color: inherit; font: inherit; }
