@@ -66,6 +66,7 @@ export function MetadataView(props: {
       <PageHeader
         eyebrow="Import metadata from embedded audio tags into your library — DB-only, files are never modified"
         title="Import metadata"
+        actions={props.onBack ? <Button variant="ghost" onClick={props.onBack}>← Back to Settings</Button> : undefined}
       />
 
       <Card className="view-section" style={{ padding: 20 }}>

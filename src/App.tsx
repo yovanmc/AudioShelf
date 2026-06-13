@@ -2257,6 +2257,7 @@ export default function App() {
           onApply={doApplyRenames}
           onUndo={doUndoRenames}
           onReload={reloadRenamePreview}
+          onBack={openSettings}
         />
       );
     }
@@ -2267,6 +2268,7 @@ export default function App() {
           result={metadataResult}
           onApply={doApplyMetadata}
           onReload={reloadMetadataPreview}
+          onBack={openSettings}
         />
       );
     }
@@ -2313,6 +2315,8 @@ export default function App() {
           onRenameMetaTerm={handleRenameMetaTerm}
           onDeleteMetaTerm={handleDeleteMetaTerm}
           onMergeMetaTerms={handleMergeMetaTerms}
+          onOpenRename={openRename}
+          onOpenMetadata={openMetadata}
         />
       );
     }

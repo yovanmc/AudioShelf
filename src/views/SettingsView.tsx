@@ -196,6 +196,9 @@ export function SettingsView(props: {
   onCreateCollection?: (name: string, query: string) => void;
   onDeleteCollection?: (id: number) => void;
   onReorderCollections?: (ids: number[]) => void;
+  // Library tools (optional — existing tests omit these)
+  onOpenRename?: () => void;
+  onOpenMetadata?: () => void;
   // Density (optional — existing tests omit these)
   density?: Density;
   onDensityChange?: (d: Density) => void;
@@ -243,6 +246,17 @@ export function SettingsView(props: {
           </Button>
         )}
       </Card>
+
+      {!firstRun && (props.onOpenRename || props.onOpenMetadata) && (
+        <Card style={{ padding: 24, marginTop: 16 }}>
+          <h2>Library tools</h2>
+          <p className="muted">Occasional maintenance. Nothing changes your audio files unless you preview and confirm.</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+            {props.onOpenRename && <Button variant="secondary" onClick={props.onOpenRename}>Standardize file names…</Button>}
+            {props.onOpenMetadata && <Button variant="secondary" onClick={props.onOpenMetadata}>Import metadata from files…</Button>}
+          </div>
+        </Card>
+      )}
 
       {busy && <p className="settings-busy">Scanning…</p>}
 
