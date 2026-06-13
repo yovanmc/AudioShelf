@@ -104,3 +104,48 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 .tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .tab { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-muted); border-radius: 999px; padding: var(--space-2) var(--space-3); cursor: pointer; font: inherit; }
 .tab--active { background: var(--color-accent-soft); color: var(--color-text); border-color: var(--color-accent); }
+/* ---- Command palette (Ctrl+K overlay) ---- */
+.palette-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / 50%); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; z-index: 1000; }
+.palette { width: min(640px, 92vw); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-overlay); overflow: hidden; }
+.palette__input { width: 100%; box-sizing: border-box; padding: 14px var(--space-4); font-size: 16px; background: transparent; color: var(--color-text); border: 0; border-bottom: 1px solid var(--color-border); outline: none; }
+.palette__input:focus-visible { box-shadow: none; }
+.palette__list { list-style: none; margin: 0; padding: var(--space-2); max-height: 50vh; overflow-y: auto; }
+.palette__item { display: flex; justify-content: space-between; gap: var(--space-3); padding: 10px var(--space-3); border-radius: var(--radius-sm); cursor: pointer; }
+.palette__item--active { background: var(--color-surface-hover); }
+.palette__label { color: var(--color-text); }
+.palette__sub { color: var(--color-text-muted); font-size: 13px; }
+.palette__empty { padding: 14px; color: var(--color-text-muted); text-align: center; }
+/* ---- Scoped search (M19) ---- */
+.scoped-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); }
+.scoped-count { font-size: .82rem; color: var(--color-text-muted); margin-left: auto; }
+.work-card--selected { border-color: var(--color-accent); background-color: var(--color-accent-soft); }
+.work-card__check { font-size: 1.1rem; margin-bottom: var(--space-1); }
+.work-card__sub { font-size: .85rem; color: var(--color-text-muted); }
+.work-card__meta { font-size: .82rem; color: var(--color-text-muted); }
+/* ---- Multi-select bulk bar (M19) ---- */
+.bulk-bar { position: fixed; bottom: calc(var(--player-bar-h, 72px) + var(--space-3)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: var(--space-3); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); box-shadow: var(--shadow-overlay); z-index: 60; }
+.bulk-bar__count { font-size: 0.9rem; color: var(--color-text-muted); min-width: 80px; }
+/* ---- Dialog actions footer ---- */
+.dialog__actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-5); }
+/* ---- Accent button variant ---- */
+.button--accent { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+.button--accent:hover { background: var(--color-accent-hover, var(--color-accent)); border-color: var(--color-accent-hover, var(--color-accent)); }
+.button--active { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-text); }
+/* ---- Density (M19) ---- */
+/* comfortable = current default; compact/spacious diverge from it */
+[data-density="compact"]     .card-grid { gap: 8px; }
+[data-density="comfortable"] .card-grid { gap: 16px; }
+[data-density="spacious"]    .card-grid { gap: 40px; }
+[data-density="compact"]     .work-card { padding: 8px; }
+[data-density="comfortable"] .work-card { padding: 16px; }
+[data-density="spacious"]    .work-card { padding: 28px; font-size: 1.08em; }
+[data-density="spacious"]    .card-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+/* ---- Smart collections (M19) ---- */
+.collection-list { list-style: none; margin: var(--space-4) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.collection-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); width: 100%; padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; text-align: left; color: inherit; }
+.collection-row:hover { background: var(--color-surface-hover); }
+.collection-row__name { font-weight: 600; color: var(--color-text); }
+.collection-row__query { font-size: 0.85rem; color: var(--color-text-muted); background: transparent; padding: 0; }
+/* ---- Backup & maintenance / health report (M19) ---- */
+.backup-maintenance { scroll-margin-top: var(--space-4); }
+.health-report { scroll-margin-top: var(--space-4); }

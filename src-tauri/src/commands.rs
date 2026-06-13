@@ -1,7 +1,7 @@
 //! Tauri commands and the shared DB state.
 
 use crate::db;
-use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterBookmark, ChapterHit, ChapterJournal, ChapterNote, ChapterRow, ContinueItem, DiscoveryWork, DormantWork, HomeData, JournalEntry, JournalExportReport, JournalResults, ListeningStats, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SearchResults, UndoResult, WorkHit, WorkRow};
+use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterBookmark, ChapterHit, ChapterJournal, ChapterNote, ChapterRow, Collection, ContinueItem, DiscoveryWork, DormantWork, HomeData, JournalEntry, JournalExportReport, JournalResults, ListeningStats, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SavedSearch, SearchResults, UndoResult, WorkHit, WorkRow};
 use crate::natsort::natural_cmp;
 use crate::regroup;
 use crate::rename;
@@ -22,12 +22,17 @@ pub struct TagStat {
 
 pub struct DbState(pub Mutex<rusqlite::Connection>);
 
-pub fn init_db(app: &tauri::AppHandle) -> rusqlite::Connection {
+/// Returns the resolved path of the live SQLite DB for this app instance.
+pub fn resolve_db_path(app: &tauri::AppHandle) -> String {
     use tauri::Manager;
     let dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir());
     std::fs::create_dir_all(&dir).ok();
-    let path = dir.join("audioshelf.db");
-    db::open(&path.to_string_lossy()).expect("open db")
+    dir.join("audioshelf.db").to_string_lossy().into_owned()
+}
+
+pub fn init_db(app: &tauri::AppHandle) -> rusqlite::Connection {
+    let path = resolve_db_path(app);
+    db::open(&path).expect("open db")
 }
 
 #[tauri::command]
@@ -288,7 +293,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
     )?;
 
     let mut wstmt = conn.prepare(
-        "SELECT id, base_title, re_entry_note, completion_rating FROM works WHERE author_id=?1 AND status='active'",
+        "SELECT id, base_title, re_entry_note, completion_rating, chapter_sort FROM works WHERE author_id=?1 AND status='active'",
     )?;
     let mut works: Vec<WorkRow> = wstmt
         .query_map(params![author_id], |r| {
@@ -299,6 +304,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                 chapters: Vec::new(),
                 re_entry_note: r.get::<_, String>(2).unwrap_or_default(),
                 completion_rating: r.get::<_, String>(3).unwrap_or_default(),
+                chapter_sort: r.get::<_, String>(4).unwrap_or_default(),
             })
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -332,7 +338,14 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
-        chapters.sort_by(|a, b| a.chapter_no.cmp(&b.chapter_no));
+        match work.chapter_sort.as_str() {
+            "number_desc"   => chapters.sort_by(|a, b| b.chapter_no.cmp(&a.chapter_no)),
+            "title_asc"     => chapters.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase())),
+            "title_desc"    => chapters.sort_by(|a, b| b.title.to_lowercase().cmp(&a.title.to_lowercase())),
+            "duration_asc"  => chapters.sort_by(|a, b| a.duration_secs.cmp(&b.duration_secs)),
+            "duration_desc" => chapters.sort_by(|a, b| b.duration_secs.cmp(&a.duration_secs)),
+            _               => chapters.sort_by(|a, b| a.chapter_no.cmp(&b.chapter_no)), // "" / unknown = default
+        }
         work.chapters = chapters;
 
         // Work-level tags.
@@ -443,6 +456,129 @@ pub fn search(conn: &rusqlite::Connection, query: &str, cap: usize) -> rusqlite:
 pub fn search_library(state: tauri::State<DbState>, query: String) -> Result<SearchResults, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     search(&conn, &query, SEARCH_CAP).map_err(|e| e.to_string())
+}
+
+fn duration_label(d: &crate::query::DurationFilter) -> String {
+    use crate::query::CmpOp::*;
+    let op = match d.op { Lt => "<", Le => "≤", Gt => ">", Ge => "≥" };
+    let (n, unit) = if d.secs % 3600 == 0 { (d.secs / 3600, "h") }
+        else if d.secs % 60 == 0 { (d.secs / 60, "m") } else { (d.secs, "s") };
+    format!("{op} {n}{unit}")
+}
+
+fn status_label_of(s: Option<crate::query::StatusFilter>) -> String {
+    match s {
+        Some(crate::query::StatusFilter::Unstarted) => "Unstarted",
+        Some(crate::query::StatusFilter::InProgress) => "In progress",
+        Some(crate::query::StatusFilter::Done) => "Done",
+        None => "",
+    }.to_string()
+}
+
+#[tauri::command]
+pub fn advanced_search(state: tauri::State<DbState>, query: String) -> Result<crate::model::ScopedResults, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let parsed = crate::query::parse_query(&query);
+    let works = crate::scoped::run_scoped_query(&conn, &parsed, SEARCH_CAP).map_err(|e| e.to_string())?;
+    Ok(crate::model::ScopedResults {
+        works,
+        tags: parsed.tags.clone(),
+        text: parsed.text.clone(),
+        duration_label: parsed.duration.as_ref().map(duration_label).unwrap_or_default(),
+        status_label: status_label_of(parsed.status),
+    })
+}
+
+// ---- saved searches ----
+
+pub(crate) fn create_saved_search_row(conn: &rusqlite::Connection, name: &str, query: &str, created_at: i64) -> rusqlite::Result<i64> {
+    conn.execute("INSERT INTO saved_searches(name, query, created_at) VALUES (?1,?2,?3)", params![name, query, created_at])?;
+    Ok(conn.last_insert_rowid())
+}
+pub(crate) fn list_saved_searches_rows(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<SavedSearch>> {
+    let mut s = conn.prepare("SELECT id, name, query FROM saved_searches ORDER BY name")?;
+    let rows = s.query_map([], |r| Ok(SavedSearch { id: r.get(0)?, name: r.get(1)?, query: r.get(2)? }))?.collect();
+    rows
+}
+pub(crate) fn delete_saved_search_row(conn: &rusqlite::Connection, id: i64) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM saved_searches WHERE id=?1", params![id])?; Ok(())
+}
+
+#[tauri::command]
+pub fn create_saved_search(state: tauri::State<DbState>, name: String, query: String, created_at: i64) -> Result<i64, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_saved_search_row(&conn, name.trim(), query.trim(), created_at).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn list_saved_searches(state: tauri::State<DbState>) -> Result<Vec<SavedSearch>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_saved_searches_rows(&conn).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn delete_saved_search(state: tauri::State<DbState>, id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    delete_saved_search_row(&conn, id).map_err(|e| e.to_string())
+}
+
+// ---- smart collections ----
+
+pub(crate) fn create_collection_row(conn: &rusqlite::Connection, name: &str, query: &str, created_at: i64) -> rusqlite::Result<i64> {
+    let next_pos: i64 = conn.query_row("SELECT COALESCE(MAX(position),-1)+1 FROM smart_collections", [], |r| r.get(0))?;
+    conn.execute("INSERT INTO smart_collections(name, query, position, created_at) VALUES (?1,?2,?3,?4)", params![name, query, next_pos, created_at])?;
+    Ok(conn.last_insert_rowid())
+}
+pub(crate) fn list_collections_rows(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<Collection>> {
+    let mut s = conn.prepare("SELECT id, name, query, position FROM smart_collections ORDER BY position, name")?;
+    let rows = s.query_map([], |r| Ok(Collection { id: r.get(0)?, name: r.get(1)?, query: r.get(2)?, position: r.get(3)? }))?.collect();
+    rows
+}
+pub(crate) fn update_collection_row(conn: &rusqlite::Connection, id: i64, name: &str, query: &str) -> rusqlite::Result<()> {
+    conn.execute("UPDATE smart_collections SET name=?2, query=?3 WHERE id=?1", params![id, name, query])?; Ok(())
+}
+pub(crate) fn delete_collection_row(conn: &rusqlite::Connection, id: i64) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM smart_collections WHERE id=?1", params![id])?; Ok(())
+}
+pub(crate) fn reorder_collections_rows(conn: &rusqlite::Connection, ids: &[i64]) -> rusqlite::Result<()> {
+    for (pos, id) in ids.iter().enumerate() {
+        conn.execute("UPDATE smart_collections SET position=?2 WHERE id=?1", params![id, pos as i64])?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn create_collection(state: tauri::State<DbState>, name: String, query: String, created_at: i64) -> Result<i64, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    create_collection_row(&conn, name.trim(), query.trim(), created_at).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn list_collections(state: tauri::State<DbState>) -> Result<Vec<Collection>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    list_collections_rows(&conn).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn update_collection(state: tauri::State<DbState>, id: i64, name: String, query: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    update_collection_row(&conn, id, name.trim(), query.trim()).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn delete_collection(state: tauri::State<DbState>, id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    delete_collection_row(&conn, id).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn reorder_collections(state: tauri::State<DbState>, ids: Vec<i64>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    reorder_collections_rows(&conn, &ids).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn resolve_collection(state: tauri::State<DbState>, id: i64) -> Result<crate::model::ScopedResults, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let query: String = conn.query_row("SELECT query FROM smart_collections WHERE id=?1", params![id], |r| r.get(0)).map_err(|e| e.to_string())?;
+    let parsed = crate::query::parse_query(&query);
+    let works = crate::scoped::run_scoped_query(&conn, &parsed, SEARCH_CAP).map_err(|e| e.to_string())?;
+    Ok(crate::model::ScopedResults { works, tags: parsed.tags.clone(), text: parsed.text.clone(),
+        duration_label: parsed.duration.as_ref().map(duration_label).unwrap_or_default(),
+        status_label: status_label_of(parsed.status) })
 }
 
 /// Works (with unplayed chapters) whose author OR the work itself carries any of
@@ -2381,6 +2517,53 @@ pub fn export_recap_png(path: String, bytes: Vec<u8>) -> Result<String, String> 
     Ok(path)
 }
 
+/// Additive bulk work-tagging: INSERT OR IGNORE the `add` tags and DELETE the `remove` tags
+/// for each work id. Skips empty/whitespace tags. Never a blanket replace.
+pub(crate) fn bulk_set_work_tags_rows(
+    conn: &rusqlite::Connection,
+    work_ids: &[i64],
+    add: &[String],
+    remove: &[String],
+) -> rusqlite::Result<()> {
+    for &wid in work_ids {
+        for raw in add {
+            let t = raw.trim();
+            if t.is_empty() { continue; }
+            conn.execute("INSERT OR IGNORE INTO work_tags(work_id, tag) VALUES (?1, ?2)", params![wid, t])?;
+        }
+        for raw in remove {
+            let t = raw.trim();
+            if t.is_empty() { continue; }
+            conn.execute("DELETE FROM work_tags WHERE work_id=?1 AND tag=?2", params![wid, t])?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn bulk_set_work_tags(
+    state: tauri::State<DbState>,
+    work_ids: Vec<i64>,
+    add: Vec<String>,
+    remove: Vec<String>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    bulk_set_work_tags_rows(&conn, &work_ids, &add, &remove).map_err(|e| e.to_string())
+}
+
+// ---- M19 Task 6: per-work chapter-sort override ----------------------------------------
+
+#[tauri::command]
+pub fn set_work_chapter_sort(state: tauri::State<DbState>, work_id: i64, sort: String) -> Result<(), String> {
+    const ALLOWED: [&str; 6] = ["", "number_desc", "title_asc", "title_desc", "duration_asc", "duration_desc"];
+    if !ALLOWED.contains(&sort.as_str()) {
+        return Err(format!("invalid chapter sort: {sort}"));
+    }
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE works SET chapter_sort=?2 WHERE id=?1", params![work_id, sort]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2686,7 +2869,7 @@ mod tests {
         // The pre-seeded schema_version key reflects the latest migration version.
         assert_eq!(
             get_setting_value(&conn, "schema_version").unwrap(),
-            Some("6".to_string())
+            Some("7".to_string())
         );
     }
 
@@ -3054,7 +3237,7 @@ mod tests {
         ).unwrap();
         assert_eq!(full_count, 2, "full open must have both taxonomy tables");
         let ver: i64 = full_conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(ver, 6);
+        assert_eq!(ver, 7);
     }
 
     #[test]
@@ -3221,7 +3404,7 @@ mod tests {
         // Upgrade to latest via open_in_memory pattern (open_at_version then migrate).
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 6);
+        assert_eq!(full_ver, 7);
 
         let col3: i64 = full.query_row(
             "SELECT count(*) FROM pragma_table_info('works') WHERE name='metadata_source'",
@@ -3350,10 +3533,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist at v3");
 
-        // After a full open (which runs migrate), both tables must exist and version is 6.
+        // After a full open (which runs migrate), both tables must exist and version is 7.
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 6);
+        assert_eq!(full_ver, 7);
 
         let series_count: i64 = full.query_row(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
@@ -3975,6 +4158,90 @@ mod tests {
         assert_eq!(read, bytes);
         std::fs::remove_dir_all(&dir).ok();
     }
+
+    // ---- M19 Task 4: saved-search + smart-collection CRUD tests -----------------------
+
+    #[test]
+    fn saved_search_crud_roundtrip() {
+        let conn = crate::db::open_at_version(7).unwrap();
+        let id = super::create_saved_search_row(&conn, "Cozy shorts", "tag:cozy duration:<15m", 1_700_000_000).unwrap();
+        let all = super::list_saved_searches_rows(&conn).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].name, "Cozy shorts");
+        assert_eq!(all[0].query, "tag:cozy duration:<15m");
+        super::delete_saved_search_row(&conn, id).unwrap();
+        assert!(super::list_saved_searches_rows(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn collection_crud_and_reorder() {
+        let conn = crate::db::open_at_version(7).unwrap();
+        let a = super::create_collection_row(&conn, "A", "tag:a", 1).unwrap();
+        let b = super::create_collection_row(&conn, "B", "tag:b", 1).unwrap();
+        super::reorder_collections_rows(&conn, &[b, a]).unwrap();
+        let names: Vec<String> = super::list_collections_rows(&conn).unwrap().into_iter().map(|c| c.name).collect();
+        assert_eq!(names, vec!["B".to_string(), "A".to_string()]);
+    }
+
+    // ---- M19 Task 5: bulk_set_work_tags -----------------------------------------------
+    // (implementation is above the mod tests block)
+
+    #[test]
+    fn bulk_tag_adds_and_removes_per_work() {
+        let conn = crate::db::open_at_version(7).unwrap();
+        conn.execute_batch(
+            "INSERT INTO authors(id, folder_name, status) VALUES (1,'a','active');
+             INSERT INTO works(id, author_id, base_title, status, sort_key) VALUES (1,1,'W1','active','w1'),(2,1,'W2','active','w2');
+             INSERT INTO work_tags(work_id, tag) VALUES (1,'old'),(2,'old');",
+        ).unwrap();
+        super::bulk_set_work_tags_rows(&conn, &[1, 2], &["fresh".into()], &["old".into()]).unwrap();
+        let t1: Vec<String> = conn.prepare("SELECT tag FROM work_tags WHERE work_id=1 ORDER BY tag").unwrap()
+            .query_map([], |r| r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+        assert_eq!(t1, vec!["fresh".to_string()]);
+        let total: i64 = conn.query_row("SELECT COUNT(*) FROM work_tags WHERE tag='old'", [], |r| r.get(0)).unwrap();
+        assert_eq!(total, 0);
+    }
+
+    // ---- M19 Task 6: chapter_sort_override -----------------------------------------------
+
+    #[test]
+    fn chapter_sort_override_reorders_in_detail() {
+        let conn = crate::db::open_at_version(7).unwrap();
+        conn.execute_batch(
+            "INSERT INTO authors(id, folder_name, status) VALUES (1,'a','active');
+             INSERT INTO works(id, author_id, base_title, sort_key, status, chapter_sort) VALUES (1,1,'W','w','active','number_desc');
+             INSERT INTO chapters(id, work_id, raw_filename, chapter_no, format, duration_secs, file_path, status, played, user_summary, takeaway, is_favorite)
+               VALUES (1,1,'a.mp3',1,'mp3',10,'/a','active',0,'','',0),
+                      (2,1,'b.mp3',2,'mp3',20,'/b','active',0,'','',0);",
+        ).unwrap();
+        let detail = query_author_detail(&conn, 1).unwrap();
+        let nums: Vec<i64> = detail.works[0].chapters.iter().map(|c| c.chapter_no).collect();
+        assert_eq!(nums, vec![2, 1]); // descending
+    }
+
+    // ---- M19 Task 7: library_health_scan ------------------------------------------------
+
+    #[test]
+    fn health_scan_flags_missing_and_zero_byte() {
+        let dir = std::env::temp_dir().join(format!("ashm19_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let zero = dir.join("zero.mp3");
+        std::fs::write(&zero, b"").unwrap();
+        let missing = dir.join("gone.mp3");
+
+        let conn = crate::db::open_at_version(7).unwrap();
+        conn.execute_batch("INSERT INTO authors(id, folder_name, status) VALUES (1,'a','active');
+            INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active');").unwrap();
+        conn.execute("INSERT INTO chapters(id, work_id, raw_filename, chapter_no, format, duration_secs, file_path, status, played, user_summary, takeaway, is_favorite) VALUES (1,1,'zero.mp3',1,'mp3',0,?1,'active',0,'','',0)", params![zero.to_string_lossy()]).unwrap();
+        conn.execute("INSERT INTO chapters(id, work_id, raw_filename, chapter_no, format, duration_secs, file_path, status, played, user_summary, takeaway, is_favorite) VALUES (2,1,'gone.mp3',2,'mp3',0,?1,'active',0,'','',0)", params![missing.to_string_lossy()]).unwrap();
+
+        let rep = library_health_scan_rows(&conn).unwrap();
+        assert_eq!(rep.zero_byte.len(), 1);
+        assert_eq!(rep.missing_files.len(), 1);
+        assert_eq!(rep.zero_byte[0].chapter_id, 1);
+        assert_eq!(rep.missing_files[0].chapter_id, 2);
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
 
 /// Max thumbnail edge in pixels (square-bounded, aspect preserved).
@@ -4074,4 +4341,90 @@ pub fn get_author_cover(
         COVER_MAX,
     );
     Ok(p.map(|x| x.to_string_lossy().to_string()))
+}
+
+// ---- M19 Task 7: library health scan -----------------------------------------------
+
+/// Core read-only health triage: orphan, zero-byte, unreadable, schema-drift checks.
+pub(crate) fn library_health_scan_rows(conn: &rusqlite::Connection) -> rusqlite::Result<crate::model::HealthReport> {
+    use crate::model::{HealthItem, HealthReport};
+    let mut rep = HealthReport { latest_schema: crate::db::LATEST, ..Default::default() };
+    rep.schema_version = get_setting_value(conn, "schema_version")?
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(0);
+    rep.schema_drift = rep.schema_version != rep.latest_schema;
+
+    let mut stmt = conn.prepare(
+        "SELECT c.id, c.raw_filename, w.base_title, COALESCE(a.display_name, a.folder_name), c.file_path
+         FROM chapters c JOIN works w ON c.work_id=w.id JOIN authors a ON w.author_id=a.id
+         WHERE c.status='active'",
+    )?;
+    let rows: Vec<(i64, String, String, String, String)> = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+
+    for (chapter_id, raw, work_title, author_name, file_path) in rows {
+        let title = std::path::Path::new(&raw)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or(raw);
+        let item = |size_bytes: i64| HealthItem {
+            chapter_id,
+            title: title.clone(),
+            work_title: work_title.clone(),
+            author_name: author_name.clone(),
+            file_path: file_path.clone(),
+            size_bytes,
+        };
+        match std::fs::metadata(&file_path) {
+            Err(_) => rep.missing_files.push(item(-1)),
+            Ok(md) => {
+                let len = md.len() as i64;
+                if len == 0 {
+                    rep.zero_byte.push(item(0));
+                } else if std::fs::File::open(&file_path).is_err() {
+                    rep.unreadable.push(item(len));
+                }
+            }
+        }
+    }
+    Ok(rep)
+}
+
+#[tauri::command]
+pub fn library_health_scan(state: tauri::State<DbState>) -> Result<crate::model::HealthReport, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    library_health_scan_rows(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn export_curation_json(state: tauri::State<DbState>, path: String, exported_at: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let v = crate::backup::build_curation_export(&conn, exported_at).map_err(|e| e.to_string())?;
+    let text = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn export_db_snapshot(state: tauri::State<DbState>, path: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    // VACUUM INTO writes a consistent snapshot from the live connection (no file-lock issue).
+    conn.execute("VACUUM INTO ?1", params![path]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Holds the resolved path of the live SQLite DB so restore commands can locate it.
+pub struct DbPathState(pub String);
+
+#[tauri::command]
+pub fn import_curation_json(state: tauri::State<DbState>, path: String) -> Result<crate::model::ImportReport, String> {
+    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let root: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("invalid backup JSON: {e}"))?;
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    crate::backup::apply_curation_import(&conn, &root).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn stage_db_restore(db_path: tauri::State<DbPathState>, src: String) -> Result<(), String> {
+    crate::backup::stage_db_restore(&db_path.0, &src)
 }

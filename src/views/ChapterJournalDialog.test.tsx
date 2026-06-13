@@ -191,6 +191,7 @@ const workDetail: AuthorDetail = {
       tags: [],
       reEntryNote: "Chapter 3 was where I stopped",
       completionRating: "brilliant",
+      chapterSort: "",
       chapters: [
         {
           id: 100, title: "Part One", chapterNo: 1, format: "mp3",

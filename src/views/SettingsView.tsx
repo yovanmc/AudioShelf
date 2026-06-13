@@ -1,10 +1,11 @@
 import { useState } from "react";
-import type { ScanResult, TagStat } from "../lib/api";
+import type { ScanResult, TagStat, Collection, ImportReport, HealthReport } from "../lib/api";
 import { Button, Card, Notice, PageHeader } from "../components/ui";
 import { Icon } from "../components/Icon";
 import type { HomeShelf, ShelfKind } from "../lib/shelves";
 import type { PlayedStatus } from "../lib/browse";
 import { TagManagerView } from "./TagManagerView";
+import type { Density } from "../lib/density";
 
 const STATUS_LABELS: Record<PlayedStatus, string> = {
   all: "All",
@@ -181,6 +182,23 @@ export function SettingsView(props: {
   onMergeTags?: (sources: string[], target: string) => void;
   onSetTagAlias?: (alias: string, canonical: string) => void;
   onClearTagAlias?: (alias: string) => void;
+  // Smart collections (optional — existing tests omit these)
+  collections?: Collection[];
+  onCreateCollection?: (name: string, query: string) => void;
+  onDeleteCollection?: (id: number) => void;
+  onReorderCollections?: (ids: number[]) => void;
+  // Density (optional — existing tests omit these)
+  density?: Density;
+  onDensityChange?: (d: Density) => void;
+  // Backup & maintenance (optional — existing tests omit these)
+  onExportJson?: () => void;
+  onExportSnapshot?: () => void;
+  onImportJson?: () => void;
+  onRestoreSnapshot?: () => void;
+  onHealthScan?: () => void;
+  importReport?: ImportReport | null;
+  healthReport?: HealthReport | null;
+  restoreStaged?: boolean;
 }) {
   const { root, lastScan, scanError, busy, firstRun } = props;
   const shelves = props.shelves ?? [];
@@ -227,6 +245,27 @@ export function SettingsView(props: {
           Indexed {lastScan.authors} authors, {lastScan.works} works,{" "}
           {lastScan.chapters} chapters.
         </Notice>
+      )}
+
+      {!firstRun && props.onDensityChange && (
+        <Card style={{ padding: 24, marginTop: 16 }}>
+          <h2>Library density</h2>
+          <p className="muted">Controls the spacing of cards in your library.</p>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            {(["compact", "comfortable", "spacious"] as Density[]).map((d) => (
+              <button
+                key={d}
+                type="button"
+                className={`button button--secondary${props.density === d ? " button--active" : ""}`}
+                aria-pressed={props.density === d}
+                onClick={() => props.onDensityChange!(d)}
+                style={props.density === d ? { borderColor: "var(--color-accent)", background: "var(--color-accent-soft)" } : undefined}
+              >
+                {d.charAt(0).toUpperCase() + d.slice(1)}
+              </button>
+            ))}
+          </div>
+        </Card>
       )}
 
       {!firstRun && (
@@ -303,6 +342,246 @@ export function SettingsView(props: {
           />
         </Card>
       )}
+
+      {!firstRun && props.collections !== undefined && (
+        <CollectionsManager
+          collections={props.collections}
+          onCreateCollection={props.onCreateCollection}
+          onDeleteCollection={props.onDeleteCollection}
+          onReorderCollections={props.onReorderCollections}
+        />
+      )}
+
+      {!firstRun && (props.onExportJson || props.onExportSnapshot || props.onImportJson || props.onRestoreSnapshot || props.onHealthScan) && (
+        <Card className="backup-maintenance" style={{ padding: 24, marginTop: 16 }}>
+          <h2>Backup &amp; maintenance</h2>
+          <p className="muted">
+            Export your curation data, create full database snapshots, import from a previous export, restore
+            a snapshot, or scan your library for file health issues.
+          </p>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+            {props.onExportJson && (
+              <Button variant="secondary" onClick={props.onExportJson}>
+                Export curation (JSON)
+              </Button>
+            )}
+            {props.onExportSnapshot && (
+              <Button variant="secondary" onClick={props.onExportSnapshot}>
+                Export full snapshot (.db)
+              </Button>
+            )}
+            {props.onImportJson && (
+              <Button variant="secondary" onClick={props.onImportJson}>
+                Import curation (JSON)
+              </Button>
+            )}
+            {props.onRestoreSnapshot && (
+              <Button variant="secondary" onClick={props.onRestoreSnapshot}>
+                Restore snapshot (.db)
+              </Button>
+            )}
+            {props.onHealthScan && (
+              <Button variant="secondary" onClick={props.onHealthScan}>
+                Run health scan
+              </Button>
+            )}
+          </div>
+
+          {props.restoreStaged && (
+            <div style={{ marginTop: 16 }}>
+              <Notice tone="info">
+                Restore staged — restart AudioShelf to apply (your current library is backed up automatically).
+              </Notice>
+            </div>
+          )}
+
+          {props.importReport && (
+            <div style={{ marginTop: 16 }}>
+              <h3 style={{ margin: "0 0 8px" }}>Import result</h3>
+              <ul className="muted" style={{ margin: 0, paddingLeft: 20 }}>
+                <li>Tags added: {props.importReport.tagsAdded}</li>
+                <li>Played marked: {props.importReport.playedMarked}</li>
+                <li>Favorites marked: {props.importReport.favoritesMarked}</li>
+                <li>Journal fields filled: {props.importReport.journalFieldsFilled}</li>
+                <li>Notes added: {props.importReport.notesAdded}</li>
+                <li>Bookmarks added: {props.importReport.bookmarksAdded}</li>
+                <li>Collections added: {props.importReport.collectionsAdded}</li>
+                <li>Saved searches added: {props.importReport.searchesAdded}</li>
+                {props.importReport.unmatchedAuthors > 0 && (
+                  <li>Unmatched authors: {props.importReport.unmatchedAuthors}</li>
+                )}
+                {props.importReport.unmatchedWorks > 0 && (
+                  <li>Unmatched works: {props.importReport.unmatchedWorks}</li>
+                )}
+                {props.importReport.unmatchedChapters > 0 && (
+                  <li>Unmatched chapters: {props.importReport.unmatchedChapters}</li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          {props.healthReport && (
+            <div className="health-report" style={{ marginTop: 16 }}>
+              <h3 style={{ margin: "0 0 8px" }}>Health scan result</h3>
+              {props.healthReport.schemaDrift && (
+                <div style={{ marginBottom: 12 }}>
+                  <Notice tone="error">
+                    Schema drift detected — DB version {props.healthReport.schemaVersion}, expected {props.healthReport.latestSchema}.
+                  </Notice>
+                </div>
+              )}
+              {props.healthReport.missingFiles.length === 0 &&
+               props.healthReport.zeroByte.length === 0 &&
+               props.healthReport.unreadable.length === 0 && (
+                <p className="muted" style={{ margin: 0 }}>All files look healthy.</p>
+              )}
+              {props.healthReport.missingFiles.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <strong>Missing files ({props.healthReport.missingFiles.length})</strong>
+                  <ul className="muted" style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                    {props.healthReport.missingFiles.map((item) => (
+                      <li key={item.chapterId}>{item.authorName} — {item.workTitle} — {item.title}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {props.healthReport.zeroByte.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <strong>Zero-byte files ({props.healthReport.zeroByte.length})</strong>
+                  <ul className="muted" style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                    {props.healthReport.zeroByte.map((item) => (
+                      <li key={item.chapterId}>{item.authorName} — {item.workTitle} — {item.title}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {props.healthReport.unreadable.length > 0 && (
+                <div>
+                  <strong>Unreadable files ({props.healthReport.unreadable.length})</strong>
+                  <ul className="muted" style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                    {props.healthReport.unreadable.map((item) => (
+                      <li key={item.chapterId}>{item.authorName} — {item.workTitle} — {item.title}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+      )}
     </main>
+  );
+}
+
+function CollectionsManager({
+  collections,
+  onCreateCollection,
+  onDeleteCollection,
+  onReorderCollections,
+}: {
+  collections: Collection[];
+  onCreateCollection?: (name: string, query: string) => void;
+  onDeleteCollection?: (id: number) => void;
+  onReorderCollections?: (ids: number[]) => void;
+}) {
+  const [newName, setNewName] = useState("");
+  const [newQuery, setNewQuery] = useState("");
+
+  function handleCreate() {
+    const name = newName.trim();
+    const query = newQuery.trim();
+    if (!name || !query) return;
+    onCreateCollection?.(name, query);
+    setNewName("");
+    setNewQuery("");
+  }
+
+  function moveCollection(id: number, dir: -1 | 1) {
+    const ids = collections.map((c) => c.id);
+    const i = ids.indexOf(id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    const next = [...ids];
+    [next[i], next[j]] = [next[j], next[i]];
+    onReorderCollections?.(next);
+  }
+
+  return (
+    <Card style={{ padding: 24, marginTop: 16 }}>
+      <h2>Collections</h2>
+      <p className="muted">
+        Saved smart filters — each collection runs a scoped query against your library and updates automatically.
+      </p>
+
+      {collections.length === 0 && (
+        <p className="muted">No collections yet. Add one below.</p>
+      )}
+
+      {collections.map((c, index) => (
+        <div
+          key={c.id}
+          className="shelf-row card"
+          style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", marginBottom: 6 }}
+        >
+          <span style={{ flex: 1 }}>
+            <strong>{c.name}</strong>{" "}
+            <code className="muted" style={{ fontSize: "0.85em" }}>{c.query}</code>
+          </span>
+          <Button
+            variant="secondary"
+            onClick={() => moveCollection(c.id, -1)}
+            disabled={index === 0}
+            aria-label={`Move ${c.name} up`}
+          >
+            ▲
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => moveCollection(c.id, 1)}
+            disabled={index === collections.length - 1}
+            aria-label={`Move ${c.name} down`}
+          >
+            ▼
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => onDeleteCollection?.(c.id)}
+            aria-label={`Delete ${c.name}`}
+          >
+            Delete
+          </Button>
+        </div>
+      ))}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+        <h3 style={{ margin: 0 }}>New collection</h3>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <label>
+            Name
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="My collection"
+              aria-label="Collection name"
+              style={{ marginLeft: 6 }}
+            />
+          </label>
+          <label>
+            Query
+            <input
+              type="text"
+              value={newQuery}
+              onChange={(e) => setNewQuery(e.target.value)}
+              placeholder="tag:cozy status:unplayed"
+              aria-label="Collection query"
+              style={{ marginLeft: 6 }}
+            />
+          </label>
+          <Button variant="primary" onClick={handleCreate}>Add</Button>
+        </div>
+      </div>
+    </Card>
   );
 }

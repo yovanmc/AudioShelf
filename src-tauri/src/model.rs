@@ -47,6 +47,7 @@ pub struct WorkRow {
     pub chapters: Vec<ChapterRow>,
     pub re_entry_note: String,
     pub completion_rating: String,
+    pub chapter_sort: String,   // NEW: per-work chapter ordering preference
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -373,4 +374,73 @@ pub struct InsightsData {
 pub struct SeedPlayEvent {
     pub chapter_id: i64,
     pub played_at: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopedWork {
+    pub work_id: i64,
+    pub base_title: String,
+    pub author_id: i64,
+    pub author_name: String,
+    pub total_secs: i64,
+    pub chapter_count: i64,
+    pub played_count: i64,
+    pub tags: Vec<String>,
+}
+
+#[derive(Serialize, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopedResults {
+    pub works: Vec<ScopedWork>,
+    pub tags: Vec<String>,           // echo parsed tag filters (for FE chips)
+    pub text: String,                // echo parsed free text
+    pub duration_label: String,      // human label e.g. "≤ 15m" or "" if none
+    pub status_label: String,        // "Unstarted" | "In progress" | "Done" | ""
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSearch { pub id: i64, pub name: String, pub query: String }
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Collection { pub id: i64, pub name: String, pub query: String, pub position: i64 }
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthItem {
+    pub chapter_id: i64,
+    pub title: String,
+    pub work_title: String,
+    pub author_name: String,
+    pub file_path: String,
+    pub size_bytes: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthReport {
+    pub missing_files: Vec<HealthItem>,
+    pub zero_byte: Vec<HealthItem>,
+    pub unreadable: Vec<HealthItem>,
+    pub schema_version: i64,
+    pub latest_schema: i64,
+    pub schema_drift: bool,
+}
+
+#[derive(Serialize, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportReport {
+    pub tags_added: i64,
+    pub played_marked: i64,
+    pub favorites_marked: i64,
+    pub journal_fields_filled: i64,
+    pub notes_added: i64,
+    pub bookmarks_added: i64,
+    pub collections_added: i64,
+    pub searches_added: i64,
+    pub unmatched_authors: i64,
+    pub unmatched_works: i64,
+    pub unmatched_chapters: i64,
 }

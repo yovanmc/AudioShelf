@@ -1,3 +1,4 @@
+mod backup;
 mod capture;
 mod commands;
 mod covers;
@@ -7,12 +8,14 @@ mod insights;
 mod launch;
 mod model;
 mod natsort;
+mod query;
 mod regroup;
+mod scoped;
 mod rename;
 mod scan;
 mod transcripts;
 
-use commands::DbState;
+use commands::{DbPathState, DbState};
 use launch::LaunchArgs;
 use std::sync::Mutex;
 use tauri::Manager;
@@ -29,8 +32,10 @@ pub fn run() {
         .manage(args)
         .setup(|app| {
             let handle = app.handle();
+            let db_path = commands::resolve_db_path(&handle);
             let conn = commands::init_db(&handle);
             app.manage(DbState(Mutex::new(conn)));
+            app.manage(DbPathState(db_path));
             // Cover thumbnails are cached here and served via the asset protocol.
             let covers_dir = handle
                 .path()
@@ -101,7 +106,24 @@ pub fn run() {
             commands::delete_bookmark,
             commands::query_journal,
             commands::export_journal,
-            commands::export_recap_png
+            commands::export_recap_png,
+            commands::advanced_search,
+            commands::create_saved_search,
+            commands::list_saved_searches,
+            commands::delete_saved_search,
+            commands::create_collection,
+            commands::list_collections,
+            commands::update_collection,
+            commands::delete_collection,
+            commands::reorder_collections,
+            commands::resolve_collection,
+            commands::bulk_set_work_tags,
+            commands::set_work_chapter_sort,
+            commands::library_health_scan,
+            commands::export_curation_json,
+            commands::export_db_snapshot,
+            commands::import_curation_json,
+            commands::stage_db_restore
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -109,6 +131,7 @@ pub fn run() {
 
 // Exposed for integration tests.
 pub mod testing {
+    pub use crate::backup::{apply_curation_import, apply_pending_restore, build_curation_export, stage_db_restore};
     pub use crate::commands::{apply_metadata_proposals, apply_series_proposals, build_metadata_proposals, detect_series_for_author, get_chapter_transcript_inner, query_author_detail, query_author_series, query_authors, query_dormant_works, more_like_this, suggest_tags_from, search_transcripts_inner, SeriesMemberProposal, SeriesProposal, SeriesView, TranscriptHit};
     pub use crate::covers::{
         cover_cache_for_chapter, find_folder_image, make_thumbnail_png, read_embedded_picture,
@@ -119,6 +142,8 @@ pub mod testing {
     pub use crate::model::{MetadataApplyReport, MetadataProposal};
     pub use crate::regroup::regroup_author;
     pub use crate::rename::{build_plan, execute, undo, ItemStatus};
+    pub use crate::query::{parse_query, CmpOp, DurationFilter, ParsedQuery, StatusFilter};
     pub use crate::scan::scan_into;
+    pub use crate::scoped::run_scoped_query;
     pub use crate::transcripts::parse_srt_vtt;
 }
