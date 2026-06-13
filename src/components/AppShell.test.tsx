@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AppShell } from "./AppShell";
@@ -16,6 +16,7 @@ function props(overrides = {}) {
     onJournal: vi.fn(),
     onInsights: vi.fn(),
     onCollections: vi.fn(),
+    onOpenPalette: vi.fn(),
     density: "comfortable" as const,
     a11y: DEFAULT_A11Y,
     children: <main>Page</main>,
@@ -45,5 +46,12 @@ describe("AppShell", () => {
     render(<AppShell {...props({ onCollapsedChange })} />);
     await userEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
     expect(onCollapsedChange).toHaveBeenCalledWith(true);
+  });
+
+  it("clicking the Search affordance fires onOpenPalette", () => {
+    const onOpenPalette = vi.fn();
+    render(<AppShell {...props({ onOpenPalette })}><div /></AppShell>);
+    fireEvent.click(screen.getByRole("button", { name: "Search (Ctrl+K)" }));
+    expect(onOpenPalette).toHaveBeenCalled();
   });
 });

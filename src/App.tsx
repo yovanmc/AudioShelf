@@ -2483,6 +2483,7 @@ export default function App() {
           onJournal={openJournalView}
           onInsights={openInsights}
           onCollections={openCollections}
+          onOpenPalette={() => setPaletteOpen(true)}
           density={density}
           a11y={a11y}
           player={player}

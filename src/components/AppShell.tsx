@@ -6,7 +6,7 @@ import { type A11yPrefs, a11yDataAttrs } from "../lib/a11y";
 
 export type ShellRoute = "home" | "library" | "discovery" | "rename" | "metadata" | "settings" | "journal" | "insights" | "collections";
 
-export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onSettings, onJournal, onInsights, onCollections, density, a11y, children, player }: {
+export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onSettings, onJournal, onInsights, onCollections, onOpenPalette, density, a11y, children, player }: {
   active: ShellRoute;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
@@ -17,6 +17,7 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
   onJournal: () => void;
   onInsights: () => void;
   onCollections: () => void;
+  onOpenPalette: () => void;
   density: Density;
   a11y: A11yPrefs;
   children: ReactNode;
@@ -58,6 +59,11 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
           <IconButton icon={collapsed ? "chevronRight" : "chevronLeft"} label={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => onCollapsedChange(!collapsed)} />
         </div>
         <nav className="sidebar__nav" aria-label="Primary navigation">
+          <button className="sidebar__search" aria-label="Search (Ctrl+K)" title="Search (Ctrl+K)" onClick={onOpenPalette}>
+            <Icon name="search" />
+            <span className="sidebar__label">Search</span>
+            <kbd className="sidebar__kbd" aria-hidden="true">Ctrl K</kbd>
+          </button>
           {groups.map((g) => (
             <div className="sidebar__group" key={g.label}>
               <span className="sidebar__group-label">{g.label}</span>
