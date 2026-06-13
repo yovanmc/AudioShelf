@@ -115,7 +115,16 @@ export const markChapterFinished = (chapterId: number, nowMs: number) =>
 export const setAuthorDisplayName = (authorId: number, name: string | null) =>
   invoke("set_author_display_name", { authorId, name });
 
+export interface TagStat { tag: string; workCount: number; chapterCount: number; authorCount: number; }
+
 export const getAllTags = () => invoke<string[]>("get_all_tags");
+export const listTagsWithCounts = () => invoke<TagStat[]>("list_tags_with_counts");
+export const renameTag = (from: string, to: string) => invoke("rename_tag", { from, to });
+export const mergeTags = (sources: string[], target: string) => invoke("merge_tags", { sources, target });
+export const setTagAlias = (alias: string, canonical: string) => invoke("set_tag_alias", { alias, canonical });
+export const clearTagAlias = (alias: string) => invoke("clear_tag_alias", { alias });
+export const setTagParent = (child: string, parent: string) => invoke("set_tag_parent", { child, parent });
+export const clearTagParent = (child: string) => invoke("clear_tag_parent", { child });
 export const setAuthorTags = (authorId: number, tags: string[]) =>
   invoke("set_author_tags", { authorId, tags });
 export const setWorkTags = (workId: number, tags: string[]) =>

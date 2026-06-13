@@ -6,9 +6,10 @@ import {
   previewRenames, applyRenames, undoRenames,
   setGroupingOverride, clearGroupingOverride,
   getSetting, setSetting, pickFolder, searchLibrary, queryHome, resetPlayHistory,
+  listTagsWithCounts, renameTag, mergeTags, setTagAlias, clearTagAlias,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
-  type ChapterRow,
+  type ChapterRow, type TagStat,
 } from "./lib/api";
 import { HomeView } from "./views/HomeView";
 import { LibraryView } from "./views/LibraryView";
@@ -85,6 +86,7 @@ export default function App() {
   const [authors, setAuthors] = useState<AuthorRow[]>([]);
   const [detail, setDetail] = useState<AuthorDetail | null>(null);
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [tagStats, setTagStats] = useState<TagStat[]>([]);
   const [forYou, setForYou] = useState<DiscoveryWork[]>([]);
   const [byTags, setByTags] = useState<DiscoveryWork[]>([]);
   const [pickedTags, setPickedTags] = useState<string[]>([]);
@@ -171,7 +173,10 @@ export default function App() {
     setAuthors(await getAuthors());
   }
 
-  async function refreshTags() { setAllTags(await getAllTags()); }
+  async function refreshTags() {
+    setAllTags(await getAllTags());
+    setTagStats(await listTagsWithCounts());
+  }
 
   async function setTags(tags: string[]) {
     if (!detailRef.current) return;
@@ -192,6 +197,24 @@ export default function App() {
     await setChapterTags(chapterId, tags);
     setDetail(await getAuthorDetail(detailRef.current.id));
     await refreshTags();
+  }
+
+  async function doRenameTag(from: string, to: string) {
+    await renameTag(from, to);
+    await refreshTags();
+  }
+
+  async function doMergeTags(sources: string[], target: string) {
+    await mergeTags(sources, target);
+    await refreshTags();
+  }
+
+  async function doSetTagAlias(alias: string, canonical: string) {
+    await setTagAlias(alias, canonical);
+  }
+
+  async function doClearTagAlias(alias: string) {
+    await clearTagAlias(alias);
   }
 
   async function openRename() {
@@ -871,6 +894,11 @@ export default function App() {
           onRemoveShelf={onRemoveShelf}
           onMoveShelf={onMoveShelf}
           onRenameShelf={onRenameShelf}
+          tagStats={tagStats}
+          onRenameTag={doRenameTag}
+          onMergeTags={doMergeTags}
+          onSetTagAlias={doSetTagAlias}
+          onClearTagAlias={doClearTagAlias}
         />
       );
     }
