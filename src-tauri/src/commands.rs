@@ -357,13 +357,25 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
             .query_map(params![work.id], |r| r.get::<_, String>(0))?
             .collect::<rusqlite::Result<_>>()?;
 
-        // Chapter-level tags.
+        // Chapter-level tags and metadata.
         for ch in &mut work.chapters {
             let mut ct = conn.prepare("SELECT tag FROM chapter_tags WHERE chapter_id=?1 ORDER BY tag")?;
             ch.tags = ct
                 .query_map(params![ch.id], |r| r.get::<_, String>(0))?
                 .collect::<rusqlite::Result<_>>()?;
+            ch.metadata = chapter_metadata(conn, ch.id)?;
         }
+
+        // Work metadata = union of its chapters' metadata (per-audio rolls up to work).
+        let mut seen_terms = std::collections::BTreeSet::new();
+        let mut wm: Vec<MetaTag> = Vec::new();
+        for ch in &work.chapters {
+            for m in &ch.metadata {
+                if seen_terms.insert(m.term_id) { wm.push(m.clone()); }
+            }
+        }
+        wm.sort_by(|a, b| a.facet.cmp(&b.facet).then(a.value.to_lowercase().cmp(&b.value.to_lowercase())));
+        work.metadata = wm;
     }
 
     let mut tstmt = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1 ORDER BY tag")?;
@@ -371,7 +383,8 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
         .query_map(params![author_id], |r| r.get::<_, String>(0))?
         .collect::<rusqlite::Result<_>>()?;
 
-    Ok(AuthorDetail { id: author_id, name, tags, works, metadata: Vec::new() })
+    let author_meta = author_metadata(conn, author_id)?;
+    Ok(AuthorDetail { id: author_id, name, tags, works, metadata: author_meta })
 }
 
 const SEARCH_CAP: usize = 50;
@@ -2601,10 +2614,11 @@ pub(crate) fn query_metadata_terms(conn: &rusqlite::Connection) -> rusqlite::Res
          FROM metadata_terms t
          ORDER BY t.facet, lower(t.value)",
     )?;
-    stmt.query_map([], |r| Ok(MetaTerm {
+    let rows = stmt.query_map([], |r| Ok(MetaTerm {
         id: r.get(0)?, facet: r.get(1)?, value: r.get(2)?,
         chapter_count: r.get(3)?, author_count: r.get(4)?,
-    }))?.collect()
+    }))?.collect();
+    rows
 }
 
 #[tauri::command]
@@ -2663,6 +2677,65 @@ pub fn merge_metadata_terms(state: tauri::State<DbState>, source_ids: Vec<i64>, 
         tx.execute("DELETE FROM metadata_terms WHERE id=?1", params![sid]).map_err(|e| e.to_string())?;
     }
     tx.commit().map_err(|e| e.to_string())
+}
+
+/// Read all metadata terms attached to a chapter.
+pub(crate) fn chapter_metadata(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<Vec<MetaTag>> {
+    let mut stmt = conn.prepare(
+        "SELECT t.id, t.facet, t.value FROM chapter_metadata cm
+         JOIN metadata_terms t ON cm.term_id=t.id
+         WHERE cm.chapter_id=?1 ORDER BY t.facet, lower(t.value)",
+    )?;
+    let rows = stmt.query_map(params![chapter_id], |r| Ok(MetaTag { term_id: r.get(0)?, facet: r.get(1)?, value: r.get(2)? }))?
+        .collect();
+    rows
+}
+
+/// Read all metadata terms attached to an author.
+pub(crate) fn author_metadata(conn: &rusqlite::Connection, author_id: i64) -> rusqlite::Result<Vec<MetaTag>> {
+    let mut stmt = conn.prepare(
+        "SELECT t.id, t.facet, t.value FROM author_metadata am
+         JOIN metadata_terms t ON am.term_id=t.id
+         WHERE am.author_id=?1 ORDER BY t.facet, lower(t.value)",
+    )?;
+    let rows = stmt.query_map(params![author_id], |r| Ok(MetaTag { term_id: r.get(0)?, facet: r.get(1)?, value: r.get(2)? }))?
+        .collect();
+    rows
+}
+
+/// Create-or-fetch the term, then attach it to `(scope, id)`. Idempotent.
+pub(crate) fn attach_value(conn: &rusqlite::Connection, scope: &str, id: i64, facet: &str, value: &str) -> rusqlite::Result<MetaTag> {
+    let (table, key_col) = scope_table(scope)
+        .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("unknown scope: {scope}")))?;
+    let term = upsert_term(conn, facet, value)?;
+    conn.execute(
+        &format!("INSERT OR IGNORE INTO {table}({key_col}, term_id) VALUES (?1, ?2)"),
+        params![id, term.id],
+    )?;
+    Ok(MetaTag { term_id: term.id, facet: term.facet, value: term.value })
+}
+
+/// Detach `term_id` from `(scope, id)`. The term itself is left in the vocabulary.
+pub(crate) fn detach_value(conn: &rusqlite::Connection, scope: &str, id: i64, term_id: i64) -> rusqlite::Result<()> {
+    let (table, key_col) = scope_table(scope)
+        .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("unknown scope: {scope}")))?;
+    conn.execute(
+        &format!("DELETE FROM {table} WHERE {key_col}=?1 AND term_id=?2"),
+        params![id, term_id],
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn add_metadata_value(state: tauri::State<DbState>, scope: String, id: i64, facet: String, value: String) -> Result<MetaTag, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    attach_value(&conn, &scope, id, &facet, &value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn remove_metadata_value(state: tauri::State<DbState>, scope: String, id: i64, term_id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    detach_value(&conn, &scope, id, term_id).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -4307,7 +4380,7 @@ mod tests {
 
     #[test]
     fn chapter_sort_override_reorders_in_detail() {
-        let conn = crate::db::open_at_version(7).unwrap();
+        let conn = crate::db::open_at_version(8).unwrap();
         conn.execute_batch(
             "INSERT INTO authors(id, folder_name, status) VALUES (1,'a','active');
              INSERT INTO works(id, author_id, base_title, sort_key, status, chapter_sort) VALUES (1,1,'W','w','active','number_desc');
@@ -4373,6 +4446,48 @@ mod tests {
         assert_eq!(terms.len(), 1);
         assert_eq!(terms[0].chapter_count, 1);
         assert_eq!(terms[0].author_count, 1);
+    }
+
+    // ---- M21 Task 4: attach/detach + author detail metadata tests ----------------------
+
+    #[test]
+    fn add_and_remove_chapter_metadata_roundtrip() {
+        let conn = crate::db::open_at_version(8).unwrap();
+        conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (1,1,'/x.wav','x.wav',1,'wav',5,0,'active')", []).unwrap();
+        // attach via the shared helper (the command wraps this).
+        let term = attach_value(&conn, "chapter", 1, "narrator", "Jane Roe").unwrap();
+        assert_eq!(term.facet, "narrator");
+        let got = chapter_metadata(&conn, 1).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].value, "Jane Roe");
+        // idempotent attach.
+        attach_value(&conn, "chapter", 1, "narrator", "Jane Roe").unwrap();
+        assert_eq!(chapter_metadata(&conn, 1).unwrap().len(), 1);
+        // detach.
+        detach_value(&conn, "chapter", 1, term.term_id).unwrap();
+        assert_eq!(chapter_metadata(&conn, 1).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn invalid_scope_is_rejected() {
+        let conn = crate::db::open_at_version(8).unwrap();
+        assert!(attach_value(&conn, "work", 1, "mood", "cozy").is_err());
+    }
+
+    #[test]
+    fn author_detail_surfaces_chapter_and_work_metadata() {
+        let conn = crate::db::open_at_version(8).unwrap();
+        conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (1,1,'/x.wav','x.wav',1,'wav',5,0,'active')", []).unwrap();
+        attach_value(&conn, "chapter", 1, "narrator", "Jane Roe").unwrap();
+        attach_value(&conn, "author", 1, "language", "English").unwrap();
+        let d = query_author_detail(&conn, 1).unwrap();
+        assert_eq!(d.metadata.iter().filter(|m| m.facet == "language").count(), 1);
+        assert_eq!(d.works[0].chapters[0].metadata[0].value, "Jane Roe");
+        assert_eq!(d.works[0].metadata[0].value, "Jane Roe"); // aggregated to the work
     }
 }
 
