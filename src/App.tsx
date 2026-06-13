@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import {
   getLaunchArgs, scanLibrary, getAuthors, getAuthorDetail,
@@ -23,6 +23,7 @@ import {
   exportCurationJson, exportDbSnapshot, importCurationJson, stageDbRestore, libraryHealthScan,
   openMiniPlayer,
   listMetadataTerms, createMetadataTerm, renameMetadataTerm, deleteMetadataTerm, mergeMetadataTerms,
+  addMetadataValue, removeMetadataValue,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
@@ -377,6 +378,28 @@ export default function App() {
   const handleRenameMetaTerm = async (id: number, value: string) => { await renameMetadataTerm(id, value); await loadMetaTerms(); };
   const handleDeleteMetaTerm = async (id: number) => { await deleteMetadataTerm(id); await loadMetaTerms(); };
   const handleMergeMetaTerms = async (sourceIds: number[], targetId: number) => { await mergeMetadataTerms(sourceIds, targetId); await loadMetaTerms(); };
+
+  // Flat list of all known metadata values for the MetadataEditor datalist suggestions.
+  const metaSuggestions = useMemo(() => Array.from(new Set(metaTerms.map((t) => t.value))).sort(), [metaTerms]);
+
+  const handleAddChapterMeta = async (chapterId: number, facet: string, value: string) => {
+    await addMetadataValue("chapter", chapterId, facet, value);
+    await loadMetaTerms();
+    if (detail) await openAuthor(detail.id);
+  };
+  const handleRemoveChapterMeta = async (chapterId: number, termId: number) => {
+    await removeMetadataValue("chapter", chapterId, termId);
+    if (detail) await openAuthor(detail.id);
+  };
+  const handleAddAuthorMeta = async (authorId: number, facet: string, value: string) => {
+    await addMetadataValue("author", authorId, facet, value);
+    await loadMetaTerms();
+    if (detail) await openAuthor(detail.id);
+  };
+  const handleRemoveAuthorMeta = async (authorId: number, termId: number) => {
+    await removeMetadataValue("author", authorId, termId);
+    if (detail) await openAuthor(detail.id);
+  };
 
   async function setTags(tags: string[]) {
     if (!detailRef.current) return;
@@ -2118,6 +2141,11 @@ export default function App() {
           onSetWorkReEntryNote={handleSetWorkReEntryNote}
           onSetWorkRating={handleSetWorkRating}
           onChapterSortChange={onChapterSortChange}
+          metaSuggestions={metaSuggestions}
+          onAddChapterMeta={handleAddChapterMeta}
+          onRemoveChapterMeta={handleRemoveChapterMeta}
+          onAddAuthorMeta={handleAddAuthorMeta}
+          onRemoveAuthorMeta={handleRemoveAuthorMeta}
         />
       );
     }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { AuthorDetail, ChapterRow, ChapterJournal, DiscoveryWork, PlaybackContext, SeriesView, WorkRow } from "../lib/api";
 import { TagEditor } from "./TagEditor";
+import { MetadataEditor } from "../components/MetadataEditor";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
 import { Button, Dialog, ProgressBar, SectionHeading, TagGroup } from "../components/ui";
 import { WorkCard } from "../components/WorkCard";
@@ -154,6 +155,12 @@ export function AuthorDetailView(props: {
   onSetWorkReEntryNote?: (workId: number, note: string) => void;
   onSetWorkRating?: (workId: number, rating: string) => void;
   onChapterSortChange?: (workId: number, sort: string) => void;
+  // ---- M21 per-entity metadata editor props (all optional so existing tests stay unbroken) ----
+  metaSuggestions?: string[];
+  onAddChapterMeta?: (chapterId: number, facet: string, value: string) => void;
+  onRemoveChapterMeta?: (chapterId: number, termId: number) => void;
+  onAddAuthorMeta?: (authorId: number, facet: string, value: string) => void;
+  onRemoveAuthorMeta?: (authorId: number, termId: number) => void;
 }) {
   const { detail, series = [], moreLikeThisMap = {}, workTagSuggestions = {} } = props;
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
@@ -206,6 +213,14 @@ export function AuthorDetailView(props: {
           <h1 dir="auto">{detail.name}</h1>
           <p className="muted">{works.length} works · {chapters.length} chapters · {formatLong(totalSecs)} · {progress}% played</p>
           <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
+          {props.onAddAuthorMeta && props.onRemoveAuthorMeta && (
+            <MetadataEditor
+              applied={detail.metadata}
+              suggestions={props.metaSuggestions ?? []}
+              onAdd={(facet, value) => props.onAddAuthorMeta!(detail.id, facet, value)}
+              onRemove={(termId) => props.onRemoveAuthorMeta!(detail.id, termId)}
+            />
+          )}
           {firstUnplayed && <Button variant="primary" onClick={() => props.onPlayChapter({
             chapter: firstUnplayed.chapter,
             authorId: detail.id,
@@ -362,6 +377,14 @@ export function AuthorDetailView(props: {
             allTags={props.allTags}
             onChange={(t) => props.onSetChapterTags(editChapterInfo.chapter.id, t)}
           />
+          {props.onAddChapterMeta && props.onRemoveChapterMeta && (
+            <MetadataEditor
+              applied={editChapterInfo.chapter.metadata}
+              suggestions={props.metaSuggestions ?? []}
+              onAdd={(facet, value) => props.onAddChapterMeta!(editChapterInfo.chapter.id, facet, value)}
+              onRemove={(termId) => props.onRemoveChapterMeta!(editChapterInfo.chapter.id, termId)}
+            />
+          )}
         </Dialog>
       )}
       {editState && editChapterInfo && editState.mode === "journal" && props.openJournal && (
