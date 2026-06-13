@@ -53,7 +53,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -273,6 +273,9 @@ export default function App() {
   // ---- M17: chapter journal state ----
   const [openJournal, setOpenJournal] = useState<ChapterJournal | null>(null);
   const [journalChapterId, setJournalChapterId] = useState<number | null>(null);
+
+  // ---- M21: harness-only state to programmatically open the per-chapter "Edit tags" dialog ----
+  const [harnessTagsChapterId, setHarnessTagsChapterId] = useState<number | null>(null);
 
   // ---- M17: journal view state ----
   const [journal, setJournal] = useState<JournalResults | null>(null);
@@ -1813,6 +1816,65 @@ export default function App() {
                   await settle();
                 },
               })
+            : args.walkthrough === "m21"
+            ? m21Steps({
+                // Step 1: seed narrator "Jane Roe" + mood "cozy" on the first chapter
+                // of the first author ("Jane Doe"), and language "English" on the author.
+                // All via the real api — on-disk fixtures stay 43/44/47.
+                seedMetadata: async () => {
+                  const authors = await getAuthors();
+                  const jane = authors.find((a) => a.name === "Jane Doe") ?? authors[0];
+                  if (!jane) return;
+                  const d = await getAuthorDetail(jane.id);
+                  const firstChapter = d.works[0]?.chapters[0];
+                  if (firstChapter) {
+                    await addMetadataValue("chapter", firstChapter.id, "narrator", "Jane Roe");
+                    await addMetadataValue("chapter", firstChapter.id, "mood", "cozy");
+                  }
+                  await addMetadataValue("author", jane.id, "language", "English");
+                  await loadMetaTerms();
+                  await openAuthor(jane.id);
+                },
+                // Step 2: open Settings — the MetadataManagerView is there with seeded terms.
+                showMetadataManager: async () => {
+                  await loadMetaTerms();
+                  openSettings();
+                },
+                // Step 3: open the first author's detail, expand works so the first chapter
+                // is visible, then programmatically open the "Edit tags" dialog (which hosts
+                // the MetadataEditor) for the first chapter. Uses the same mechanism as the
+                // overflow-menu "Edit tags" action: setEditState({ mode: "tags", chapterId }).
+                // harnessTagsChapterId is passed as openTagsForChapterId to AuthorDetailView
+                // where a useEffect mirrors the journal useEffect pattern.
+                showChapterMetadataEditor: async () => {
+                  const authors = await getAuthors();
+                  const jane = authors.find((a) => a.name === "Jane Doe") ?? authors[0];
+                  if (!jane) return;
+                  const d = await getAuthorDetail(jane.id);
+                  const firstChapter = d.works[0]?.chapters[0];
+                  if (!firstChapter) return;
+                  setHarnessTagsChapterId(null);
+                  await openAuthor(jane.id);
+                  await settle();
+                  setHarnessTagsChapterId(firstChapter.id);
+                  await settle();
+                  await settle();
+                },
+                // Step 4: open the Narrators browse view with "Jane Roe" already selected
+                // so the works list is populated.
+                showNarratorsBrowse: async () => {
+                  await loadMetaTerms();
+                  await selectNarrator("Jane Roe");
+                  setRoute({ kind: "narrators" });
+                },
+                // Step 5: open the Discover view with the "mood: cozy" facet picked so
+                // the works list is populated.
+                showDiscoverByFacet: async () => {
+                  await loadMetaTerms();
+                  await pickFacet("mood", "cozy");
+                  openDiscovery();
+                },
+              })
             : browseSteps({
                 // Seed tags on a few authors + a played chapter so sort-by-length,
                 // played%, the tag filter, and the status filter all have signal.
@@ -2174,6 +2236,7 @@ export default function App() {
           onRemoveChapterMeta={handleRemoveChapterMeta}
           onAddAuthorMeta={handleAddAuthorMeta}
           onRemoveAuthorMeta={handleRemoveAuthorMeta}
+          openTagsForChapterId={harnessTagsChapterId ?? undefined}
         />
       );
     }

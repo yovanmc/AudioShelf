@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -126,6 +126,25 @@ describe("m20Steps", () => {
       "theme-light", "theme-high-contrast", "text-large", "dyslexia-font",
       "reduced-motion", "colorblind-status", "skip-link-focus", "sr-tree",
       "rtl-layout", "mini-player", "a11y-settings",
+    ]);
+  });
+});
+
+describe("m21Steps", () => {
+  it("captures the five M21 metadata-discovery surfaces in order", () => {
+    const noop = async () => {};
+    expect(m21Steps({
+      seedMetadata: noop,
+      showMetadataManager: noop,
+      showChapterMetadataEditor: noop,
+      showNarratorsBrowse: noop,
+      showDiscoverByFacet: noop,
+    }).map((s) => s.name)).toEqual([
+      "seed",
+      "metadata-manager",
+      "chapter-metadata-edit",
+      "narrators-browse",
+      "discover-by-facet",
     ]);
   });
 });

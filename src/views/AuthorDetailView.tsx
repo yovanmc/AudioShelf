@@ -161,6 +161,12 @@ export function AuthorDetailView(props: {
   onRemoveChapterMeta?: (chapterId: number, termId: number) => void;
   onAddAuthorMeta?: (authorId: number, facet: string, value: string) => void;
   onRemoveAuthorMeta?: (authorId: number, termId: number) => void;
+  /**
+   * Harness-only: when set, programmatically opens the per-chapter "Edit tags" dialog
+   * (which hosts the MetadataEditor) for this chapter id. Used by the m21 walkthrough
+   * step so the dialog is rendered without mouse interaction.
+   */
+  openTagsForChapterId?: number;
 }) {
   const { detail, series = [], moreLikeThisMap = {}, workTagSuggestions = {} } = props;
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
@@ -173,6 +179,14 @@ export function AuthorDetailView(props: {
       setEditState({ chapterId: props.openJournalForChapterId, mode: "journal" });
     }
   }, [props.openJournalForChapterId]);
+
+  // Harness support: open the "Edit tags" dialog (which hosts the MetadataEditor) when
+  // openTagsForChapterId is set. Mirrors the journal useEffect above.
+  useEffect(() => {
+    if (props.openTagsForChapterId != null) {
+      setEditState({ chapterId: props.openTagsForChapterId, mode: "tags" });
+    }
+  }, [props.openTagsForChapterId]);
   const works = sortWorks(detail.works, props.workSort);
   const allCollapsed = works.length > 0 && works.every((w) => collapsed.has(w.id));
   const toggleWork = (id: number) =>
