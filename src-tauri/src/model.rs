@@ -33,6 +33,9 @@ pub struct ChapterRow {
     pub file_path: String,
     pub played: bool,
     pub tags: Vec<String>,
+    pub user_summary: String,
+    pub takeaway: String,
+    pub is_favorite: bool,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -42,6 +45,8 @@ pub struct WorkRow {
     pub base_title: String,
     pub tags: Vec<String>,
     pub chapters: Vec<ChapterRow>,
+    pub re_entry_note: String,
+    pub completion_rating: String,
 }
 
 #[derive(Serialize, Debug, PartialEq)]

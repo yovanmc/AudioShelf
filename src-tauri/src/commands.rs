@@ -171,6 +171,41 @@ pub fn set_chapter_tags(state: tauri::State<DbState>, chapter_id: i64, tags: Vec
     replace_tags(&conn, "chapter_tags", "chapter_id", chapter_id, &tags).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn set_chapter_summary(state: tauri::State<DbState>, chapter_id: i64, summary: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE chapters SET user_summary=?2 WHERE id=?1", params![chapter_id, summary.trim()])
+        .map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_chapter_takeaway(state: tauri::State<DbState>, chapter_id: i64, takeaway: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE chapters SET takeaway=?2 WHERE id=?1", params![chapter_id, takeaway.trim()])
+        .map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_chapter_favorite(state: tauri::State<DbState>, chapter_id: i64, favorite: bool) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE chapters SET is_favorite=?2 WHERE id=?1", params![chapter_id, favorite as i64])
+        .map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_work_re_entry_note(state: tauri::State<DbState>, work_id: i64, note: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE works SET re_entry_note=?2 WHERE id=?1", params![work_id, note.trim()])
+        .map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_work_rating(state: tauri::State<DbState>, work_id: i64, rating: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE works SET completion_rating=?2 WHERE id=?1", params![work_id, rating.trim()])
+        .map(|_| ()).map_err(|e| e.to_string())
+}
+
 // ---- query helpers (pub so integration tests and the testing module can call them) ----
 
 /// Atomically mark a chapter played and record a play event at `now_ms`.
@@ -253,18 +288,26 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
     )?;
 
     let mut wstmt = conn.prepare(
-        "SELECT id, base_title FROM works WHERE author_id=?1 AND status='active'",
+        "SELECT id, base_title, re_entry_note, completion_rating FROM works WHERE author_id=?1 AND status='active'",
     )?;
     let mut works: Vec<WorkRow> = wstmt
         .query_map(params![author_id], |r| {
-            Ok(WorkRow { id: r.get(0)?, base_title: r.get(1)?, tags: Vec::new(), chapters: Vec::new() })
+            Ok(WorkRow {
+                id: r.get(0)?,
+                base_title: r.get(1)?,
+                tags: Vec::new(),
+                chapters: Vec::new(),
+                re_entry_note: r.get::<_, String>(2).unwrap_or_default(),
+                completion_rating: r.get::<_, String>(3).unwrap_or_default(),
+            })
         })?
         .collect::<rusqlite::Result<_>>()?;
     works.sort_by(|a, b| natural_cmp(&a.base_title, &b.base_title));
 
     for work in &mut works {
         let mut cstmt = conn.prepare(
-            "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played
+            "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played,
+                    user_summary, takeaway, is_favorite
              FROM chapters WHERE work_id=?1 AND status='active'",
         )?;
         let mut chapters: Vec<ChapterRow> = cstmt
@@ -283,6 +326,9 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                     file_path: r.get(5)?,
                     played: r.get::<_, i64>(6)? != 0,
                     tags: Vec::new(),
+                    user_summary: r.get::<_, String>(7).unwrap_or_default(),
+                    takeaway: r.get::<_, String>(8).unwrap_or_default(),
+                    is_favorite: r.get::<_, i64>(9).unwrap_or(0) != 0,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -526,7 +572,8 @@ pub(crate) fn more_from_author(conn: &rusqlite::Connection, author_id: i64) -> r
 /// Load a single chapter as a `ChapterRow` (title derived from raw_filename; tags included).
 fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<ChapterRow> {
     let mut row = conn.query_row(
-        "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played
+        "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played,
+                user_summary, takeaway, is_favorite
          FROM chapters WHERE id=?1",
         params![chapter_id],
         |r| {
@@ -544,6 +591,9 @@ fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::R
                 file_path: r.get(5)?,
                 played: r.get::<_, i64>(6)? != 0,
                 tags: Vec::new(),
+                user_summary: r.get::<_, String>(7).unwrap_or_default(),
+                takeaway: r.get::<_, String>(8).unwrap_or_default(),
+                is_favorite: r.get::<_, i64>(9).unwrap_or(0) != 0,
             })
         },
     )?;
@@ -3153,6 +3203,114 @@ mod tests {
         let mystery_pos = suggestions.iter().position(|s| s == "mystery").unwrap();
         let adventure_pos = suggestions.iter().position(|s| s == "adventure").unwrap();
         assert!(mystery_pos < adventure_pos, "vocab match should rank before novel token");
+    }
+
+    // ---- M17 Phase 2: scalar journal fields + setter commands -------------------------
+
+    /// Seed an author, one work, and one chapter into an in-memory DB.
+    /// Returns (author_id, work_id, chapter_id).
+    fn seed_journal_author(conn: &rusqlite::Connection) -> (i64, i64, i64) {
+        conn.execute(
+            "INSERT INTO authors(folder_name, status) VALUES ('Journal Author', 'active')",
+            [],
+        ).unwrap();
+        let author_id: i64 = conn.query_row(
+            "SELECT id FROM authors WHERE folder_name='Journal Author'",
+            [],
+            |r| r.get(0),
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO works(author_id, base_title, sort_key, status) VALUES (?1, 'Journal Work', 'journal work', 'active')",
+            params![author_id],
+        ).unwrap();
+        let work_id: i64 = conn.query_row(
+            "SELECT id FROM works WHERE author_id=?1",
+            params![author_id],
+            |r| r.get(0),
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO chapters(work_id, file_path, raw_filename, chapter_no, format, played, status)
+             VALUES (?1, 'fake/ch1.mp3', 'ch1.mp3', 1, 'mp3', 0, 'active')",
+            params![work_id],
+        ).unwrap();
+        let chapter_id: i64 = conn.query_row(
+            "SELECT id FROM chapters WHERE work_id=?1",
+            params![work_id],
+            |r| r.get(0),
+        ).unwrap();
+
+        (author_id, work_id, chapter_id)
+    }
+
+    #[test]
+    fn scalar_journal_fields_round_trip() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (author_id, work_id, chapter_id) = seed_journal_author(&conn);
+
+        // --- chapter scalar setters ---
+
+        // set_chapter_summary
+        conn.execute("UPDATE chapters SET user_summary=?2 WHERE id=?1", params![chapter_id, "Great chapter"]).unwrap();
+
+        // set_chapter_takeaway
+        conn.execute("UPDATE chapters SET takeaway=?2 WHERE id=?1", params![chapter_id, "Key insight"]).unwrap();
+
+        // set_chapter_favorite
+        conn.execute("UPDATE chapters SET is_favorite=?2 WHERE id=?1", params![chapter_id, 1i64]).unwrap();
+
+        // --- work scalar setters ---
+
+        // set_work_re_entry_note
+        conn.execute("UPDATE works SET re_entry_note=?2 WHERE id=?1", params![work_id, "Start at chapter 3"]).unwrap();
+
+        // set_work_rating
+        conn.execute("UPDATE works SET completion_rating=?2 WHERE id=?1", params![work_id, "excellent"]).unwrap();
+
+        // --- verify via query_author_detail ---
+        let detail = super::query_author_detail(&conn, author_id).unwrap();
+        assert_eq!(detail.works.len(), 1);
+        let work = &detail.works[0];
+        assert_eq!(work.re_entry_note, "Start at chapter 3");
+        assert_eq!(work.completion_rating, "excellent");
+        assert_eq!(work.chapters.len(), 1);
+        let ch = &work.chapters[0];
+        assert_eq!(ch.user_summary, "Great chapter");
+        assert_eq!(ch.takeaway, "Key insight");
+        assert!(ch.is_favorite, "chapter should be marked as favorite");
+    }
+
+    #[test]
+    fn scalar_journal_fields_default_to_empty() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (author_id, _work_id, _chapter_id) = seed_journal_author(&conn);
+
+        // Without any setter calls, scalars default to empty / false.
+        let detail = super::query_author_detail(&conn, author_id).unwrap();
+        let work = &detail.works[0];
+        assert_eq!(work.re_entry_note, "");
+        assert_eq!(work.completion_rating, "");
+        let ch = &work.chapters[0];
+        assert_eq!(ch.user_summary, "");
+        assert_eq!(ch.takeaway, "");
+        assert!(!ch.is_favorite, "is_favorite must default to false");
+    }
+
+    #[test]
+    fn chapter_favorite_toggle_round_trips() {
+        let conn = crate::db::open_in_memory().unwrap();
+        let (author_id, _work_id, chapter_id) = seed_journal_author(&conn);
+
+        // set favorite = true
+        conn.execute("UPDATE chapters SET is_favorite=1 WHERE id=?1", params![chapter_id]).unwrap();
+        let detail = super::query_author_detail(&conn, author_id).unwrap();
+        assert!(detail.works[0].chapters[0].is_favorite);
+
+        // set favorite = false
+        conn.execute("UPDATE chapters SET is_favorite=0 WHERE id=?1", params![chapter_id]).unwrap();
+        let detail2 = super::query_author_detail(&conn, author_id).unwrap();
+        assert!(!detail2.works[0].chapters[0].is_favorite);
     }
 }
 
