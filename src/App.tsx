@@ -19,6 +19,7 @@ import {
   queryInsights, exportRecapPng, seedPlayEvents,
   advancedSearch, listSavedSearches, createSavedSearch, deleteSavedSearch,
   listCollections, createCollection, deleteCollection, reorderCollections, resolveCollection,
+  bulkSetWorkTags,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
@@ -38,6 +39,7 @@ import { MetadataView } from "./views/MetadataView";
 import { SettingsView } from "./views/SettingsView";
 import { ScanView } from "./views/ScanView";
 import { CollectionsView } from "./components/CollectionsView";
+import { BulkTagDialog } from "./components/BulkTagDialog";
 import { PlayerBar } from "./player/PlayerBar";
 import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
@@ -158,6 +160,11 @@ export default function App() {
 
   // ---- M19 scoped search (tag/duration/status tokens) ----
   const [scopedResults, setScopedResults] = useState<ScopedResults | null>(null);
+
+  // ---- M19 multi-select (scoped results) ----
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedWorkIds, setSelectedWorkIds] = useState<number[]>([]);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   // ---- M19 saved searches ----
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
@@ -769,6 +776,21 @@ export default function App() {
     await loadAuthors();
     if (routeRef.current.kind === "home") await loadHome();
     // Stop after each chapter — no auto-advance.
+  }
+
+  function onToggleWork(id: number) {
+    setSelectedWorkIds((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  }
+
+  async function onBulkApply(add: string[], remove: string[]) {
+    await bulkSetWorkTags(selectedWorkIds, add, remove);
+    // Re-run the current scoped search to refresh tags in the result set.
+    const q = query.trim();
+    if (q) {
+      const sr = await advancedSearch(q);
+      setScopedResults(sr);
+    }
+    await refreshTags();
   }
 
   async function refreshSavedSearches() {
@@ -1647,29 +1669,52 @@ export default function App() {
         />
       );
     }
+    const isScoped = hasScopedTokens(query);
     return (
-      <LibraryView
-        authors={authors}
-        query={query}
-        results={results}
-        transcriptResults={transcriptResults}
-        scopedResults={scopedResults}
-        scoped={hasScopedTokens(query)}
-        savedSearches={savedSearches}
-        onSaveSearch={handleSaveSearch}
-        onRunSavedSearch={setQuery}
-        onDeleteSavedSearch={handleDeleteSavedSearch}
-        onQueryChange={setQuery}
-        onOpenAuthor={openAuthor}
-        sort={browsePrefs.authorSort}
-        onSortChange={setAuthorSort}
-        filterTag={browsePrefs.filterTag}
-        onFilterTagChange={setFilterTag}
-        filterStatus={browsePrefs.filterStatus}
-        onFilterStatusChange={setFilterStatus}
-        allTags={allTags}
-        onPlayNextOfWork={playNextChapterOfWork}
-      />
+      <>
+        <LibraryView
+          authors={authors}
+          query={query}
+          results={results}
+          transcriptResults={transcriptResults}
+          scopedResults={scopedResults}
+          scoped={isScoped}
+          savedSearches={savedSearches}
+          onSaveSearch={handleSaveSearch}
+          onRunSavedSearch={(q) => { setSelectMode(false); setSelectedWorkIds([]); setQuery(q); }}
+          onDeleteSavedSearch={handleDeleteSavedSearch}
+          onQueryChange={(q) => { setSelectMode(false); setSelectedWorkIds([]); setQuery(q); }}
+          onOpenAuthor={openAuthor}
+          sort={browsePrefs.authorSort}
+          onSortChange={setAuthorSort}
+          filterTag={browsePrefs.filterTag}
+          onFilterTagChange={setFilterTag}
+          filterStatus={browsePrefs.filterStatus}
+          onFilterStatusChange={setFilterStatus}
+          allTags={allTags}
+          onPlayNextOfWork={playNextChapterOfWork}
+          selectMode={selectMode}
+          onSelectModeChange={(on) => { setSelectMode(on); if (!on) setSelectedWorkIds([]); }}
+          selectedWorkIds={selectedWorkIds}
+          onToggleWork={onToggleWork}
+        />
+        {selectMode && selectedWorkIds.length > 0 && (
+          <div className="bulk-bar">
+            <span className="bulk-bar__count">{selectedWorkIds.length} selected</span>
+            <button className="button button--accent" onClick={() => setBulkDialogOpen(true)}>Tag…</button>
+            <button className="button button--ghost" onClick={() => setSelectedWorkIds([])}>Clear</button>
+            <button className="button button--ghost" onClick={() => { setSelectMode(false); setSelectedWorkIds([]); }}>Done</button>
+          </div>
+        )}
+        {bulkDialogOpen && (
+          <BulkTagDialog
+            count={selectedWorkIds.length}
+            allTags={allTags}
+            onApply={onBulkApply}
+            onClose={() => setBulkDialogOpen(false)}
+          />
+        )}
+      </>
     );
   }
 

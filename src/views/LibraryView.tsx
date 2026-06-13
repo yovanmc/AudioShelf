@@ -31,6 +31,11 @@ export function LibraryView(props: {
   onSaveSearch?: (name: string, query: string) => void;
   onRunSavedSearch?: (query: string) => void;
   onDeleteSavedSearch?: (id: number) => void;
+  /** Multi-select mode (scoped results only). */
+  selectMode?: boolean;
+  onSelectModeChange?: (on: boolean) => void;
+  selectedWorkIds?: number[];
+  onToggleWork?: (workId: number) => void;
 }) {
   const searching = props.query.trim() !== "";
   const visible = filterAuthors(sortAuthors(props.authors, props.sort), { tag: props.filterTag, status: props.filterStatus });
@@ -68,6 +73,15 @@ export function LibraryView(props: {
             Save search
           </button>
         )}
+        {props.scoped && props.onSelectModeChange && (
+          <button
+            className={`button button--ghost${props.selectMode ? " button--active" : ""}`}
+            style={{ marginLeft: 8, whiteSpace: "nowrap" }}
+            onClick={() => props.onSelectModeChange!(!props.selectMode)}
+          >
+            {props.selectMode ? "Done" : "Select"}
+          </button>
+        )}
       </div>
       {!searching && (
         <p className="muted" style={{ fontSize: "0.85em", margin: "4px 0 0" }}>
@@ -96,7 +110,13 @@ export function LibraryView(props: {
         </div>
       )}
       {props.scoped && props.scopedResults ? (
-        <ScopedResultsPanel results={props.scopedResults} onOpenAuthor={props.onOpenAuthor} />
+        <ScopedResultsPanel
+          results={props.scopedResults}
+          onOpenAuthor={props.onOpenAuthor}
+          selectMode={props.selectMode}
+          selectedWorkIds={props.selectedWorkIds}
+          onToggleWork={props.onToggleWork}
+        />
       ) : searching ? <SearchResultsPanel results={props.results} transcriptHits={props.transcriptResults} onOpenAuthor={props.onOpenAuthor} onPlayNextOfWork={props.onPlayNextOfWork} /> : (
         <>
           <div className="tabs" role="tablist" aria-label="Played status">

@@ -122,3 +122,12 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: l
 .work-card__check { font-size: 1.1rem; margin-bottom: var(--space-1); }
 .work-card__sub { font-size: .85rem; color: var(--color-text-muted); }
 .work-card__meta { font-size: .82rem; color: var(--color-text-muted); }
+/* ---- Multi-select bulk bar (M19) ---- */
+.bulk-bar { position: fixed; bottom: calc(var(--player-bar-h, 72px) + var(--space-3)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: var(--space-3); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); box-shadow: var(--shadow-overlay); z-index: 60; }
+.bulk-bar__count { font-size: 0.9rem; color: var(--color-text-muted); min-width: 80px; }
+/* ---- Dialog actions footer ---- */
+.dialog__actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-5); }
+/* ---- Accent button variant ---- */
+.button--accent { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+.button--accent:hover { background: var(--color-accent-hover, var(--color-accent)); border-color: var(--color-accent-hover, var(--color-accent)); }
+.button--active { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-text); }
