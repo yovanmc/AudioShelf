@@ -41,7 +41,7 @@ export function ScopedResults({
             <span className="work-card__meta">{w.playedCount}/{w.chapterCount} · {fmt(w.totalSecs)}</span>
           </button>
         ))}
-        {results.works.length === 0 && <p className="empty-note">No works match this search.</p>}
+        {results.works.length === 0 && <p className="empty-note">No works match this filter. Try removing a condition.</p>}
       </div>
     </div>
   );

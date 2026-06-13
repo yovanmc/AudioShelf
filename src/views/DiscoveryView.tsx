@@ -2,8 +2,8 @@ import type { MetaTerm, DiscoveryWork } from "../lib/api";
 import { WorkCard } from "../components/WorkCard";
 import { EmptyState, PageHeader, SectionHeading } from "../components/ui";
 
-function WorkList({ works, onOpenAuthor, onPlayNext }: { works: DiscoveryWork[]; onOpenAuthor: (id: number) => void; onPlayNext?: (workId: number, authorId: number) => void }) {
-  if (!works.length) return <EmptyState title="Personalized picks — needs listening history">Play some audio or add tags to build recommendations.</EmptyState>;
+function WorkList({ works, onOpenAuthor, onPlayNext, emptyTitle = "Nothing to show yet", emptyBody = "Play some audio or add tags to build recommendations." }: { works: DiscoveryWork[]; onOpenAuthor: (id: number) => void; onPlayNext?: (workId: number, authorId: number) => void; emptyTitle?: string; emptyBody?: string }) {
+  if (!works.length) return <EmptyState title={emptyTitle}>{emptyBody}</EmptyState>;
   return <div className="card-grid">{works.map((work) => (
     <WorkCard
       key={work.workId}
@@ -55,7 +55,7 @@ export function DiscoveryView(props: {
             );
           })}
         </div>
-        {props.picked.length > 0 && <WorkList works={props.byTags} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} />}
+        {props.picked.length > 0 && <WorkList works={props.byTags} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} emptyTitle="No works with those tags" emptyBody="Nothing in your library matches the tags you picked. Try a different tag." />}
       </section>
       <section className="view-section">
         <SectionHeading title="By narrator, language, or mood" />
@@ -78,11 +78,11 @@ export function DiscoveryView(props: {
               </div>
             </div>
           ))}
-        {props.pickedFacet && <WorkList works={props.byFacet} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} />}
+        {props.pickedFacet && <WorkList works={props.byFacet} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} emptyTitle="No works for that pick" emptyBody="Nothing matches that narrator, language, or mood yet." />}
       </section>
       <section className="view-section">
         <SectionHeading title="For You" />
-        <WorkList works={props.forYou} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} />
+        <WorkList works={props.forYou} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} emptyTitle="Recommendations grow as you listen" emptyBody="Finish a chapter or add tags to your works, and personalized picks will appear here." />
       </section>
     </main>
   );
