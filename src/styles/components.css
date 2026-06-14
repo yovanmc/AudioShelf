@@ -235,7 +235,7 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .select__option-check { width: var(--icon-sm); height: var(--icon-sm); flex: none; }
 
 /* ---- Expanded player — two-column layout (M25 VIS-4) ---- */
-.now-playing__layout { display: grid; grid-template-columns: 360px 1fr; gap: var(--space-6); align-items: start; }
+.now-playing__layout { display: grid; grid-template-columns: 360px 1fr; gap: clamp(var(--space-4), 3vw, var(--space-6)); align-items: start; }
 .now-playing__title { margin: 0 0 var(--space-2); }
 .now-playing__creator { margin-top: var(--space-2); }
 @media (max-width: 720px) { .now-playing__layout { grid-template-columns: 1fr; } }
