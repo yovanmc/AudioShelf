@@ -617,9 +617,11 @@ pub fn resolve_collection(state: tauri::State<DbState>, id: i64) -> Result<crate
         status_label: status_label_of(parsed.status) })
 }
 
-/// Works (with unplayed chapters) whose author OR the work itself carries any of
-/// `tags`, ranked by shared-tag count then unplayed count. `exclude_authors` are
-/// filtered out. `sharedTags` is the union of matching author- and work-level tags.
+/// Works (with unplayed chapters) whose author, work, OR any chapter carries any of
+/// `tags` (facet='tag') in the unified attach tables, ranked by shared-tag count then
+/// unplayed count. `exclude_authors` are filtered out. `sharedTags` is the union of
+/// matching labels across all three attach levels.
+/// Delegates to `discovery_for_metadata` per tag and aggregates results.
 pub(crate) fn discovery_for_tags(
     conn: &rusqlite::Connection,
     tags: &[String],
@@ -629,7 +631,6 @@ pub(crate) fn discovery_for_tags(
     if tags.is_empty() {
         return Ok(Vec::new());
     }
-    let mut works: Vec<DiscoveryWork> = Vec::new();
 
     // Resolve the requested tags through any alias mappings.
     let resolved_request = resolve_aliases(conn, tags)?;
@@ -645,27 +646,47 @@ pub(crate) fn discovery_for_tags(
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
         .collect::<rusqlite::Result<_>>()?;
 
+    let resolved_req_set: std::collections::BTreeSet<String> =
+        resolved_request.iter().cloned().collect();
+
+    let mut works: Vec<DiscoveryWork> = Vec::new();
     for (work_id, base_title, author_id, author_name, unplayed) in rows {
         if unplayed == 0 || exclude_authors.contains(&author_id) {
             continue;
         }
-        // Union of this work's author tags and its own work tags, resolved through aliases.
+        // Union of tag values from unified attach: author_metadata ∪ work_metadata ∪
+        // chapter_metadata, all with facet='tag', resolved through aliases.
         let mut raw_owned: Vec<String> = Vec::new();
-        let mut atstmt = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1")?;
-        for t in atstmt.query_map(params![author_id], |r| r.get::<_, String>(0))? {
-            raw_owned.push(t?);
+        let mut amst = conn.prepare(
+            "SELECT mt.value FROM author_metadata am
+             JOIN metadata_terms mt ON am.term_id=mt.id
+             WHERE am.author_id=?1 AND mt.facet='tag'",
+        )?;
+        for v in amst.query_map(params![author_id], |r| r.get::<_, String>(0))? {
+            raw_owned.push(v?);
         }
-        let mut wtstmt = conn.prepare("SELECT tag FROM work_tags WHERE work_id=?1")?;
-        for t in wtstmt.query_map(params![work_id], |r| r.get::<_, String>(0))? {
-            raw_owned.push(t?);
+        let mut wmst = conn.prepare(
+            "SELECT mt.value FROM work_metadata wm
+             JOIN metadata_terms mt ON wm.term_id=mt.id
+             WHERE wm.work_id=?1 AND mt.facet='tag'",
+        )?;
+        for v in wmst.query_map(params![work_id], |r| r.get::<_, String>(0))? {
+            raw_owned.push(v?);
+        }
+        let mut cmst = conn.prepare(
+            "SELECT mt.value FROM chapter_metadata cm
+             JOIN chapters ch ON cm.chapter_id=ch.id
+             JOIN metadata_terms mt ON cm.term_id=mt.id
+             WHERE ch.work_id=?1 AND mt.facet='tag'",
+        )?;
+        for v in cmst.query_map(params![work_id], |r| r.get::<_, String>(0))? {
+            raw_owned.push(v?);
         }
         // Resolve owned tags through aliases, then de-duplicate into a BTreeSet.
         let resolved_owned_vec = resolve_aliases(conn, &raw_owned)?;
         let owned: std::collections::BTreeSet<String> = resolved_owned_vec.into_iter().collect();
 
         // Intersect with the resolved requested tags. BTreeSet keeps `shared` sorted.
-        let resolved_req_set: std::collections::BTreeSet<String> =
-            resolved_request.iter().cloned().collect();
         let shared: Vec<String> = owned.into_iter().filter(|t| resolved_req_set.contains(t)).collect();
         if shared.is_empty() {
             continue;
@@ -692,8 +713,8 @@ pub(crate) fn discovery_for_tags(
 }
 
 /// Works (with >=1 unplayed chapter) carrying the metadata term `facet`/`value` on
-/// any chapter OR on their author, ranked by unplayed count. Mirrors
-/// discovery_for_tags but matches a single facet value (e.g. a narrator).
+/// any chapter, work, OR author — all three unified attach tables are checked.
+/// Ranked by unplayed count.
 pub(crate) fn discovery_for_metadata(
     conn: &rusqlite::Connection,
     facet: &str,
@@ -709,6 +730,7 @@ pub(crate) fn discovery_for_metadata(
              SELECT 1 FROM metadata_terms mt WHERE mt.facet=?1 AND mt.value=?2 AND (
                EXISTS (SELECT 1 FROM chapter_metadata cm JOIN chapters mc ON cm.chapter_id=mc.id
                        WHERE mc.work_id=w.id AND cm.term_id=mt.id)
+               OR EXISTS (SELECT 1 FROM work_metadata wm WHERE wm.work_id=w.id AND wm.term_id=mt.id)
                OR EXISTS (SELECT 1 FROM author_metadata am WHERE am.author_id=a.id AND am.term_id=mt.id)))
          ORDER BY w.base_title",
     )?;
@@ -761,15 +783,22 @@ pub(crate) fn discovery_for_you(conn: &rusqlite::Connection) -> rusqlite::Result
     if recent.is_empty() {
         return Ok(Vec::new());
     }
-    // Tags of recently-played authors.
+    // Tags of recently-played authors — read from unified attach tables (facet='tag').
     let mut tags: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for id in &recent {
-        let mut stmt = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1")?;
-        for t in stmt.query_map(params![id], |r| r.get::<_, String>(0))? {
+        let mut astmt = conn.prepare(
+            "SELECT mt.value FROM author_metadata am
+             JOIN metadata_terms mt ON am.term_id=mt.id
+             WHERE am.author_id=?1 AND mt.facet='tag'",
+        )?;
+        for t in astmt.query_map(params![id], |r| r.get::<_, String>(0))? {
             tags.insert(t?);
         }
         let mut wstmt = conn.prepare(
-            "SELECT wt.tag FROM work_tags wt JOIN works w ON wt.work_id=w.id WHERE w.author_id=?1",
+            "SELECT mt.value FROM work_metadata wm
+             JOIN works w ON wm.work_id=w.id
+             JOIN metadata_terms mt ON wm.term_id=mt.id
+             WHERE w.author_id=?1 AND mt.facet='tag'",
         )?;
         for t in wstmt.query_map(params![id], |r| r.get::<_, String>(0))? {
             tags.insert(t?);
@@ -2116,8 +2145,10 @@ pub fn get_dormant_works(state: tauri::State<DbState>, now_ms: i64, days: i64) -
     query_dormant_works(&conn, now_ms, days).map_err(|e| e.to_string())
 }
 
-/// Return works similar to `work_id`: take that work's tags (author ∪ work, alias-resolved),
-/// then call `discovery_for_tags` excluding the source work's author.
+/// Return works similar to `work_id`: collect the source work's labels from the unified
+/// attach tables (author ∪ work level, ALL facets), then find candidate works (with ≥1
+/// unplayed chapter, excluding the source author) that share those (facet, value) pairs,
+/// ranking by shared-label count then unplayed count.
 pub fn more_like_this(
     conn: &rusqlite::Connection,
     work_id: i64,
@@ -2129,24 +2160,95 @@ pub fn more_like_this(
         params![work_id],
         |r| r.get(0),
     )?;
-    // Collect raw tags (author ∪ work).
-    let mut raw_tags: Vec<String> = Vec::new();
-    let mut at = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1")?;
-    for t in at.query_map(params![author_id], |r| r.get::<_, String>(0))? {
-        raw_tags.push(t?);
+    // Collect (facet, value) pairs from unified attach: author_metadata ∪ work_metadata.
+    let mut source_labels: Vec<(String, String)> = Vec::new();
+    let mut am = conn.prepare(
+        "SELECT mt.facet, mt.value FROM author_metadata am
+         JOIN metadata_terms mt ON am.term_id=mt.id
+         WHERE am.author_id=?1",
+    )?;
+    for row in am.query_map(params![author_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+        source_labels.push(row?);
     }
-    let mut wt = conn.prepare("SELECT tag FROM work_tags WHERE work_id=?1")?;
-    for t in wt.query_map(params![work_id], |r| r.get::<_, String>(0))? {
-        raw_tags.push(t?);
+    let mut wm = conn.prepare(
+        "SELECT mt.facet, mt.value FROM work_metadata wm
+         JOIN metadata_terms mt ON wm.term_id=mt.id
+         WHERE wm.work_id=?1",
+    )?;
+    for row in wm.query_map(params![work_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+        source_labels.push(row?);
     }
-    if raw_tags.is_empty() {
+    // De-duplicate source labels.
+    let source_set: std::collections::BTreeSet<(String, String)> =
+        source_labels.into_iter().collect();
+    if source_set.is_empty() {
         return Ok(Vec::new());
     }
-    let resolved = resolve_aliases(conn, &raw_tags)?;
-    // Exclude the source work's author; discovery_for_tags will also exclude works with 0 unplayed.
-    let mut results = discovery_for_tags(conn, &resolved, &[author_id], cap)?;
-    // Also filter out the source work itself if it somehow slipped through (different author edge case).
-    results.retain(|w| w.work_id != work_id);
+
+    // All active works (with their author) that have >=1 unplayed chapter, excluding source author.
+    let mut wstmt = conn.prepare(
+        "SELECT w.id, w.base_title, a.id, COALESCE(a.display_name, a.folder_name),
+                (SELECT count(*) FROM chapters c WHERE c.work_id=w.id AND c.status='active' AND c.played=0)
+         FROM works w JOIN authors a ON w.author_id=a.id
+         WHERE w.status='active' AND a.status='active' AND a.id != ?1",
+    )?;
+    let rows: Vec<(i64, String, i64, String, i64)> = wstmt
+        .query_map(params![author_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+
+    let mut results: Vec<DiscoveryWork> = Vec::new();
+    for (cand_work_id, base_title, cand_author_id, author_name, unplayed) in rows {
+        if unplayed == 0 || cand_work_id == work_id {
+            continue;
+        }
+        // Collect candidate's labels from unified attach: author_metadata ∪ work_metadata.
+        let mut cand_labels: Vec<(String, String)> = Vec::new();
+        let mut cam = conn.prepare(
+            "SELECT mt.facet, mt.value FROM author_metadata am
+             JOIN metadata_terms mt ON am.term_id=mt.id
+             WHERE am.author_id=?1",
+        )?;
+        for row in cam.query_map(params![cand_author_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+            cand_labels.push(row?);
+        }
+        let mut cwm = conn.prepare(
+            "SELECT mt.facet, mt.value FROM work_metadata wm
+             JOIN metadata_terms mt ON wm.term_id=mt.id
+             WHERE wm.work_id=?1",
+        )?;
+        for row in cwm.query_map(params![cand_work_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+            cand_labels.push(row?);
+        }
+        let cand_set: std::collections::BTreeSet<(String, String)> =
+            cand_labels.into_iter().collect();
+
+        // Intersect: shared (facet, value) pairs.
+        let shared_labels: Vec<String> = source_set
+            .iter()
+            .filter(|lbl| cand_set.contains(*lbl))
+            .map(|(_, v)| v.clone())
+            .collect();
+        if shared_labels.is_empty() {
+            continue;
+        }
+        let reason = recommendation_reason(&shared_labels, false);
+        results.push(DiscoveryWork {
+            work_id: cand_work_id,
+            base_title,
+            author_id: cand_author_id,
+            author_name,
+            unplayed_count: unplayed,
+            shared_tags: shared_labels,
+            reason,
+        });
+    }
+
+    results.sort_by(|a, b| {
+        b.shared_tags.len().cmp(&a.shared_tags.len())
+            .then(b.unplayed_count.cmp(&a.unplayed_count))
+            .then(a.base_title.to_lowercase().cmp(&b.base_title.to_lowercase()))
+    });
+    results.truncate(cap);
     Ok(results)
 }
 
@@ -3092,8 +3194,10 @@ mod tests {
         scan::scan_into(&conn, root).unwrap();
         let ids: std::collections::HashMap<String, i64> =
             query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
-        super::set_tags(&conn, ids["Alice"], &["cozy".into(), "calm".into()]).unwrap();
-        super::set_tags(&conn, ids["Bob"], &["cozy".into()]).unwrap();
+        // Seed via unified attach tables (discovery now reads author_metadata / work_metadata).
+        attach_value(&conn, "author", ids["Alice"], "tag", "cozy").unwrap();
+        attach_value(&conn, "author", ids["Alice"], "tag", "calm").unwrap();
+        attach_value(&conn, "author", ids["Bob"], "tag", "cozy").unwrap();
 
         let res = super::discovery_for_tags(&conn, &["cozy".into(), "calm".into()], &[], 50).unwrap();
         // Alice shares 2 tags, Bob shares 1 -> Alice ranks first.
@@ -3176,12 +3280,13 @@ mod tests {
         let ids: std::collections::HashMap<String, i64> =
             query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
 
-        // Bob has NO author tags, but his work "Saga" carries "cozy" at the work level.
+        // Bob has NO author labels, but his work "Saga" carries "cozy" at the work level
+        // (unified attach: work_metadata).
         let bob_detail = query_author_detail(&conn, ids["Bob"]).unwrap();
         let saga_id = bob_detail.works[0].id;
-        super::replace_tags(&conn, "work_tags", "work_id", saga_id, &["cozy".into()]).unwrap();
-        // Alice has author tag "cozy".
-        super::set_tags(&conn, ids["Alice"], &["cozy".into()]).unwrap();
+        attach_value(&conn, "work", saga_id, "tag", "cozy").unwrap();
+        // Alice has an author-level label "cozy" (unified attach: author_metadata).
+        attach_value(&conn, "author", ids["Alice"], "tag", "cozy").unwrap();
 
         let res = super::discovery_for_tags(&conn, &["cozy".into()], &[], 50).unwrap();
         let titles: Vec<&str> = res.iter().map(|w| w.base_title.as_str()).collect();
@@ -3280,8 +3385,9 @@ mod tests {
         scan::scan_into(&conn, root).unwrap();
         let ids: std::collections::HashMap<String, i64> =
             query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
-        super::set_tags(&conn, ids["Alice"], &["cozy".into()]).unwrap();
-        super::set_tags(&conn, ids["Bob"], &["cozy".into()]).unwrap();
+        // Seed via unified attach (discovery_for_you now reads author_metadata / work_metadata).
+        attach_value(&conn, "author", ids["Alice"], "tag", "cozy").unwrap();
+        attach_value(&conn, "author", ids["Bob"], "tag", "cozy").unwrap();
         // Play Alice's chapter -> Alice is "recent"; For-you should suggest Bob (shares "cozy"), not Alice.
         let alice_detail = query_author_detail(&conn, ids["Alice"]).unwrap();
         let ch = alice_detail.works[0].chapters[0].id;
@@ -3529,8 +3635,8 @@ mod tests {
         let conn = open_in_memory().unwrap();
         scan::scan_into(&conn, root).unwrap();
         let author_id = query_authors(&conn).unwrap()[0].id;
-        // Alice has tag "cozy" (the canonical form).
-        super::set_tags(&conn, author_id, &["cozy".into()]).unwrap();
+        // Alice has tag "cozy" (the canonical form) in the unified attach tables.
+        attach_value(&conn, "author", author_id, "tag", "cozy").unwrap();
         // Register alias: "relaxing" → "cozy".
         conn.execute(
             "INSERT OR REPLACE INTO tag_aliases(alias, canonical) VALUES (?1, ?2)",
@@ -4046,6 +4152,98 @@ mod tests {
         assert_eq!(result, Some("Transcript content here.".to_string()));
     }
 
+    // ---- M26 T5: discovery + more-like-this over unified label attach -------------------
+
+    #[test]
+    fn discovery_by_tags_surfaces_work_level_tag_and_excludes_fully_played() {
+        // Proves: a 'tag' term attached at WORK level (work_metadata) surfaces the work in
+        // both get_discovery_by_tags and get_discovery_by_metadata(facet='tag'), and that a
+        // fully-played work is excluded (unplayed-only rule).
+        let conn = crate::db::open_in_memory().unwrap();
+        conn.execute(
+            "INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'auth','Auth','active')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'The Book','the book','active')",
+            [],
+        ).unwrap();
+        // Unplayed chapter — work should appear.
+        conn.execute(
+            "INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) \
+             VALUES (1,1,'/a.mp3','a.mp3',1,'mp3',100,0,'active')",
+            [],
+        ).unwrap();
+        // Attach tag at WORK level via unified model.
+        attach_value(&conn, "work", 1, "tag", "fantasy").unwrap();
+
+        // discovery_for_tags: should find the work.
+        let res = super::discovery_for_tags(&conn, &["fantasy".into()], &[], 50).unwrap();
+        assert_eq!(res.len(), 1, "work with tag at work-level should appear");
+        assert_eq!(res[0].work_id, 1);
+        assert_eq!(res[0].shared_tags, vec!["fantasy".to_string()]);
+
+        // discovery_for_metadata with facet='tag' should also find it.
+        let res2 = discovery_for_metadata(&conn, "tag", "fantasy", 50).unwrap();
+        assert_eq!(res2.len(), 1, "discovery_for_metadata(tag, fantasy) should find work");
+        assert_eq!(res2[0].work_id, 1);
+
+        // Mark chapter as played — fully-played work must be excluded.
+        conn.execute("UPDATE chapters SET played=1 WHERE id=1", []).unwrap();
+        let empty = super::discovery_for_tags(&conn, &["fantasy".into()], &[], 50).unwrap();
+        assert!(empty.is_empty(), "fully-played work must be excluded");
+        let empty2 = discovery_for_metadata(&conn, "tag", "fantasy", 50).unwrap();
+        assert!(empty2.is_empty(), "fully-played work must be excluded from discovery_for_metadata too");
+    }
+
+    #[test]
+    fn more_like_this_ranks_by_shared_unified_labels() {
+        // Proves: more_like_this collects labels from ALL facets in unified attach (work + author)
+        // and ranks candidates by shared-label count.
+        let conn = crate::db::open_in_memory().unwrap();
+        // Source work: Alice/AliceBook with labels "cozy" (tag) + "English" (language).
+        conn.execute("INSERT INTO authors(id,folder_name,display_name,status) VALUES(1,'Alice','Alice','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES(1,1,'AliceBook','alicebook','active')", []).unwrap();
+        conn.execute(
+            "INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status) \
+             VALUES(1,1,'/a.mp3','a.mp3',1,'mp3',100,1,'active')",
+            [],
+        ).unwrap(); // Alice's chapter played — source not a candidate.
+        attach_value(&conn, "author", 1, "tag", "cozy").unwrap();
+        attach_value(&conn, "author", 1, "language", "English").unwrap();
+
+        // Bob shares both labels (2 shared) → should rank higher.
+        conn.execute("INSERT INTO authors(id,folder_name,display_name,status) VALUES(2,'Bob','Bob','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES(2,2,'BobBook','bobbook','active')", []).unwrap();
+        conn.execute(
+            "INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status) \
+             VALUES(2,2,'/b.mp3','b.mp3',1,'mp3',100,0,'active')",
+            [],
+        ).unwrap();
+        attach_value(&conn, "author", 2, "tag", "cozy").unwrap();
+        attach_value(&conn, "author", 2, "language", "English").unwrap();
+
+        // Carol shares only one label (1 shared) → should rank lower than Bob.
+        conn.execute("INSERT INTO authors(id,folder_name,display_name,status) VALUES(3,'Carol','Carol','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES(3,3,'CarolBook','carolbook','active')", []).unwrap();
+        conn.execute(
+            "INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status) \
+             VALUES(3,3,'/c.mp3','c.mp3',1,'mp3',100,0,'active')",
+            [],
+        ).unwrap();
+        attach_value(&conn, "author", 3, "tag", "cozy").unwrap();
+
+        let results = super::more_like_this(&conn, 1, 50).unwrap();
+        // Bob shares 2 labels, Carol shares 1 → Bob ranks first.
+        assert_eq!(results.len(), 2, "Bob and Carol should appear");
+        assert_eq!(results[0].work_id, 2, "Bob (2 shared) should rank first");
+        assert_eq!(results[1].work_id, 3, "Carol (1 shared) should rank second");
+        // Bob's shared_tags should contain both label values.
+        assert!(results[0].shared_tags.len() == 2, "Bob shares 2 labels");
+        // Source author (Alice) must not appear.
+        assert!(results.iter().all(|w| w.author_id != 1), "source author must not appear");
+    }
+
     #[test]
     fn get_chapter_transcript_returns_none_when_absent() {
         let tmp = tempfile::tempdir().unwrap();
@@ -4120,10 +4318,10 @@ mod tests {
         scan::scan_into(&conn, root).unwrap();
         let ids: std::collections::HashMap<String, i64> =
             query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
-        // Tag all three with "cozy" so discovery would normally surface all of them.
-        super::set_tags(&conn, ids["Alice"], &["cozy".into()]).unwrap();
-        super::set_tags(&conn, ids["Bob"], &["cozy".into()]).unwrap();
-        super::set_tags(&conn, ids["Carol"], &["cozy".into()]).unwrap();
+        // Label all three with "cozy" via unified attach so more_like_this can find shared labels.
+        attach_value(&conn, "author", ids["Alice"], "tag", "cozy").unwrap();
+        attach_value(&conn, "author", ids["Bob"], "tag", "cozy").unwrap();
+        attach_value(&conn, "author", ids["Carol"], "tag", "cozy").unwrap();
         let alice_detail = query_author_detail(&conn, ids["Alice"]).unwrap();
         let alice_work_id = alice_detail.works[0].id;
 
@@ -4131,7 +4329,7 @@ mod tests {
         // Alice's own work must not appear (excluded via author exclusion).
         assert!(results.iter().all(|w| w.work_id != alice_work_id), "source work must not appear");
         assert!(results.iter().all(|w| w.author_id != ids["Alice"]), "source author must not appear");
-        // Bob and Carol should appear.
+        // Bob and Carol should appear because they share the "cozy" author label.
         assert!(results.iter().any(|w| w.author_name == "Bob"), "Bob should appear");
         assert!(results.iter().any(|w| w.author_name == "Carol"), "Carol should appear");
     }
@@ -4145,7 +4343,8 @@ mod tests {
         scan::scan_into(&conn, root).unwrap();
         let ids: std::collections::HashMap<String, i64> =
             query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
-        super::set_tags(&conn, ids["Alice"], &["cozy".into()]).unwrap();
+        // Seed via unified attach (discovery now reads author_metadata / work_metadata).
+        attach_value(&conn, "author", ids["Alice"], "tag", "cozy").unwrap();
         let results = super::discovery_for_tags(&conn, &["cozy".into()], &[], 50).unwrap();
         assert!(!results.is_empty(), "should find at least one result");
         assert!(!results[0].reason.is_empty(), "reason field must be populated");
