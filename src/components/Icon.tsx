@@ -5,7 +5,8 @@ export type IconName =
   | "volume" | "mute" | "sleep" | "search" | "check" | "tag"
   | "expand" | "collapse" | "close" | "refresh" | "folder"
   | "journal" | "insights" | "collections" | "voice" | "list"
-  | "circle" | "circleHalf";
+  | "circle" | "circleHalf"
+  | "music";
 
 type GlyphDef = { d: string; fill?: string };
 
@@ -46,6 +47,8 @@ const glyphs: Record<IconName, GlyphDef> = {
   circle:      { d: "M12 4a8 8 0 1 0 0 16A8 8 0 0 0 12 4z" },
   /** Half-filled circle — "in progress" status indicator. */
   circleHalf:  { d: "M12 4a8 8 0 0 1 0 16V4z", fill: "currentColor" },
+  /** Music note — cover-art placeholder glyph. */
+  music:       { d: "M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm12-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" },
 };
 
 export function Icon({ name, className = "" }: { name: IconName; className?: string }) {
