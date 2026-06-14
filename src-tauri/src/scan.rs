@@ -230,17 +230,19 @@ fn scan_author(
     let works: Vec<Work> = group_author(&stems);
 
     for work in works {
-        conn.execute(
-            "INSERT INTO works(author_id, base_title, sort_key, status)
-             VALUES (?1, ?2, ?3, 'active')
-             ON CONFLICT(author_id, base_title) DO UPDATE SET status='active'",
-            params![author_id, work.base_title, work.base_title.to_lowercase()],
-        )?;
-        let work_id: i64 = conn.query_row(
-            "SELECT id FROM works WHERE author_id=?1 AND base_title=?2",
-            params![author_id, work.base_title],
-            |r| r.get(0),
-        )?;
+        // Single cached round-trip: ON CONFLICT DO UPDATE always runs the update, so
+        // RETURNING id yields the row id whether the work was just inserted or already existed.
+        let work_id: i64 = conn
+            .prepare_cached(
+                "INSERT INTO works(author_id, base_title, sort_key, status)
+                 VALUES (?1, ?2, ?3, 'active')
+                 ON CONFLICT(author_id, base_title) DO UPDATE SET status='active'
+                 RETURNING id",
+            )?
+            .query_row(
+                params![author_id, work.base_title, work.base_title.to_lowercase()],
+                |r| r.get(0),
+            )?;
 
         for chapter in work.chapters {
             let Some(file) = by_stem.get(chapter.original_stem.as_str()).copied() else {
