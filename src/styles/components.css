@@ -46,7 +46,7 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .artwork img { display: block; width: 100%; height: 100%; object-fit: cover; }
 /* artwork glyph is intentionally %-of-tile (scales with cover) — exempt from the --icon-* scale (M28/VIS7-4). */
 .artwork__glyph { position: absolute; inset: 0; margin: auto; width: 54%; height: 54%; opacity: .5; color: #fff; pointer-events: none; }
-.artwork__initials { position: relative; z-index: 1; color: #fff; font-weight: 700; }
+.artwork__initials { position: relative; z-index: 1; color: #fff; font-weight: 700; text-shadow: 0 1px 2px rgb(0 0 0 / 35%); }
 .work-artwork { border-radius: var(--radius-md); }
 .creator-avatar { border-radius: 50%; }
 .chips { display: flex; flex-wrap: wrap; gap: var(--chip-gap); }
