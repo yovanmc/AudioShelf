@@ -441,7 +441,9 @@ pub fn search(conn: &rusqlite::Connection, query: &str, cap: usize) -> rusqlite:
          FROM works w JOIN authors a ON w.author_id=a.id
          WHERE w.status='active' AND a.status='active'
                AND (w.base_title LIKE ?1 ESCAPE '\\'
-                    OR EXISTS (SELECT 1 FROM work_tags wt WHERE wt.work_id=w.id AND wt.tag LIKE ?1 ESCAPE '\\'))
+                    OR EXISTS (SELECT 1 FROM work_metadata wm
+                               JOIN metadata_terms mt ON mt.id=wm.term_id
+                               WHERE wm.work_id=w.id AND mt.value LIKE ?1 ESCAPE '\\'))
          ORDER BY w.base_title LIMIT ?2",
     )?;
     let works: Vec<WorkHit> = wstmt
@@ -460,7 +462,9 @@ pub fn search(conn: &rusqlite::Connection, query: &str, cap: usize) -> rusqlite:
          FROM chapters c JOIN works w ON c.work_id=w.id JOIN authors a ON w.author_id=a.id
          WHERE c.status='active' AND w.status='active' AND a.status='active'
                AND (c.raw_filename LIKE ?1 ESCAPE '\\'
-                    OR EXISTS (SELECT 1 FROM chapter_tags ct WHERE ct.chapter_id=c.id AND ct.tag LIKE ?1 ESCAPE '\\'))
+                    OR EXISTS (SELECT 1 FROM chapter_metadata cm
+                               JOIN metadata_terms mt ON mt.id=cm.term_id
+                               WHERE cm.chapter_id=c.id AND mt.value LIKE ?1 ESCAPE '\\'))
          ORDER BY c.raw_filename LIMIT ?2",
     )?;
     let chapters: Vec<ChapterHit> = cstmt
@@ -3198,15 +3202,16 @@ mod tests {
         let work_id = detail.works[0].id;
         let chapter_id = detail.works[0].chapters[0].id;
 
-        super::replace_tags(&conn, "work_tags", "work_id", work_id, &["mystery".into()]).unwrap();
-        super::replace_tags(&conn, "chapter_tags", "chapter_id", chapter_id, &["cliffhanger".into()]).unwrap();
+        // Use unified attach tables (T4: search now queries work_metadata / chapter_metadata).
+        attach_value(&conn, "work", work_id, "tag", "mystery").unwrap();
+        attach_value(&conn, "chapter", chapter_id, "tag", "cliffhanger").unwrap();
 
-        // "mystery" matches no title/filename, only the work tag.
+        // "mystery" matches no title/filename, only the work label value.
         let r1 = super::search(&conn, "mystery", 50).unwrap();
         assert_eq!(r1.works.len(), 1);
         assert_eq!(r1.works[0].work_id, work_id);
 
-        // "cliffhanger" matches only the chapter tag.
+        // "cliffhanger" matches only the chapter label value.
         let r2 = super::search(&conn, "cliffhanger", 50).unwrap();
         assert_eq!(r2.chapters.len(), 1);
         assert_eq!(r2.chapters[0].chapter_id, chapter_id);
@@ -4912,6 +4917,39 @@ mod tests {
         assert!(result.is_ok(), "work scope attach should succeed after v10: {result:?}");
         let n: i64 = conn.query_row("SELECT count(*) FROM work_metadata WHERE work_id=1", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 1);
+    }
+
+    // ---- T4: search label-value plain match ----
+
+    #[test]
+    fn search_plain_term_matches_work_via_label_value() {
+        // A bare search term should surface a work that carries a label whose VALUE matches.
+        let conn = open_in_memory().unwrap();
+        conn.execute("INSERT INTO authors(id,folder_name,display_name,status) VALUES(1,'Auth','Auth','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES(1,1,'Unmatching Title','unmatching title','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status) VALUES(1,1,'/a.mp3','a.mp3',1,'mp3',100,0,'active')", []).unwrap();
+        // Attach a tag whose VALUE is 'talk show' — searching "talk" should find this work
+        // because the label value matches the LIKE pattern.
+        attach_value(&conn, "work", 1, "tag", "talk show").unwrap();
+
+        let results = search(&conn, "talk", SEARCH_CAP).unwrap();
+        let work_ids: Vec<i64> = results.works.iter().map(|w| w.work_id).collect();
+        assert!(work_ids.contains(&1), "work with label value 'talk show' should appear in search for 'talk'");
+    }
+
+    #[test]
+    fn search_plain_term_matches_chapter_via_label_value() {
+        // A bare search term should surface a chapter that carries a label whose VALUE matches.
+        let conn = open_in_memory().unwrap();
+        conn.execute("INSERT INTO authors(id,folder_name,display_name,status) VALUES(1,'Auth','Auth','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES(1,1,'No Match Title','no match title','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status) VALUES(1,1,'/a.mp3','a.mp3',1,'mp3',100,0,'active')", []).unwrap();
+        // Attach narrator label on the chapter.
+        attach_value(&conn, "chapter", 1, "narrator", "Jane Austen").unwrap();
+
+        let results = search(&conn, "Austen", SEARCH_CAP).unwrap();
+        let chapter_ids: Vec<i64> = results.chapters.iter().map(|c| c.chapter_id).collect();
+        assert!(chapter_ids.contains(&1), "chapter with label value 'Jane Austen' should appear in search for 'Austen'");
     }
 }
 
