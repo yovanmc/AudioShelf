@@ -1,12 +1,10 @@
 import { useState } from "react";
-import type { ScanResult, TagStat, Collection, ImportReport, HealthReport } from "../lib/api";
+import type { ScanResult, TagStat, Collection, ImportReport, HealthReport, MetaTerm, LabelType } from "../lib/api";
 import { Button, Card, Notice, PageHeader } from "../components/ui";
 import { Icon } from "../components/Icon";
 import type { HomeShelf, ShelfKind } from "../lib/shelves";
 import type { PlayedStatus } from "../lib/browse";
-import { TagManagerView } from "./TagManagerView";
-import { MetadataManagerView } from "./MetadataManagerView";
-import type { MetaTerm } from "../lib/api";
+import { LabelManagerView } from "./LabelManagerView";
 import type { Density } from "../lib/density";
 import type { A11yPrefs, Theme, TextSize } from "../lib/a11y";
 
@@ -179,18 +177,22 @@ export function SettingsView(props: {
   onRemoveShelf?: (id: string) => void;
   onMoveShelf?: (id: string, dir: -1 | 1) => void;
   onRenameShelf?: (id: string, title: string) => void;
-  // Tag manager (optional — existing tests omit these)
-  tagStats?: TagStat[];
-  onRenameTag?: (from: string, to: string) => void;
-  onMergeTags?: (sources: string[], target: string) => void;
-  onSetTagAlias?: (alias: string, canonical: string) => void;
-  onClearTagAlias?: (alias: string) => void;
-  // Metadata vocabulary manager (optional — existing tests omit these)
+  // Types & Labels manager (optional — existing tests omit these)
+  labelTypes?: LabelType[];
+  onCreateLabelType?: (name: string, display: string) => void;
+  onRenameLabelType?: (name: string, display: string) => void;
+  onDeleteLabelType?: (name: string) => void;
+  onReorderLabelTypes?: (names: string[]) => void;
   metaTerms?: MetaTerm[];
   onCreateMetaTerm?: (facet: string, value: string) => void;
   onRenameMetaTerm?: (id: number, value: string) => void;
   onDeleteMetaTerm?: (id: number) => void;
   onMergeMetaTerms?: (sourceIds: number[], targetId: number) => void;
+  tagStats?: TagStat[];
+  onRenameTag?: (from: string, to: string) => void;
+  onMergeTags?: (sources: string[], target: string) => void;
+  onSetTagAlias?: (alias: string, canonical: string) => void;
+  onClearTagAlias?: (alias: string) => void;
   // Smart collections (optional — existing tests omit these)
   collections?: Collection[];
   onCreateCollection?: (name: string, query: string) => void;
@@ -427,35 +429,29 @@ export function SettingsView(props: {
 
       {!firstRun && <h2 className="settings-group">Curation</h2>}
 
-      {!firstRun && props.tagStats !== undefined && props.onRenameTag && props.onMergeTags && props.onSetTagAlias && props.onClearTagAlias && (
+      {!firstRun && props.labelTypes !== undefined && props.onCreateLabelType && props.onRenameLabelType && props.onDeleteLabelType && props.onReorderLabelTypes && props.metaTerms !== undefined && props.onCreateMetaTerm && props.onRenameMetaTerm && props.onDeleteMetaTerm && props.onMergeMetaTerms && (
         <Card style={{ padding: 24, marginTop: 16 }}>
-          <h2>Tag manager</h2>
+          <h2>Types &amp; Labels</h2>
           <p className="muted">
-            Rename or merge tags across your entire library. Aliases let you type an
-            alternate name and have it resolve to the standardized form automatically.
+            Manage label types and their values. Rename or merge labels across your library.
+            Built-in types (narrator, language, tag) cannot be deleted.
           </p>
-          <TagManagerView
-            tags={props.tagStats}
-            onRename={props.onRenameTag}
-            onMerge={props.onMergeTags}
-            onSetAlias={props.onSetTagAlias}
-            onClearAlias={props.onClearTagAlias}
-          />
-        </Card>
-      )}
-
-      {!firstRun && props.metaTerms !== undefined && props.onCreateMetaTerm && props.onRenameMetaTerm && props.onDeleteMetaTerm && props.onMergeMetaTerms && (
-        <Card style={{ padding: 24, marginTop: 16 }}>
-          <h2>Narrator, Language &amp; Mood</h2>
-          <p className="muted">
-            Create narrator, language, and mood values you can apply to files and creators.
-          </p>
-          <MetadataManagerView
+          <LabelManagerView
+            labelTypes={props.labelTypes}
+            onCreateType={props.onCreateLabelType}
+            onRenameType={props.onRenameLabelType}
+            onDeleteType={props.onDeleteLabelType}
+            onReorderTypes={props.onReorderLabelTypes}
             terms={props.metaTerms}
-            onCreate={props.onCreateMetaTerm}
-            onRename={props.onRenameMetaTerm}
-            onDelete={props.onDeleteMetaTerm}
-            onMerge={props.onMergeMetaTerms}
+            onCreateTerm={props.onCreateMetaTerm}
+            onRenameTerm={props.onRenameMetaTerm}
+            onDeleteTerm={props.onDeleteMetaTerm}
+            onMergeTerms={props.onMergeMetaTerms}
+            tags={props.tagStats}
+            onRenameTag={props.onRenameTag}
+            onMergeTag={props.onMergeTags}
+            onSetTagAlias={props.onSetTagAlias}
+            onClearTagAlias={props.onClearTagAlias}
           />
         </Card>
       )}
