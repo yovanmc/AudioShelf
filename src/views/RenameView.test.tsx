@@ -38,4 +38,16 @@ describe("RenameView", () => {
     await userEvent.click(screen.getByRole("button", { name: /Undo/i }));
     expect(onUndo).toHaveBeenCalled();
   });
+
+  it("renders badge labels for ok, noop, and conflict rows", () => {
+    render(<RenameView items={items} result={null} onApply={() => {}} onUndo={() => {}} onBack={() => {}} onReload={() => {}} />);
+    expect(screen.getByText("rename")).toBeInTheDocument();
+    expect(screen.getByText("already clean")).toBeInTheDocument();
+    expect(screen.getByText("conflict")).toBeInTheDocument();
+  });
+
+  it("renders the eyebrow as a short category label", () => {
+    render(<RenameView items={items} result={null} onApply={() => {}} onUndo={() => {}} onBack={() => {}} onReload={() => {}} />);
+    expect(screen.getByText("Library tools")).toBeInTheDocument();
+  });
 });

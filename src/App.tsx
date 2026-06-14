@@ -53,7 +53,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -2047,6 +2047,68 @@ export default function App() {
                   setPlaybackSpeed(1);
                   setSleep(15);
                   setPlayerExpanded(false);
+                  await settle();
+                },
+              })
+            : args.walkthrough === "m25"
+            ? m25Steps({
+                // Step 1: Library view with the sort Select trigger visible — the styled
+                // dark-themed dropdown replacing the native <select>. Open the popover
+                // via a programmatic DOM click on the trigger so the listbox is in-DOM
+                // and screenshottable. Reset density/mode so the bar is at the top.
+                showLibrarySortOpen: async () => {
+                  setDensity("comfortable");
+                  void setSetting("library_density", "comfortable");
+                  setQuery("");
+                  setResults(null);
+                  setScopedResults(null);
+                  setSelectMode(false);
+                  setSelectedWorkIds([]);
+                  setRoute({ kind: "library" });
+                  await settle();
+                  // Click the sort trigger to open the popover (local state inside Select).
+                  document.querySelector<HTMLButtonElement>(".sort-filter-bar .select__trigger")?.click();
+                  await settle();
+                },
+                // Step 2: Library with several saved searches seeded so the overflow strip
+                // is visible. We seed 5 entries in the DB (best-effort, ignoring duplicates)
+                // then override React state to show exactly those 5 entries for a clean shot.
+                showSavedSearches: async () => {
+                  // Close the sort popover first (click elsewhere) and reset the view.
+                  setRoute({ kind: "library" });
+                  setQuery("");
+                  setResults(null);
+                  setScopedResults(null);
+                  await settle();
+                  // Seed 5 saved searches — each createSavedSearch is best-effort.
+                  const searches = [
+                    { name: "Short reads", query: "duration:<15m" },
+                    { name: "Unplayed drama", query: "status:unplayed tag:drama" },
+                    { name: "Cozy picks", query: "tag:cozy" },
+                    { name: "Long listens", query: "duration:>1h" },
+                    { name: "Recently added", query: "status:unplayed" },
+                  ];
+                  for (const s of searches) {
+                    await createSavedSearch(s.name, s.query, Date.now()).catch(() => {});
+                  }
+                  // Override React state to exactly these 5 entries so prior-run DB
+                  // accumulation doesn't make the strip look different between runs.
+                  setSavedSearches(
+                    searches.map((s, i) => ({ id: -(i + 1), name: s.name, query: s.query })),
+                  );
+                  await settle();
+                },
+                // Step 3: Library grid showing multiple large cover-art placeholders
+                // (glyph + initials tiles). The fixture authors have no cover art, so
+                // every card shows the placeholder. Navigate to the base library list.
+                showCoverPlaceholders: async () => {
+                  setSavedSearches([]);
+                  setQuery("");
+                  setResults(null);
+                  setScopedResults(null);
+                  setSelectMode(false);
+                  setSelectedWorkIds([]);
+                  setRoute({ kind: "library" });
                   await settle();
                 },
               })

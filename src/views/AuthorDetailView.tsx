@@ -10,6 +10,23 @@ import { Icon } from "../components/Icon";
 import { formatDuration, formatLong } from "../lib/time";
 import { sortWorks, type WorkSort } from "../lib/browse";
 import { ChapterJournalDialog } from "./ChapterJournalDialog";
+import { Select } from "../components/Select";
+import type { SelectOption } from "../components/Select";
+
+const WORK_SORT_OPTIONS: SelectOption<string>[] = [
+  { value: "az", label: "A–Z" },
+  { value: "length", label: "Length (longest)" },
+  { value: "played", label: "Played %" },
+];
+
+const CHAPTER_SORT_OPTIONS: SelectOption<string>[] = [
+  { value: "", label: "Chapter order" },
+  { value: "number_desc", label: "Reverse order" },
+  { value: "title_asc", label: "Title A–Z" },
+  { value: "title_desc", label: "Title Z–A" },
+  { value: "duration_asc", label: "Shortest first" },
+  { value: "duration_desc", label: "Longest first" },
+];
 
 /** Compact inline "Where I left off" note field. */
 function WorkReEntryField(props: {
@@ -220,12 +237,31 @@ export function AuthorDetailView(props: {
   return (
     <main className="view author-detail">
       <Button variant="ghost" onClick={props.onBack}><Icon name="chevronLeft" /> Library</Button>
-      <section className="card view-section" style={{ display: "flex", gap: 24, alignItems: "center", padding: 24 }}>
-        <CreatorAvatar authorId={detail.id} name={detail.name} size={112} />
-        <div style={{ flex: 1 }}>
-          <div className="muted">Creator</div>
-          <h1 dir="auto">{detail.name}</h1>
-          <p className="muted">{works.length} works · {chapters.length} chapters · {formatLong(totalSecs)} · {progress}% played</p>
+      <section className="card view-section creator-header" style={{ padding: 24 }}>
+        {/* Row 1 — identity band: avatar + name/stats on left, primary CTA on right */}
+        <div className="creator-header__band">
+          <CreatorAvatar authorId={detail.id} name={detail.name} size={112} />
+          <div className="creator-header__band-text">
+            <div className="muted">Creator</div>
+            <h1 className="creator-header__name" dir="auto">{detail.name}</h1>
+            <p className="creator-header__stats">{works.length} works · {chapters.length} chapters · {formatLong(totalSecs)} · {progress}% played</p>
+          </div>
+          {firstUnplayed && (
+            <div className="creator-header__actions">
+              <Button variant="primary" onClick={() => props.onPlayChapter({
+                chapter: firstUnplayed.chapter,
+                authorId: detail.id,
+                authorName: detail.name,
+                workId: firstUnplayed.work.id,
+                workTitle: firstUnplayed.work.baseTitle,
+                workTotalChapters: firstUnplayed.work.chapters.length,
+                workPlayedChapters: firstUnplayed.work.chapters.filter((chapter) => chapter.played).length,
+              })}>{played === 0 ? "Start listening" : "Keep listening"}</Button>
+            </div>
+          )}
+        </div>
+        {/* Row 2 — tags + metadata, below a divider */}
+        <div className="creator-header__meta">
           <p className="muted field-hint">Tags — your own free-form labels (e.g. "cozy", "re-listen").</p>
           <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
           {props.onAddAuthorMeta && props.onRemoveAuthorMeta && (
@@ -239,31 +275,16 @@ export function AuthorDetailView(props: {
               />
             </>
           )}
-          {firstUnplayed && <Button variant="primary" onClick={() => props.onPlayChapter({
-            chapter: firstUnplayed.chapter,
-            authorId: detail.id,
-            authorName: detail.name,
-            workId: firstUnplayed.work.id,
-            workTitle: firstUnplayed.work.baseTitle,
-            workTotalChapters: firstUnplayed.work.chapters.length,
-            workPlayedChapters: firstUnplayed.work.chapters.filter((chapter) => chapter.played).length,
-          })}>{played === 0 ? "Start listening" : "Keep listening"}</Button>}
         </div>
       </section>
       <div className="work-controls toolbar">
         <span className="muted">Works ({detail.works.length})</span>
-        <label>
-          Sort works:{" "}
-          <select
-            aria-label="Sort works"
-            value={props.workSort}
-            onChange={(e) => props.onWorkSortChange(e.target.value as WorkSort)}
-          >
-            <option value="az">A–Z</option>
-            <option value="length">Length (longest)</option>
-            <option value="played">Played %</option>
-          </select>
-        </label>
+        <Select<string>
+          label="Sort works"
+          value={props.workSort}
+          options={WORK_SORT_OPTIONS}
+          onChange={(v) => props.onWorkSortChange(v as WorkSort)}
+        />
         <Button variant="secondary" onClick={allCollapsed ? expandAll : collapseAll}>
           {allCollapsed ? "Expand all" : "Collapse all"}
         </Button>
@@ -326,22 +347,14 @@ export function AuthorDetailView(props: {
             </div>
           )}
           {props.onChapterSortChange && (
-            <div style={{ marginTop: 8 }}>
-              <label style={{ fontSize: "0.85rem" }}>
-                <span className="muted" style={{ marginRight: 6 }}>Chapter order:</span>
-                <select
-                  aria-label={`Chapter sort for ${w.baseTitle}`}
-                  value={w.chapterSort}
-                  onChange={(e) => props.onChapterSortChange!(w.id, e.target.value)}
-                >
-                  <option value="">Chapter order</option>
-                  <option value="number_desc">Reverse order</option>
-                  <option value="title_asc">Title A–Z</option>
-                  <option value="title_desc">Title Z–A</option>
-                  <option value="duration_asc">Shortest first</option>
-                  <option value="duration_desc">Longest first</option>
-                </select>
-              </label>
+            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+              <span className="muted" style={{ fontSize: "0.85rem" }}>Chapter order:</span>
+              <Select<string>
+                label={`Chapter sort for ${w.baseTitle}`}
+                value={w.chapterSort}
+                options={CHAPTER_SORT_OPTIONS}
+                onChange={(v) => props.onChapterSortChange!(w.id, v)}
+              />
             </div>
           )}
           {!collapsed.has(w.id) && (

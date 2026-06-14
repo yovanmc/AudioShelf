@@ -286,4 +286,39 @@ describe("LibraryView", () => {
     // The button text flips to "Hide tips"
     expect(screen.getByRole("button", { name: "Hide tips" })).toBeInTheDocument();
   });
+
+  // ---- saved-search strip (VIS-8) ----
+
+  it("renders one chip per saved search in the strip", () => {
+    const savedSearches = [
+      { id: 1, name: "Short reads", query: "duration:<15m" },
+      { id: 2, name: "Cozy", query: "tag:cozy" },
+    ];
+    render(<LibraryView {...baseProps({ savedSearches })} />);
+    expect(screen.getByText("Short reads")).toBeInTheDocument();
+    expect(screen.getByText("Cozy")).toBeInTheDocument();
+    // The "Saved:" label is present
+    expect(screen.getByText("Saved:")).toBeInTheDocument();
+  });
+
+  it("calls onRunSavedSearch with the query when a saved-search chip is clicked", async () => {
+    const onRunSavedSearch = vi.fn();
+    const savedSearches = [{ id: 1, name: "Short reads", query: "duration:<15m" }];
+    render(<LibraryView {...baseProps({ savedSearches, onRunSavedSearch })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Short reads" }));
+    expect(onRunSavedSearch).toHaveBeenCalledWith("duration:<15m");
+  });
+
+  it("calls onDeleteSavedSearch with the id when the delete button is clicked", async () => {
+    const onDeleteSavedSearch = vi.fn();
+    const savedSearches = [{ id: 5, name: "Cozy", query: "tag:cozy" }];
+    render(<LibraryView {...baseProps({ savedSearches, onDeleteSavedSearch })} />);
+    await userEvent.click(screen.getByRole("button", { name: 'Delete saved search "Cozy"' }));
+    expect(onDeleteSavedSearch).toHaveBeenCalledWith(5);
+  });
+
+  it("does not render the saved-search strip when savedSearches is empty", () => {
+    render(<LibraryView {...baseProps({ savedSearches: [] })} />);
+    expect(screen.queryByText("Saved:")).not.toBeInTheDocument();
+  });
 });

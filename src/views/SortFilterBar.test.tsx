@@ -18,15 +18,20 @@ function baseProps(over: Partial<React.ComponentProps<typeof SortFilterBar>> = {
 describe("SortFilterBar", () => {
   it("renders sort and tag selects (status moved to tab bar in LibraryView)", () => {
     render(<SortFilterBar {...baseProps()} />);
-    expect(screen.getByRole("combobox", { name: "Sort authors" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Filter by tag" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sort authors" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter by tag" })).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Filter by status" })).not.toBeInTheDocument();
   });
 
-  it("sort select has expected options", () => {
+  it("sort select shows current option label", () => {
     render(<SortFilterBar {...baseProps()} />);
-    const sort = screen.getByRole("combobox", { name: "Sort authors" });
-    expect(sort).toHaveValue("az");
+    const trigger = screen.getByRole("button", { name: "Sort authors" });
+    expect(trigger).toHaveTextContent("A–Z");
+  });
+
+  it("sort select opens with expected options", async () => {
+    render(<SortFilterBar {...baseProps()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Sort authors" }));
     expect(screen.getByRole("option", { name: "A–Z" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Length (longest)" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Played %" })).toBeInTheDocument();
@@ -39,8 +44,9 @@ describe("SortFilterBar", () => {
     expect(screen.queryByRole("option", { name: "Not started" })).not.toBeInTheDocument();
   });
 
-  it("tag select shows 'All tags' plus provided tags", () => {
+  it("tag select opens and shows 'All tags' plus provided tags", async () => {
     render(<SortFilterBar {...baseProps({ allTags: ["fiction", "nonfiction"] })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Filter by tag" }));
     expect(screen.getByRole("option", { name: "All tags" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "fiction" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "nonfiction" })).toBeInTheDocument();
@@ -49,14 +55,16 @@ describe("SortFilterBar", () => {
   it("changing sort fires onSortChange with 'length'", async () => {
     const onSortChange = vi.fn();
     render(<SortFilterBar {...baseProps({ onSortChange })} />);
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Sort authors" }), "length");
+    await userEvent.click(screen.getByRole("button", { name: "Sort authors" }));
+    await userEvent.click(screen.getByRole("option", { name: "Length (longest)" }));
     expect(onSortChange).toHaveBeenCalledWith("length");
   });
 
   it("selecting a tag fires onFilterTagChange with that tag", async () => {
     const onFilterTagChange = vi.fn();
     render(<SortFilterBar {...baseProps({ onFilterTagChange, allTags: ["fantasy"] })} />);
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Filter by tag" }), "fantasy");
+    await userEvent.click(screen.getByRole("button", { name: "Filter by tag" }));
+    await userEvent.click(screen.getByRole("option", { name: "fantasy" }));
     expect(onFilterTagChange).toHaveBeenCalledWith("fantasy");
   });
 
@@ -65,12 +73,15 @@ describe("SortFilterBar", () => {
     render(
       <SortFilterBar {...baseProps({ onFilterTagChange, filterTag: "fantasy", allTags: ["fantasy"] })} />,
     );
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Filter by tag" }), "");
+    await userEvent.click(screen.getByRole("button", { name: "Filter by tag" }));
+    await userEvent.click(screen.getByRole("option", { name: "All tags" }));
     expect(onFilterTagChange).toHaveBeenCalledWith(null);
   });
 
-  it("only two selects are rendered (sort + tag)", () => {
+  it("only two select triggers are rendered (sort + tag)", () => {
     render(<SortFilterBar {...baseProps()} />);
-    expect(screen.getAllByRole("combobox")).toHaveLength(2);
+    // The Select trigger buttons — one for sort, one for tag filter
+    expect(screen.getByRole("button", { name: "Sort authors" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter by tag" })).toBeInTheDocument();
   });
 });

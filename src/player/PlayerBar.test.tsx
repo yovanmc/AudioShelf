@@ -95,7 +95,9 @@ describe("PlayerBar", () => {
   it("sets a sleep timer from the selector", async () => {
     const p = props();
     render(<PlayerBar {...p} />);
-    await userEvent.selectOptions(screen.getByLabelText("Sleep timer"), "30");
+    // Open the styled Select, then click the "30 min" option
+    await userEvent.click(screen.getByRole("button", { name: "Sleep timer" }));
+    await userEvent.click(screen.getByRole("option", { name: "30 min" }));
     expect(p.onSetSleep).toHaveBeenCalledWith(30, false);
   });
 

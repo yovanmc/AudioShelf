@@ -1,11 +1,12 @@
 export type IconName =
   | "home" | "library" | "discover" | "rename" | "metadata" | "settings"
-  | "menu" | "chevronLeft" | "chevronRight" | "more"
+  | "menu" | "chevronLeft" | "chevronRight" | "chevron" | "more"
   | "play" | "pause" | "back15" | "back30" | "forward15" | "forward30"
   | "volume" | "mute" | "sleep" | "search" | "check" | "tag"
   | "expand" | "collapse" | "close" | "refresh" | "folder"
   | "journal" | "insights" | "collections" | "voice" | "list"
-  | "circle" | "circleHalf";
+  | "circle" | "circleHalf"
+  | "music";
 
 type GlyphDef = { d: string; fill?: string };
 
@@ -19,6 +20,7 @@ const glyphs: Record<IconName, GlyphDef> = {
   menu:        { d: "M4 7h16M4 12h16M4 17h16" },
   chevronLeft: { d: "m15 18-6-6 6-6" },
   chevronRight:{ d: "m9 18 6-6-6-6" },
+  chevron:     { d: "M6 9l6 6 6-6" },
   more:        { d: "M5 12h.01M12 12h.01M19 12h.01" },
   play:        { d: "m8 5 11 7-11 7z" },
   pause:       { d: "M7 5h3v14H7zm7 0h3v14h-3z" },
@@ -46,6 +48,8 @@ const glyphs: Record<IconName, GlyphDef> = {
   circle:      { d: "M12 4a8 8 0 1 0 0 16A8 8 0 0 0 12 4z" },
   /** Half-filled circle — "in progress" status indicator. */
   circleHalf:  { d: "M12 4a8 8 0 0 1 0 16V4z", fill: "currentColor" },
+  /** Music note — cover-art placeholder glyph. */
+  music:       { d: "M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm12-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" },
 };
 
 export function Icon({ name, className = "" }: { name: IconName; className?: string }) {

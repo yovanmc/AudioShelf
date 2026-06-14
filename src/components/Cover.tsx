@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getAuthorCover, getWorkCover, fileUrl } from "../lib/api";
 import { colorFor, initials } from "../lib/avatar";
+import { Icon } from "./Icon";
 
 /** Inline-styled colour+initials placeholder (the app ships no stylesheet). */
 export function Swatch({ name, size = 28 }: { name: string; size?: number }) {
@@ -54,7 +55,14 @@ function Artwork({ kind, id, name, size, className }: {
 
   return (
     <span className={`artwork ${className}`} style={{ width: size, height: size, background: colorFor(name) }} aria-label={`${name} artwork`}>
-      {path ? <img src={fileUrl(path)} alt="" /> : initials(name)}
+      {path ? (
+        <img src={fileUrl(path)} alt="" />
+      ) : (
+        <>
+          {size >= 64 && <Icon name="music" className="artwork__glyph" />}
+          <span className="artwork__initials" style={{ fontSize: Math.round(size * 0.32) }}>{initials(name)}</span>
+        </>
+      )}
     </span>
   );
 }
