@@ -224,6 +224,14 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .select__option--on { color: var(--color-accent); font-weight: 600; }
 .select__option-check { width: 16px; height: 16px; flex: none; }
 
+/* ---- Expanded player — two-column layout (M25 VIS-4) ---- */
+.now-playing__layout { display: grid; grid-template-columns: 360px 1fr; gap: var(--space-6); align-items: start; }
+.now-playing__title { margin: 0 0 var(--space-2); }
+.now-playing__creator { margin-top: var(--space-2); }
+@media (max-width: 720px) { .now-playing__layout { grid-template-columns: 1fr; } }
+/* Bookmark / chapter list row separators */
+.now-playing__list-row + .now-playing__list-row { border-top: 1px solid var(--color-border); }
+
 /* M24 — scrubber hit-area (PL-9) */
 .seek-range { height: 22px; cursor: pointer; }
 .seek-range::-webkit-slider-thumb { width: 14px; height: 14px; border-radius: 50%; opacity: 0; transition: opacity .12s; }

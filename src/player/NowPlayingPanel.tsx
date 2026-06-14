@@ -67,9 +67,11 @@ export function NowPlayingPanel(props: PlayerControls & {
             onClick={() => props.onOpenAuthor(context.authorId)}
             style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer" }}
           >
-            <h1 style={{ margin: 0 }} dir="auto">{context.workTitle}</h1>
+            <h1 className="now-playing__title" dir="auto">{context.workTitle}</h1>
           </button>
-          <CreatorIdentity authorId={context.authorId} authorName={context.authorName} size={44} onOpen={() => props.onOpenAuthor(context.authorId)} />
+          <div className="now-playing__creator">
+            <CreatorIdentity authorId={context.authorId} authorName={context.authorName} size={44} onOpen={() => props.onOpenAuthor(context.authorId)} />
+          </div>
           <p><span dir="auto">{context.chapter.title}</span> · Chapter {context.chapter.chapterNo}</p>
           <p className="muted" style={{ fontSize: "0.9rem", margin: 0 }}>
             Chapter {context.chapter.chapterNo} of {context.workTotalChapters}
@@ -144,7 +146,7 @@ export function NowPlayingPanel(props: PlayerControls & {
                 {props.chapters.map((c) => {
                   const isCurrent = c.id === props.context.chapter.id;
                   return (
-                    <li key={c.id}>
+                    <li key={c.id} className="now-playing__list-row">
                       <button type="button"
                         className={`chapter-jump${isCurrent ? " chapter-jump--current" : ""}`}
                         aria-current={isCurrent ? "true" : undefined}
@@ -168,7 +170,7 @@ export function NowPlayingPanel(props: PlayerControls & {
           )}
           {/* Journal capture controls */}
           <section className="now-playing__journal-capture" aria-label="Journal capture">
-            <h2 className="eyebrow muted">Capture</h2>
+            <h2 className="eyebrow muted">Notes &amp; bookmarks</h2>
             <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center", marginBottom: "var(--space-2)" }}>
               <Button
                 variant="secondary"
@@ -200,7 +202,7 @@ export function NowPlayingPanel(props: PlayerControls & {
                 <div className="muted" style={{ fontSize: "0.82rem", marginBottom: "var(--space-1)" }}>Bookmarks</div>
                 <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
                   {props.chapterJournal.bookmarks.map((bm: ChapterBookmark) => (
-                    <li key={bm.id} style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                    <li key={bm.id} className="now-playing__list-row" style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
                       <span className="muted" style={{ minWidth: 36, fontSize: "0.85rem" }}>{fmtPos(bm.positionSecs)}</span>
                       <span style={{ flex: 1, fontSize: "0.88rem" }}>{bm.label || <em className="muted">—</em>}</span>
                       <Button
