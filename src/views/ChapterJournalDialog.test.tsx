@@ -13,6 +13,7 @@ const chapter: ChapterRow = {
   filePath: "x/ch1.mp3",
   played: false,
   tags: [],
+  labels: [],
   userSummary: "My summary",
   takeaway: "My takeaway",
   isFavorite: false,
@@ -186,12 +187,14 @@ const workDetail: AuthorDetail = {
   id: 1,
   name: "Jane Doe",
   tags: [],
+  labels: [],
   metadata: [],
   works: [
     {
       id: 10,
       baseTitle: "Cool Story",
       tags: [],
+      labels: [],
       reEntryNote: "Chapter 3 was where I stopped",
       completionRating: "brilliant",
       chapterSort: "",
@@ -199,7 +202,7 @@ const workDetail: AuthorDetail = {
       chapters: [
         {
           id: 100, title: "Part One", chapterNo: 1, format: "mp3",
-          durationSecs: 60, filePath: "x/1.mp3", played: false, tags: [],
+          durationSecs: 60, filePath: "x/1.mp3", played: false, tags: [], labels: [],
           userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0,
         },
       ],

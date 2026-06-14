@@ -26,6 +26,7 @@ describe("Home progress", () => {
           filePath: "tale.mp3",
           played: false,
           tags: [],
+          labels: [],
           userSummary: "",
           takeaway: "",
           isFavorite: false,

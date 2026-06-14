@@ -32,11 +32,12 @@ pub struct ChapterRow {
     pub duration_secs: i64,
     pub file_path: String,
     pub played: bool,
-    pub tags: Vec<String>,
+    pub tags: Vec<String>,   // derived: labels where facet=="tag"
     pub user_summary: String,
     pub takeaway: String,
     pub is_favorite: bool,
-    pub metadata: Vec<MetaTag>,
+    pub metadata: Vec<MetaTag>, // derived: labels where facet!="tag"
+    pub labels: Vec<MetaTag>,   // all attached terms (every facet)
     pub playback_position_secs: i64,
 }
 
@@ -45,12 +46,13 @@ pub struct ChapterRow {
 pub struct WorkRow {
     pub id: i64,
     pub base_title: String,
-    pub tags: Vec<String>,
+    pub tags: Vec<String>,      // derived: labels where facet=="tag"
     pub chapters: Vec<ChapterRow>,
     pub re_entry_note: String,
     pub completion_rating: String,
     pub chapter_sort: String,   // NEW: per-work chapter ordering preference
-    pub metadata: Vec<MetaTag>,
+    pub metadata: Vec<MetaTag>, // derived: labels where facet!="tag"
+    pub labels: Vec<MetaTag>,   // all directly-attached work-level terms (every facet)
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -93,9 +95,10 @@ pub struct MoreWork {
 pub struct AuthorDetail {
     pub id: i64,
     pub name: String,
-    pub tags: Vec<String>,
+    pub tags: Vec<String>,      // derived: labels where facet=="tag"
     pub works: Vec<WorkRow>,
-    pub metadata: Vec<MetaTag>,
+    pub metadata: Vec<MetaTag>, // derived: labels where facet!="tag"
+    pub labels: Vec<MetaTag>,   // all directly-attached author-level terms (every facet)
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -399,6 +402,16 @@ pub struct MetaTerm {
     pub value: String,
     pub chapter_count: i64,
     pub author_count: i64,
+}
+
+/// A label type (facet) row from `label_types`.
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelType {
+    pub name: String,
+    pub display: String,
+    pub builtin: bool,
+    pub sort: i64,
 }
 
 #[derive(Serialize, Debug, PartialEq)]

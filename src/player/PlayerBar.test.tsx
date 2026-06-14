@@ -13,6 +13,7 @@ const context = {
     filePath: "/audio.mp3",
     played: false,
     tags: [],
+    labels: [],
     userSummary: "",
     takeaway: "",
     isFavorite: false,

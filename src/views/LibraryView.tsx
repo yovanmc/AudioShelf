@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { FixedSizeList as List, type ListChildComponentProps } from "react-window";
-import type { AuthorRow, SearchResults, TranscriptHit, ScopedResults, SavedSearch } from "../lib/api";
+import type { AuthorRow, SearchResults, TranscriptHit, ScopedResults, SavedSearch, LabelType } from "../lib/api";
 import { summarizeAuthor } from "../lib/library";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
 import { EmptyState, IconButton, PageHeader, TagGroup } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { WorkCard } from "../components/WorkCard";
 import { ScopedResults as ScopedResultsPanel } from "../components/ScopedResults";
-import { SortFilterBar } from "./SortFilterBar";
+import { SortFilterBar, type LabelFilter } from "./SortFilterBar";
 import { filterAuthors, sortAuthors, type AuthorSort, type PlayedStatus } from "../lib/browse";
 
 const ROW_HEIGHT = 72;
@@ -38,12 +38,44 @@ export function LibraryView(props: {
   onSelectModeChange?: (on: boolean) => void;
   selectedWorkIds?: number[];
   onToggleWork?: (workId: number) => void;
+  // ---- M26: Unified label filter ----
+  /** Ordered label types; when provided, enables unified type→value filter UI. */
+  labelTypes?: LabelType[];
+  /**
+   * Map from label-type name → [{value, count}].
+   * Populated by termsByType in App.tsx. Drives the value select in the unified UI.
+   */
+  termsByType?: Record<string, { value: string; count: number }[]>;
+  /**
+   * Active label filter (facet + value), or null for "all".
+   * Scope: filtering against AuthorRow.tags is fully supported for the "tag" facet.
+   * For non-tag facets, client-side filtering is not possible (AuthorRow only carries
+   * tags[]); selections on non-tag types produce an empty list — use plain search
+   * (narrator:, language:, mood:, etc.) for cross-facet filtering.
+   */
+  labelFilter?: LabelFilter | null;
+  onLabelFilterChange?: (filter: LabelFilter | null) => void;
 }) {
   const [showTips, setShowTips] = useState(false);
   const [savingSearch, setSavingSearch] = useState(false);
   const [saveName, setSaveName] = useState("");
   const searching = props.query.trim() !== "";
-  const visible = filterAuthors(sortAuthors(props.authors, props.sort), { tag: props.filterTag, status: props.filterStatus });
+
+  // Derive the effective tag filter: unified labelFilter (tag facet only) takes
+  // precedence over the legacy filterTag when both are present.
+  // Non-tag facets cannot be filtered client-side (AuthorRow only has tags[]),
+  // so a non-tag labelFilter yields no tag match → empty list (graceful degradation).
+  const effectiveTagFilter: string | null = (() => {
+    if (props.labelFilter) {
+      return props.labelFilter.facet === "tag" ? props.labelFilter.value : "__no_match__";
+    }
+    return props.filterTag;
+  })();
+
+  const visible = filterAuthors(sortAuthors(props.authors, props.sort), {
+    tag: effectiveTagFilter,
+    status: props.filterStatus,
+  });
   const Row = ({ index, style }: ListChildComponentProps) => {
     const author = visible[index];
     return (
@@ -165,7 +197,24 @@ export function LibraryView(props: {
               </button>
             ))}
           </div>
-          <SortFilterBar sort={props.sort} onSortChange={props.onSortChange} filterTag={props.filterTag} onFilterTagChange={props.onFilterTagChange} allTags={props.allTags} />
+          {props.labelTypes && props.termsByType && props.onLabelFilterChange ? (
+            <SortFilterBar
+              sort={props.sort}
+              onSortChange={props.onSortChange}
+              labelTypes={props.labelTypes}
+              termsByType={props.termsByType}
+              labelFilter={props.labelFilter}
+              onLabelFilterChange={props.onLabelFilterChange}
+            />
+          ) : (
+            <SortFilterBar
+              sort={props.sort}
+              onSortChange={props.onSortChange}
+              filterTag={props.filterTag}
+              onFilterTagChange={props.onFilterTagChange}
+              allTags={props.allTags}
+            />
+          )}
           {visible.length === 0
             ? <EmptyState title="No creators match those filters">Adjust or clear the filters above to see more of your library.</EmptyState>
             : <List height={LIST_HEIGHT} width="100%" itemCount={visible.length} itemSize={ROW_HEIGHT}>{Row}</List>}

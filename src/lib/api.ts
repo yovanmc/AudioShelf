@@ -10,11 +10,12 @@ export interface ChapterRow {
   id: number; title: string; chapterNo: number; format: string;
   durationSecs: number; filePath: string; played: boolean; tags: string[];
   userSummary: string; takeaway: string; isFavorite: boolean; metadata: MetaTag[];
-  playbackPositionSecs: number;
+  playbackPositionSecs: number; labels: MetaTag[];
 }
 export interface WorkRow {
   id: number; baseTitle: string; tags: string[]; chapters: ChapterRow[];
   reEntryNote: string; completionRating: string; chapterSort: string; metadata: MetaTag[];
+  labels: MetaTag[];
 }
 
 export interface ChapterNote { id: number; chapterId: number; positionSecs: number; body: string; createdAt: number; }
@@ -28,7 +29,7 @@ export interface JournalEntry {
 }
 export interface JournalResults { entries: JournalEntry[]; }
 export interface JournalExportReport { path: string; format: string; entryCount: number; }
-export interface AuthorDetail { id: number; name: string; tags: string[]; works: WorkRow[]; metadata: MetaTag[]; }
+export interface AuthorDetail { id: number; name: string; tags: string[]; works: WorkRow[]; metadata: MetaTag[]; labels: MetaTag[]; }
 
 export interface AuthorHit { authorId: number; authorName: string; }
 export interface WorkHit { workId: number; baseTitle: string; authorId: number; authorName: string; }
@@ -399,12 +400,36 @@ export const renameMetadataTerm = (id: number, value: string) =>
 export const deleteMetadataTerm = (id: number) => invoke("delete_metadata_term", { id });
 export const mergeMetadataTerms = (sourceIds: number[], targetId: number) =>
   invoke("merge_metadata_terms", { sourceIds, targetId });
-export const addMetadataValue = (scope: "chapter" | "author", id: number, facet: string, value: string) =>
+export const addMetadataValue = (scope: "chapter" | "author" | "work", id: number, facet: string, value: string) =>
   invoke<MetaTag>("add_metadata_value", { scope, id, facet, value });
-export const removeMetadataValue = (scope: "chapter" | "author", id: number, termId: number) =>
+export const removeMetadataValue = (scope: "chapter" | "author" | "work", id: number, termId: number) =>
   invoke("remove_metadata_value", { scope, id, termId });
 export const getDiscoveryByMetadata = (facet: string, value: string) =>
   invoke<DiscoveryWork[]>("get_discovery_by_metadata", { facet, value });
+
+// M26 Unified Labels — types
+export interface LabelType { name: string; display: string; builtin: boolean; sort: number; }
+/** A label attached to an entity; same shape as MetaTag. */
+export type Label = MetaTag;
+
+// M26 Unified Labels — label-type management wrappers
+export const listLabelTypes = () => invoke<LabelType[]>("list_label_types");
+export const createLabelType = (name: string, display: string) =>
+  invoke<void>("create_label_type", { name, display });
+export const renameLabelType = (name: string, display: string) =>
+  invoke<void>("rename_label_type", { name, display });
+export const deleteLabelType = (name: string) =>
+  invoke<void>("delete_label_type", { name });
+export const reorderLabelTypes = (names: string[]) =>
+  invoke<void>("reorder_label_types", { names });
+
+// M26 Unified Labels — convenience aliases for attaching/detaching labels
+/** Attach a label (facet/value pair) to an entity. Delegates to addMetadataValue. */
+export const addLabel = (scope: "chapter" | "author" | "work", id: number, type: string, value: string) =>
+  addMetadataValue(scope, id, type, value);
+/** Remove a label from an entity by term ID. Delegates to removeMetadataValue. */
+export const removeLabel = (scope: "chapter" | "author" | "work", id: number, termId: number) =>
+  removeMetadataValue(scope, id, termId);
 
 /**
  * Open the OS folder picker. Resolves to the chosen absolute path, or `null` if

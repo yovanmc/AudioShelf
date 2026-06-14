@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { LibraryView } from "./LibraryView";
-import type { AuthorRow, SearchResults, TranscriptHit } from "../lib/api";
+import type { AuthorRow, SearchResults, TranscriptHit, LabelType } from "../lib/api";
 
 const authors: AuthorRow[] = [
   { id: 1, name: "Alice", workCount: 1, chapterCount: 2, unplayedCount: 1, totalSecs: 0, tags: [] },
@@ -320,5 +320,97 @@ describe("LibraryView", () => {
   it("does not render the saved-search strip when savedSearches is empty", () => {
     render(<LibraryView {...baseProps({ savedSearches: [] })} />);
     expect(screen.queryByText("Saved:")).not.toBeInTheDocument();
+  });
+});
+
+// ---- M26: Unified label filter integration ----
+
+const LABEL_TYPES_LIB: LabelType[] = [
+  { name: "tag", display: "Tags", builtin: true, sort: 0 },
+  { name: "narrator", display: "Narrator", builtin: true, sort: 1 },
+];
+
+const TERMS_BY_TYPE_LIB: Record<string, { value: string; count: number }[]> = {
+  tag: [{ value: "fiction", count: 2 }],
+  narrator: [{ value: "Jane Doe", count: 1 }],
+};
+
+function unifiedBaseProps(over: Partial<React.ComponentProps<typeof LibraryView>> = {}) {
+  const base: React.ComponentProps<typeof LibraryView> = {
+    authors,
+    query: "",
+    results: null,
+    sort: "az",
+    onSortChange: vi.fn(),
+    filterTag: null,
+    onFilterTagChange: vi.fn(),
+    filterStatus: "all",
+    onFilterStatusChange: vi.fn(),
+    allTags: [],
+    onQueryChange: vi.fn(),
+    onOpenAuthor: vi.fn(),
+    labelTypes: LABEL_TYPES_LIB,
+    termsByType: TERMS_BY_TYPE_LIB,
+    labelFilter: null,
+    onLabelFilterChange: vi.fn(),
+    ...over,
+  };
+  return base;
+}
+
+describe("LibraryView — unified label filter (M26)", () => {
+  it("renders the unified type and value selects when labelTypes/termsByType/onLabelFilterChange provided", () => {
+    render(<LibraryView {...unifiedBaseProps()} />);
+    expect(screen.getByRole("button", { name: "Filter by label type" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter by label value" })).toBeInTheDocument();
+    // Legacy single-select not shown
+    expect(screen.queryByRole("button", { name: "Filter by tag" })).not.toBeInTheDocument();
+  });
+
+  it("labelFilter with tag facet filters the author list by AuthorRow.tags", () => {
+    const tagged: AuthorRow[] = [
+      { id: 20, name: "Tagged", workCount: 1, chapterCount: 1, unplayedCount: 0, totalSecs: 0, tags: ["fiction"] },
+      { id: 21, name: "Untagged", workCount: 1, chapterCount: 1, unplayedCount: 0, totalSecs: 0, tags: [] },
+    ];
+    render(
+      <LibraryView
+        {...unifiedBaseProps({
+          authors: tagged,
+          labelFilter: { facet: "tag", value: "fiction" },
+        })}
+      />,
+    );
+    expect(screen.getByText("Tagged")).toBeInTheDocument();
+    expect(screen.queryByText("Untagged")).not.toBeInTheDocument();
+  });
+
+  it("labelFilter with non-tag facet (e.g. narrator) degrades gracefully — shows empty-state not a crash", () => {
+    const tagged: AuthorRow[] = [
+      { id: 22, name: "Someone", workCount: 1, chapterCount: 1, unplayedCount: 0, totalSecs: 0, tags: [] },
+    ];
+    render(
+      <LibraryView
+        {...unifiedBaseProps({
+          authors: tagged,
+          // narrator facet: AuthorRow has no narrator field, so no author matches — empty list
+          labelFilter: { facet: "narrator", value: "Jane Doe" },
+        })}
+      />,
+    );
+    // Empty-state message rendered (not a crash or exception)
+    expect(screen.getByText("No creators match those filters")).toBeInTheDocument();
+  });
+
+  it("labelFilter null shows all authors (no filter active)", () => {
+    render(<LibraryView {...unifiedBaseProps({ labelFilter: null })} />);
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(screen.getByText("Bob")).toBeInTheDocument();
+  });
+
+  it("type select lists all label type display names", async () => {
+    render(<LibraryView {...unifiedBaseProps()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Filter by label type" }));
+    expect(screen.getByRole("option", { name: "Tags" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Narrator" })).toBeInTheDocument();
   });
 });

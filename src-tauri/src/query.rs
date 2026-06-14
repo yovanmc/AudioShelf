@@ -53,6 +53,21 @@ pub fn parse_query(raw: &str) -> ParsedQuery {
         } else if let Some(v) = tok.strip_prefix("mood:") {
             if !v.is_empty() { out.meta.push(MetaFilter { facet: "mood".into(), value: v.to_string() }); }
             else { text_parts.push(tok); }
+        } else if let Some(colon_pos) = tok.find(':') {
+            // Generic `type:value` — any bareword prefix not already handled above becomes a
+            // MetaFilter.  The scoped EXISTS on metadata_terms naturally returns no rows for
+            // unknown facets, so no DB validation is needed here.
+            let (prefix, rest) = tok.split_at(colon_pos);
+            let v = &rest[1..]; // strip the ':'
+            // Only treat as a facet filter if the prefix is a bare identifier (no spaces, not
+            // empty) and the value part is non-empty.
+            if !prefix.is_empty() && !v.is_empty()
+                && prefix.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+            {
+                out.meta.push(MetaFilter { facet: prefix.to_string(), value: v.to_string() });
+            } else {
+                text_parts.push(tok);
+            }
         } else {
             text_parts.push(tok);
         }
@@ -124,9 +139,12 @@ mod tests {
 
     #[test]
     fn multiple_tags_and_unknown_keys_fall_through() {
+        // Since T4, a generic `word:value` token is now parsed as a MetaFilter, not as text.
+        // `foo:bar` becomes MetaFilter{facet:"foo", value:"bar"} and does NOT fall to text.
         let p = parse_query("tag:a tag:b foo:bar plain");
         assert_eq!(p.tags, vec!["a".to_string(), "b".to_string()]);
-        assert_eq!(p.text, "foo:bar plain");
+        assert_eq!(p.meta, vec![MetaFilter { facet: "foo".into(), value: "bar".into() }]);
+        assert_eq!(p.text, "plain");
     }
 
     #[test]
@@ -156,5 +174,56 @@ mod tests {
         let p = parse_query("narrator:");
         assert!(p.meta.is_empty());
         assert_eq!(p.text, "narrator:");
+    }
+
+    // ---- T4: generic type:value DSL ----
+
+    #[test]
+    fn generic_type_value_token_becomes_meta_filter() {
+        let p = parse_query("format:podcast");
+        assert_eq!(p.meta, vec![MetaFilter { facet: "format".into(), value: "podcast".into() }]);
+        assert!(p.tags.is_empty());
+        assert_eq!(p.text, "");
+    }
+
+    #[test]
+    fn known_facets_still_parse_correctly() {
+        // tag: goes to tags (not meta)
+        let p = parse_query("tag:cozy");
+        assert_eq!(p.tags, vec!["cozy".to_string()]);
+        assert!(p.meta.is_empty());
+        // narrator:/language:/mood: go to meta
+        let p2 = parse_query("narrator:Alice language:English mood:calm");
+        assert_eq!(p2.meta, vec![
+            MetaFilter { facet: "narrator".into(), value: "Alice".into() },
+            MetaFilter { facet: "language".into(), value: "English".into() },
+            MetaFilter { facet: "mood".into(), value: "calm".into() },
+        ]);
+    }
+
+    #[test]
+    fn reserved_tokens_duration_and_status_are_not_generic_meta() {
+        let p = parse_query("duration:<15m status:done");
+        // duration and status must NOT appear in meta
+        assert!(p.meta.is_empty());
+        assert!(p.duration.is_some());
+        assert!(p.status.is_some());
+    }
+
+    #[test]
+    fn generic_token_with_empty_value_falls_through() {
+        // "format:" has an empty value — should NOT become a MetaFilter
+        let p = parse_query("format:");
+        assert!(p.meta.is_empty());
+        assert_eq!(p.text, "format:");
+    }
+
+    #[test]
+    fn unknown_type_value_with_non_identifier_prefix_falls_to_text() {
+        // "hello world:value" (space in prefix) — each token is already split by whitespace;
+        // but a colon with non-alnum chars in prefix should fall through.
+        let p = parse_query("123!:value");
+        assert!(p.meta.is_empty());
+        assert_eq!(p.text, "123!:value");
     }
 }

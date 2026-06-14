@@ -25,12 +25,14 @@ import {
   openMiniPlayer,
   listMetadataTerms, createMetadataTerm, renameMetadataTerm, deleteMetadataTerm, mergeMetadataTerms,
   addMetadataValue, removeMetadataValue, getDiscoveryByMetadata,
+  listLabelTypes, createLabelType, renameLabelType, deleteLabelType, reorderLabelTypes,
+  addLabel, removeLabel,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
   type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
   type InsightsData, type ScopedResults, type SavedSearch, type Collection,
-  type ImportReport, type HealthReport, type MetaTerm,
+  type ImportReport, type HealthReport, type MetaTerm, type LabelType,
 } from "./lib/api";
 import { hasScopedTokens } from "./lib/query";
 import { buildRecapSvg } from "./lib/recap";
@@ -53,7 +55,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -72,6 +74,7 @@ import {
 } from "./lib/shelves";
 import { applyMediaSession, updatePosition, type NowPlayingMeta } from "./lib/mediaSession";
 import { emit, listen } from "@tauri-apps/api/event";
+import type { LabelFilter } from "./views/SortFilterBar";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -156,8 +159,8 @@ export default function App() {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [tagStats, setTagStats] = useState<TagStat[]>([]);
   const [forYou, setForYou] = useState<DiscoveryWork[]>([]);
-  const [byTags, setByTags] = useState<DiscoveryWork[]>([]);
-  const [pickedTags, setPickedTags] = useState<string[]>([]);
+  const [_byTags, setByTags] = useState<DiscoveryWork[]>([]);
+  const [_pickedTags, setPickedTags] = useState<string[]>([]);
   const [libraryRoot, setLibraryRoot] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -194,6 +197,12 @@ export default function App() {
 
   // ---- M21: metadata vocabulary terms ----
   const [metaTerms, setMetaTerms] = useState<MetaTerm[]>([]);
+
+  // ---- M26: label types (ordered) ----
+  const [labelTypes, setLabelTypes] = useState<LabelType[]>([]);
+
+  // ---- M26: library label filter ----
+  const [labelFilter, setLabelFilter] = useState<LabelFilter | null>(null);
 
   // ---- M21: Discover facet picker state ----
   const [pickedFacet, setPickedFacet] = useState<{ facet: string; value: string } | null>(null);
@@ -388,20 +397,67 @@ export default function App() {
     setTagStats(await listTagsWithCounts());
   }
 
-  const loadMetaTerms = async () => setMetaTerms(await listMetadataTerms().catch(() => [] as MetaTerm[]));
+  const loadMetaTerms = async () => {
+    const [terms, types] = await Promise.all([
+      listMetadataTerms().catch(() => [] as MetaTerm[]),
+      listLabelTypes().catch(() => [] as LabelType[]),
+    ]);
+    setMetaTerms(terms);
+    setLabelTypes(types);
+  };
 
   const handleCreateMetaTerm = async (facet: string, value: string) => { await createMetadataTerm(facet, value); await loadMetaTerms(); };
   const handleRenameMetaTerm = async (id: number, value: string) => { await renameMetadataTerm(id, value); await loadMetaTerms(); };
   const handleDeleteMetaTerm = async (id: number) => { await deleteMetadataTerm(id); await loadMetaTerms(); };
   const handleMergeMetaTerms = async (sourceIds: number[], targetId: number) => { await mergeMetadataTerms(sourceIds, targetId); await loadMetaTerms(); };
 
+  // ---- M26: label-type CRUD handlers ----
+  const handleCreateLabelType = async (name: string, display: string) => { await createLabelType(name, display); await loadMetaTerms(); };
+  const handleRenameLabelType = async (name: string, display: string) => { await renameLabelType(name, display); await loadMetaTerms(); };
+  const handleDeleteLabelType = async (name: string) => { await deleteLabelType(name); await loadMetaTerms(); };
+  const handleReorderLabelTypes = async (names: string[]) => { await reorderLabelTypes(names); await loadMetaTerms(); };
+
+  // ---- M26: unified label handlers for AuthorDetailView ----
+  const handleAddAuthorLabel = async (authorId: number, type: string, value: string) => {
+    await addLabel("author", authorId, type, value);
+    await loadMetaTerms();
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  };
+  const handleRemoveAuthorLabel = async (authorId: number, termId: number) => {
+    await removeLabel("author", authorId, termId);
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  };
+  const handleAddChapterLabel = async (chapterId: number, type: string, value: string) => {
+    await addLabel("chapter", chapterId, type, value);
+    await loadMetaTerms();
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  };
+  const handleRemoveChapterLabel = async (chapterId: number, termId: number) => {
+    await removeLabel("chapter", chapterId, termId);
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  };
+  const handleAddWorkLabel = async (workId: number, type: string, value: string) => {
+    await addLabel("work", workId, type, value);
+    await loadMetaTerms();
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  };
+  const handleRemoveWorkLabel = async (workId: number, termId: number) => {
+    await removeLabel("work", workId, termId);
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  };
+
   // Flat list of all known metadata values for the MetadataEditor datalist suggestions.
   const metaSuggestions = useMemo(() => Array.from(new Set(metaTerms.map((t) => t.value))).sort(), [metaTerms]);
 
-  // Facet term lists for the Discover facet picker.
-  const narratorTerms = useMemo(() => metaTerms.filter((t) => t.facet === "narrator"), [metaTerms]);
-  const languageTerms = useMemo(() => metaTerms.filter((t) => t.facet === "language"), [metaTerms]);
-  const moodTerms = useMemo(() => metaTerms.filter((t) => t.facet === "mood"), [metaTerms]);
+  // M26: termsByType — map from label-type name → [{value, count}] for the Discover picker.
+  const termsByType = useMemo<Record<string, { value: string; count: number }[]>>(() => {
+    const map: Record<string, { value: string; count: number }[]> = {};
+    for (const t of metaTerms) {
+      if (!map[t.facet]) map[t.facet] = [];
+      map[t.facet].push({ value: t.value, count: t.chapterCount });
+    }
+    return map;
+  }, [metaTerms]);
 
   const pickFacet = async (facet: string, value: string) => {
     setPickedFacet({ facet, value });
@@ -2050,6 +2106,94 @@ export default function App() {
                   await settle();
                 },
               })
+            : args.walkthrough === "m26"
+            ? m26Steps({
+                // Step 1: seed — create user type "show-format" / "Show format", add the
+                // value "Talk show" on an UNPLAYED chapter of the first author so that the
+                // Discover backend (unplayed-only) will return results. Also seed narrator
+                // "Jane Roe" on the same chapter to demonstrate multi-type LabelEditor rows.
+                seedLabels: async () => {
+                  // Create the user type first (idempotent — backend ignores duplicates).
+                  await createLabelType("show_format", "Show format").catch(() => {});
+                  await loadMetaTerms();
+                  const authors = await getAuthors();
+                  const jane = authors.find((a) => a.name === "Jane Doe") ?? authors[0];
+                  if (!jane) return;
+                  const d = await getAuthorDetail(jane.id);
+                  // Find an unplayed chapter so Discover (unplayed-only) returns this work.
+                  const unplayedWork = d.works.find((w) => w.chapters.some((c) => !c.played));
+                  const unplayedChapter = unplayedWork?.chapters.find((c) => !c.played);
+                  if (unplayedChapter) {
+                    await addLabel("chapter", unplayedChapter.id, "show_format", "Talk show");
+                    await addLabel("chapter", unplayedChapter.id, "narrator", "Jane Roe");
+                  }
+                  // Also tag the author-level language for a richer LabelEditor display.
+                  await addLabel("author", jane.id, "language", "English").catch(() => {});
+                  // Seed a tag on Jane so the Library tag-filter (step 6) yields a non-empty result.
+                  await addLabel("author", jane.id, "tag", "cozy").catch(() => {});
+                  await loadMetaTerms();
+                  await openAuthor(jane.id);
+                },
+                // Step 2: open Settings — LabelManagerView shows the unified Types & Labels
+                // card with the "Show format" user type and its "Talk show" term.
+                showLabelManager: async () => {
+                  await loadMetaTerms();
+                  openSettings();
+                  await settle();
+                  document.querySelector(".label-manager")?.scrollIntoView({ block: "start" });
+                  await settle();
+                },
+                // Step 3: open the first unplayed chapter's "Edit tags" dialog on Jane Doe,
+                // showing Tag + Narrator + "Show format" rows with chips (LabelEditor).
+                showLabelEditorOnChapter: async () => {
+                  const authors = await getAuthors();
+                  const jane = authors.find((a) => a.name === "Jane Doe") ?? authors[0];
+                  if (!jane) return;
+                  const d = await getAuthorDetail(jane.id);
+                  const unplayedWork = d.works.find((w) => w.chapters.some((c) => !c.played));
+                  const unplayedChapter = unplayedWork?.chapters.find((c) => !c.played);
+                  if (!unplayedChapter) return;
+                  setHarnessTagsChapterId(null);
+                  await openAuthor(jane.id);
+                  await settle();
+                  setHarnessTagsChapterId(unplayedChapter.id);
+                  await settle();
+                  await settle();
+                },
+                // Step 4: plain search "talk show" — the backend matches label values across
+                // all types so the work surfaces in the results list.
+                showSearchByLabel: async () => {
+                  setHarnessTagsChapterId(null);
+                  setRoute({ kind: "library" });
+                  const q = "talk show";
+                  setQuery(q);
+                  setResults(await searchLibrary(q));
+                  setScopedResults(null);
+                  setTranscriptResults(null);
+                  await settle();
+                },
+                // Step 5: Discover — pick "Talk show" in the unified picker so the work list
+                // is populated (unplayed chapters required; seeded in step 1).
+                showDiscoverByLabel: async () => {
+                  await loadMetaTerms();
+                  await pickFacet("show_format", "Talk show");
+                  openDiscovery();
+                  await settle();
+                },
+                // Step 6: Library label-filter — filter by Tag → "cozy" (seeded on Jane Doe
+                // at author level in step 1), so the filtered creators list is NON-EMPTY,
+                // proving the type/value filter wiring works end-to-end.
+                showLibraryLabelFilter: async () => {
+                  setLabelFilter({ facet: "tag", value: "cozy" });
+                  setQuery("");
+                  setResults(null);
+                  setScopedResults(null);
+                  // Reload authors from the DB so Jane's seeded tag is in React state.
+                  await loadAuthors();
+                  setRoute({ kind: "library" });
+                  await settle();
+                },
+              })
             : args.walkthrough === "m25"
             ? m25Steps({
                 // Step 1: Library view with the sort Select trigger visible — the styled
@@ -2474,6 +2618,14 @@ export default function App() {
           onAddAuthorMeta={handleAddAuthorMeta}
           onRemoveAuthorMeta={handleRemoveAuthorMeta}
           openTagsForChapterId={harnessTagsChapterId ?? undefined}
+          labelTypes={labelTypes}
+          labelSuggestions={metaSuggestions}
+          onAddAuthorLabel={handleAddAuthorLabel}
+          onRemoveAuthorLabel={handleRemoveAuthorLabel}
+          onAddChapterLabel={handleAddChapterLabel}
+          onRemoveChapterLabel={handleRemoveChapterLabel}
+          onAddWorkLabel={handleAddWorkLabel}
+          onRemoveWorkLabel={handleRemoveWorkLabel}
         />
       );
     }
@@ -2481,18 +2633,13 @@ export default function App() {
       return (
         <DiscoveryView
           forYou={forYou}
-          allTags={allTags}
-          byTags={byTags}
-          picked={pickedTags}
-          onPickTags={pickTags}
+          labelTypes={labelTypes}
+          termsByType={termsByType}
+          picked={pickedFacet}
+          onPickMetadata={pickFacet}
+          byMetadata={byFacet}
           onOpenAuthor={openAuthor}
           onPlayNextOfWork={playNextChapterOfWork}
-          narratorTerms={narratorTerms}
-          languageTerms={languageTerms}
-          moodTerms={moodTerms}
-          pickedFacet={pickedFacet}
-          byFacet={byFacet}
-          onPickFacet={pickFacet}
         />
       );
     }
@@ -2562,6 +2709,11 @@ export default function App() {
           onRenameMetaTerm={handleRenameMetaTerm}
           onDeleteMetaTerm={handleDeleteMetaTerm}
           onMergeMetaTerms={handleMergeMetaTerms}
+          labelTypes={labelTypes}
+          onCreateLabelType={handleCreateLabelType}
+          onRenameLabelType={handleRenameLabelType}
+          onDeleteLabelType={handleDeleteLabelType}
+          onReorderLabelTypes={handleReorderLabelTypes}
           onOpenRename={openRename}
           onOpenMetadata={openMetadata}
         />
@@ -2627,6 +2779,10 @@ export default function App() {
           onSelectModeChange={(on) => { setSelectMode(on); if (!on) setSelectedWorkIds([]); }}
           selectedWorkIds={selectedWorkIds}
           onToggleWork={onToggleWork}
+          labelTypes={labelTypes}
+          termsByType={termsByType}
+          labelFilter={labelFilter}
+          onLabelFilterChange={setLabelFilter}
         />
         {selectMode && selectedWorkIds.length > 0 && (
           <div className="bulk-bar">

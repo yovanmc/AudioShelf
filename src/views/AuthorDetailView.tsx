@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import type { AuthorDetail, ChapterRow, ChapterJournal, DiscoveryWork, PlaybackContext, SeriesView, WorkRow } from "../lib/api";
+import type { AuthorDetail, ChapterRow, ChapterJournal, DiscoveryWork, LabelType, PlaybackContext, SeriesView, WorkRow } from "../lib/api";
 import { TagEditor } from "./TagEditor";
 import { MetadataEditor } from "../components/MetadataEditor";
+import { LabelEditor } from "../components/LabelEditor";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
 import { Button, Dialog, ProgressBar, SectionHeading, TagGroup } from "../components/ui";
 import { WorkCard } from "../components/WorkCard";
@@ -180,10 +181,28 @@ export function AuthorDetailView(props: {
   onRemoveAuthorMeta?: (authorId: number, termId: number) => void;
   /**
    * Harness-only: when set, programmatically opens the per-chapter "Edit tags" dialog
-   * (which hosts the MetadataEditor) for this chapter id. Used by the m21 walkthrough
-   * step so the dialog is rendered without mouse interaction.
+   * (which hosts the MetadataEditor / LabelEditor) for this chapter id. Used by the
+   * m21/m26 walkthrough step so the dialog is rendered without mouse interaction.
    */
   openTagsForChapterId?: number;
+  // ---- M26 Unified Labels props (all optional so existing tests stay unbroken) ----
+  /** Ordered label types from the DB. When provided, LabelEditor replaces the old
+   *  TagEditor + MetadataEditor pair in the author header and chapter dialog. */
+  labelTypes?: LabelType[];
+  /** Global label value suggestions for the LabelEditor datalist. */
+  labelSuggestions?: string[];
+  /** Add a label to the author. */
+  onAddAuthorLabel?: (authorId: number, type: string, value: string) => void;
+  /** Remove a label from the author by term ID. */
+  onRemoveAuthorLabel?: (authorId: number, termId: number) => void;
+  /** Add a label to a chapter. */
+  onAddChapterLabel?: (chapterId: number, type: string, value: string) => void;
+  /** Remove a label from a chapter by term ID. */
+  onRemoveChapterLabel?: (chapterId: number, termId: number) => void;
+  /** Add a label to a work. */
+  onAddWorkLabel?: (workId: number, type: string, value: string) => void;
+  /** Remove a label from a work by term ID. */
+  onRemoveWorkLabel?: (workId: number, termId: number) => void;
 }) {
   const { detail, series = [], moreLikeThisMap = {}, workTagSuggestions = {} } = props;
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
@@ -260,19 +279,31 @@ export function AuthorDetailView(props: {
             </div>
           )}
         </div>
-        {/* Row 2 — tags + metadata, below a divider */}
+        {/* Row 2 — tags + labels, below a divider */}
         <div className="creator-header__meta">
-          <p className="muted field-hint">Tags — your own free-form labels (e.g. "cozy", "re-listen").</p>
-          <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
-          {props.onAddAuthorMeta && props.onRemoveAuthorMeta && (
+          {props.labelTypes ? (
+            <LabelEditor
+              applied={detail.labels}
+              labelTypes={props.labelTypes}
+              suggestions={props.labelSuggestions}
+              onAdd={(type, value) => props.onAddAuthorLabel?.(detail.id, type, value)}
+              onRemove={(termId) => props.onRemoveAuthorLabel?.(detail.id, termId)}
+            />
+          ) : (
             <>
-              <p className="muted field-hint">Narrator, language &amp; mood — shared values you can browse and filter by in Discover.</p>
-              <MetadataEditor
-                applied={detail.metadata}
-                suggestions={props.metaSuggestions ?? []}
-                onAdd={(facet, value) => props.onAddAuthorMeta!(detail.id, facet, value)}
-                onRemove={(termId) => props.onRemoveAuthorMeta!(detail.id, termId)}
-              />
+              <p className="muted field-hint">Tags — your own free-form labels (e.g. "cozy", "re-listen").</p>
+              <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
+              {props.onAddAuthorMeta && props.onRemoveAuthorMeta && (
+                <>
+                  <p className="muted field-hint">Narrator, language &amp; mood — shared values you can browse and filter by in Discover.</p>
+                  <MetadataEditor
+                    applied={detail.metadata}
+                    suggestions={props.metaSuggestions ?? []}
+                    onAdd={(facet, value) => props.onAddAuthorMeta!(detail.id, facet, value)}
+                    onRemove={(termId) => props.onRemoveAuthorMeta!(detail.id, termId)}
+                  />
+                </>
+              )}
             </>
           )}
         </div>
@@ -328,6 +359,17 @@ export function AuthorDetailView(props: {
               >More like this</button>
             )}
           </div>
+          {props.labelTypes && props.onAddWorkLabel && props.onRemoveWorkLabel && (
+            <div className="work-labels">
+              <LabelEditor
+                applied={w.labels}
+                labelTypes={props.labelTypes}
+                suggestions={props.labelSuggestions}
+                onAdd={(type, value) => props.onAddWorkLabel!(w.id, type, value)}
+                onRemove={(termId) => props.onRemoveWorkLabel!(w.id, termId)}
+              />
+            </div>
+          )}
           {(props.onSetWorkReEntryNote || props.onSetWorkRating) && (
             <div className="work-journal-meta" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginTop: 8 }}>
               {props.onSetWorkReEntryNote && (
@@ -405,19 +447,31 @@ export function AuthorDetailView(props: {
         </Dialog>
       )}
       {editState && editChapterInfo && editState.mode === "tags" && (
-        <Dialog label="Edit tags" title="Edit tags & metadata" context={`Tags, narrator, language, and mood for "${editChapterInfo.chapter.title}"`} onClose={() => setEditState(null)}>
-          <TagEditor
-            tags={editChapterInfo.chapter.tags}
-            allTags={props.allTags}
-            onChange={(t) => props.onSetChapterTags(editChapterInfo.chapter.id, t)}
-          />
-          {props.onAddChapterMeta && props.onRemoveChapterMeta && (
-            <MetadataEditor
-              applied={editChapterInfo.chapter.metadata}
-              suggestions={props.metaSuggestions ?? []}
-              onAdd={(facet, value) => props.onAddChapterMeta!(editChapterInfo.chapter.id, facet, value)}
-              onRemove={(termId) => props.onRemoveChapterMeta!(editChapterInfo.chapter.id, termId)}
+        <Dialog label="Edit tags" title="Edit tags & labels" context={`Labels for "${editChapterInfo.chapter.title}"`} onClose={() => setEditState(null)}>
+          {props.labelTypes ? (
+            <LabelEditor
+              applied={editChapterInfo.chapter.labels}
+              labelTypes={props.labelTypes}
+              suggestions={props.labelSuggestions}
+              onAdd={(type, value) => props.onAddChapterLabel?.(editChapterInfo.chapter.id, type, value)}
+              onRemove={(termId) => props.onRemoveChapterLabel?.(editChapterInfo.chapter.id, termId)}
             />
+          ) : (
+            <>
+              <TagEditor
+                tags={editChapterInfo.chapter.tags}
+                allTags={props.allTags}
+                onChange={(t) => props.onSetChapterTags(editChapterInfo.chapter.id, t)}
+              />
+              {props.onAddChapterMeta && props.onRemoveChapterMeta && (
+                <MetadataEditor
+                  applied={editChapterInfo.chapter.metadata}
+                  suggestions={props.metaSuggestions ?? []}
+                  onAdd={(facet, value) => props.onAddChapterMeta!(editChapterInfo.chapter.id, facet, value)}
+                  onRemove={(termId) => props.onRemoveChapterMeta!(editChapterInfo.chapter.id, termId)}
+                />
+              )}
+            </>
           )}
         </Dialog>
       )}
