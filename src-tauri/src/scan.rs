@@ -679,6 +679,50 @@ mod tests {
     }
 
     #[test]
+    fn changed_file_counts_as_update_and_preserves_chapter_identity() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let author = root.join("Author X");
+        touch(&author.join("Tale.mp3"));
+        touch(&author.join("Tale 2.mp3"));
+
+        let conn = open_in_memory().unwrap();
+        let first = scan_into(&conn, root).unwrap();
+        assert_eq!(first.chapters, 2);
+        assert_eq!(first.added, 2);
+
+        // Capture the row id of Tale.mp3 so we can prove the update path reuses it.
+        let path1 = author.join("Tale.mp3").to_string_lossy().to_string();
+        let id_before: i64 = conn
+            .query_row(
+                "SELECT id FROM chapters WHERE file_path=?1",
+                params![path1],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        // Change Tale.mp3's content so its size differs -> detected as UPDATED, not skipped.
+        // Tale 2.mp3 is unchanged -> must be skipped.
+        std::fs::write(author.join("Tale.mp3"), b"xxxxxxxxxx").unwrap();
+        let second = scan_into(&conn, root).unwrap();
+        assert_eq!(second.added, 0, "no new files");
+        assert_eq!(second.updated, 1, "Tale.mp3 changed size -> updated");
+        assert_eq!(second.skipped, 1, "Tale 2.mp3 unchanged -> skipped");
+
+        let id_after: i64 = conn
+            .query_row(
+                "SELECT id FROM chapters WHERE file_path=?1",
+                params![path1],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            id_before, id_after,
+            "the upsert update path must preserve chapter identity (same row id)"
+        );
+    }
+
+    #[test]
     fn cancel_between_authors_stops_early_and_keeps_done_work() {
         use std::sync::atomic::{AtomicBool, Ordering};
         let tmp = tempfile::tempdir().unwrap();
