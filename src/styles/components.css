@@ -21,9 +21,9 @@
 .work-card {
   position: relative; display: flex; flex-direction: column; gap: var(--space-3);
   min-width: 0; padding: var(--space-4); overflow: hidden;
-  transition: transform var(--motion-normal) var(--ease-standard), border-color var(--motion-fast), background-color var(--motion-fast);
+  transition: transform var(--motion-normal) var(--ease-standard), border-color var(--motion-fast), background-color var(--motion-fast), box-shadow var(--motion-fast);
 }
-.work-card:hover { transform: translateY(-3px); border-color: var(--color-border-strong); background-color: var(--color-surface-raised); }
+.work-card:hover { transform: translateY(-4px); border-color: var(--color-border-strong); background-color: var(--color-surface-raised); box-shadow: var(--shadow-card-hover); }
 .work-card--featured { display: grid; grid-template-columns: minmax(160px, 240px) 1fr; align-items: center; padding: var(--space-5); }
 .work-card__art { overflow: hidden; border-radius: var(--radius-md); aspect-ratio: 1; }
 .work-card__art .work-artwork { width: 100% !important; height: 100% !important; transition: transform var(--motion-slow) var(--ease-standard); }
