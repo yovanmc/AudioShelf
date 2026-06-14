@@ -100,7 +100,13 @@ export function PlayerBar(props: PlayerBarProps) {
       </div>
       <div className="player-bar__utility">
         {props.onCycleSpeed && (
-          <button type="button" className="speed-btn" title="Playback speed" aria-label={`Playback speed ${formatSpeed(props.playbackSpeed ?? 1)}`} onClick={props.onCycleSpeed}>
+          <button
+            type="button" className="speed-btn"
+            title="Playback speed"
+            aria-label={`Playback speed ${formatSpeed(props.playbackSpeed ?? 1)}`}
+            data-active={(props.playbackSpeed ?? 1) !== 1 ? "true" : undefined}
+            onClick={props.onCycleSpeed}
+          >
             {formatSpeed(props.playbackSpeed ?? 1)}
           </button>
         )}

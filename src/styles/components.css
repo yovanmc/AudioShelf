@@ -278,12 +278,14 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .seek-cue--resume { background: var(--color-success); }
 .seek-cue--boundary { background: var(--color-divider); }
 
-/* M24 — speed (PL-1) */
-.speed-btn { min-width: 3ch; padding: 2px 8px; border-radius: var(--radius-sm, 6px); background: var(--color-surface-raised, #1b1b1f); color: var(--color-text, #fff); border: 1px solid var(--color-divider, #333); cursor: pointer; font-variant-numeric: tabular-nums; }
+/* M24 — speed (PL-1); M29 PL7-4: unified active state */
+.speed-btn, .speed-seg__btn { font-variant-numeric: tabular-nums; }
+.speed-btn { min-width: 3ch; padding: 2px 8px; border-radius: var(--radius-sm, 6px); background: var(--color-surface-raised, #1b1b1f); color: var(--color-text, #fff); border: 1px solid var(--color-divider, #333); cursor: pointer; }
 .speed-btn:hover { border-color: var(--color-accent, #218bff); }
+.speed-btn[data-active="true"] { background: var(--color-chip-bg); color: var(--color-text); border-color: var(--color-accent); }
 .speed-seg { display: inline-flex; gap: 4px; }
-.speed-seg__btn { padding: 2px 8px; border-radius: var(--radius-sm, 6px); background: transparent; color: var(--color-text-muted, #aaa); border: 1px solid var(--color-divider, #333); cursor: pointer; font-variant-numeric: tabular-nums; }
-.speed-seg__btn--active { background: var(--color-accent, #218bff); color: #fff; border-color: var(--color-accent, #218bff); }
+.speed-seg__btn { padding: 2px 8px; border-radius: var(--radius-sm, 6px); background: transparent; color: var(--color-text-muted, #aaa); border: 1px solid var(--color-divider, #333); cursor: pointer; }
+.speed-seg__btn--active, .speed-seg__btn[aria-pressed="true"] { background: var(--color-chip-bg); color: var(--color-text); border-color: var(--color-accent); }
 
 /* M24 — Now Playing rows */
 .np-row { display: flex; align-items: center; gap: var(--space-2, 8px); margin: var(--space-2, 8px) 0; flex-wrap: wrap; }
