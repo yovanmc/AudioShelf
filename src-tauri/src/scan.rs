@@ -396,11 +396,11 @@ fn ingest_sidecar_transcript(
             };
             let content = parse_srt_vtt(&raw);
             let source_path = candidate.to_string_lossy().to_string();
-            conn.execute(
+            conn.prepare_cached(
                 "INSERT OR REPLACE INTO transcripts(chapter_id, source_path, content)
                  VALUES (?1, ?2, ?3)",
-                params![chapter_id, source_path, content],
-            )?;
+            )?
+            .execute(params![chapter_id, source_path, content])?;
             // Use the first sidecar found (prefer .srt over .vtt).
             break;
         }
