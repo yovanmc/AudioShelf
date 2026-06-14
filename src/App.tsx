@@ -2614,12 +2614,36 @@ export default function App() {
                   setPlayerExpanded(false);
                   await settle();
                 },
-                // Step 2: resume cue tick — expand player; the chapter has a
-                // playbackPositionSecs > 0 from a prior playback (if any). If the
-                // pre-configured fixture has no prior position, this shows the expanded
-                // panel (closest reachable state) — SOURCE-CONFIRM: resume tick
-                // visibility depends on chapter.playbackPositionSecs > 0 in the DB.
+                // Step 2: resume cue tick — seed a resume point on a chapter so the
+                // green resume cue renders on the seek track, then play it and expand
+                // the panel. savePlaybackPosition persists the position; re-fetching the
+                // author detail carries the updated playbackPositionSecs into the chapter
+                // object that playChapter puts on the now-playing context (the cue reads
+                // context.chapter.playbackPositionSecs).
                 showScrubberCue: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  const target = work?.chapters[0];
+                  if (!work || !target) return;
+                  await savePlaybackPosition(target.id, Math.max(1, Math.floor((target.durationSecs || 600) * 0.4)));
+                  // Re-fetch so the chapter carries the persisted playbackPositionSecs.
+                  const refreshed = await getAuthorDetail(list[0].id);
+                  const rwork = refreshed.works.find((w) => w.id === work.id) ?? refreshed.works[0];
+                  const chapter = rwork.chapters.find((c) => c.id === target.id) ?? rwork.chapters[0];
+                  playChapter({
+                    chapter,
+                    authorId: refreshed.id,
+                    authorName: refreshed.name,
+                    workId: rwork.id,
+                    workTitle: rwork.baseTitle,
+                    workTotalChapters: rwork.chapters.length,
+                    workPlayedChapters: rwork.chapters.filter((c) => c.played).length,
+                  });
                   setPlayerExpanded(true);
                   await settle();
                 },
@@ -2728,8 +2752,12 @@ export default function App() {
                   setPaletteResults(null);
                   setRoute({ kind: "library" });
                   await settle();
-                  const pr = await searchLibrary("").catch(() => ({ authors: [], works: [], chapters: [] } as SearchResults));
-                  setPaletteQuery("");
+                  // Non-empty query so the palette renders populated result rows with
+                  // the Authors/Works/Chapters section headers (an empty query yields no
+                  // rows and the palette shows only a dark backdrop). Mirrors m19's
+                  // proven showCommandPalette which uses a real "cool" query.
+                  const pr = await searchLibrary("cool").catch(() => ({ authors: [], works: [], chapters: [] } as SearchResults));
+                  setPaletteQuery("cool");
                   setPaletteResults(pr);
                   setPaletteOpen(true);
                   await settle();
