@@ -54,6 +54,9 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
   border-radius: 999px; padding: 2px 9px; background: var(--color-chip-bg); color: var(--color-text); font-size: .78rem;
 }
 .badge-ok { background: var(--color-chip-bg); color: var(--color-text); }
+.badge-noop { background: rgb(57 184 160 / 18%); color: var(--color-success); border-color: rgb(57 184 160 / 35%); }
+.badge-conflict { background: rgb(220 80 80 / 18%); color: var(--color-danger); border-color: rgb(220 80 80 / 35%); }
+.rename-row.rename-noop td { color: var(--color-text-muted); }
 .chip--meta { opacity: 1; border-style: dashed; border-color: var(--color-accent-muted); }
 .chip--toggle:hover, .chip--toggle:focus-visible { background: var(--color-chip-bg-hover); }
 .progress { overflow: hidden; height: 6px; border-radius: 99px; background: var(--color-surface-hover); }
