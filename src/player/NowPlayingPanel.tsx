@@ -63,6 +63,7 @@ export function NowPlayingPanel(props: PlayerControls & {
 }) {
   const { context } = props;
   const [scrubbing, setScrubbing] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const progress = context.workTotalChapters > 0
     ? Math.round((context.workPlayedChapters / context.workTotalChapters) * 100)
     : 0;
@@ -93,6 +94,18 @@ export function NowPlayingPanel(props: PlayerControls & {
             <div style={{ marginTop: "var(--space-2)" }}>
               <Button variant="secondary" onClick={props.onPopOut}>Pop out mini player</Button>
             </div>
+          )}
+          <div style={{ marginTop: "var(--space-2)" }}>
+            <IconButton icon="keyboard" label="Keyboard shortcuts" onClick={() => setShowShortcuts(true)} />
+          </div>
+          {showShortcuts && (
+            <Dialog label="Keyboard shortcuts" title="Keyboard shortcuts" context="Works when the player is focused and you're not typing in a field." onClose={() => setShowShortcuts(false)}>
+              <ul className="shortcut-list">
+                <li><kbd>Space</kbd><span>Play / pause</span></li>
+                <li><kbd>←</kbd> <kbd>→</kbd><span>Skip back / forward</span></li>
+                <li><kbd>Ctrl</kbd> <kbd>K</kbd><span>Command palette</span></li>
+              </ul>
+            </Dialog>
           )}
           <div className="player-bar__seek">
             <button type="button" className="time-label" title="Toggle time display" onClick={props.onCycleTimeLabel}>
