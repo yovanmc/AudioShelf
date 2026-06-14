@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 "#;
 
 /// The current schema version. Bump this constant whenever a new migration step is added.
-pub(crate) const LATEST: i64 = 9;
+pub(crate) const LATEST: i64 = 10;
 
 /// Open a file-backed connection and ensure the schema exists (idempotent).
 pub fn open(path: &str) -> rusqlite::Result<Connection> {
@@ -158,6 +158,61 @@ fn migration_v9_playback_position(conn: &Connection) -> rusqlite::Result<()> {
     )
 }
 
+/// Add label_types + work_metadata tables and copy existing *_tags rows into the
+/// unified metadata_terms / *_metadata tables (migration v10). Additive only —
+/// author_tags/work_tags/chapter_tags are left intact (dormant, recoverable).
+fn migration_v10_label_types(conn: &Connection) -> rusqlite::Result<()> {
+    // (a) DDL: user-definable label types + work-level metadata attach
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS label_types (
+           name    TEXT PRIMARY KEY,
+           display TEXT NOT NULL,
+           builtin INTEGER NOT NULL DEFAULT 0,
+           sort    INTEGER NOT NULL DEFAULT 0
+         );
+         INSERT OR IGNORE INTO label_types(name, display, builtin, sort) VALUES
+           ('narrator','Narrator',1,0),
+           ('language','Language',1,1),
+           ('tag','Tag',1,2),
+           ('mood','Mood',0,3);
+         CREATE TABLE IF NOT EXISTS work_metadata (
+           work_id INTEGER NOT NULL REFERENCES works(id),
+           term_id INTEGER NOT NULL REFERENCES metadata_terms(id),
+           PRIMARY KEY (work_id, term_id)
+         );
+         CREATE INDEX IF NOT EXISTS idx_work_metadata_term ON work_metadata(term_id);",
+    )?;
+    // (b) Data copy: seed metadata_terms with all legacy tag values (collision-safe via
+    //     UNIQUE(facet,value) + INSERT OR IGNORE).
+    conn.execute(
+        "INSERT OR IGNORE INTO metadata_terms(facet, value)
+           SELECT 'tag', tag FROM author_tags
+           UNION SELECT 'tag', tag FROM work_tags
+           UNION SELECT 'tag', tag FROM chapter_tags",
+        [],
+    )?;
+    // (c) Populate the unified attach tables from the legacy tag junction tables.
+    conn.execute(
+        "INSERT OR IGNORE INTO author_metadata(author_id, term_id)
+           SELECT at.author_id, mt.id FROM author_tags at
+           JOIN metadata_terms mt ON mt.facet='tag' AND mt.value=at.tag",
+        [],
+    )?;
+    conn.execute(
+        "INSERT OR IGNORE INTO work_metadata(work_id, term_id)
+           SELECT wt.work_id, mt.id FROM work_tags wt
+           JOIN metadata_terms mt ON mt.facet='tag' AND mt.value=wt.tag",
+        [],
+    )?;
+    conn.execute(
+        "INSERT OR IGNORE INTO chapter_metadata(chapter_id, term_id)
+           SELECT ct.chapter_id, mt.id FROM chapter_tags ct
+           JOIN metadata_terms mt ON mt.facet='tag' AND mt.value=ct.tag",
+        [],
+    )?;
+    Ok(())
+}
+
 /// Add the metadata_terms vocabulary + chapter_metadata / author_metadata attach
 /// tables (migration v8). Faceted user-defined metadata (narrator / language / mood)
 /// applied to files and creators. Additive only — no existing table touched.
@@ -243,6 +298,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         run_step(conn, 8, migration_v8_metadata)?;
     }
     if current < 9 { run_step(conn, 9, migration_v9_playback_position)?; }
+    if current < 10 { run_step(conn, 10, migration_v10_label_types)?; }
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES ('schema_version', ?1)",
         [LATEST.to_string()],
@@ -307,6 +363,7 @@ pub fn open_at_version(version: i64) -> rusqlite::Result<Connection> {
         run_step(&conn, 8, migration_v8_metadata)?;
     }
     if version >= 9 { run_step(&conn, 9, migration_v9_playback_position)?; }
+    if version >= 10 { run_step(&conn, 10, migration_v10_label_types)?; }
     Ok(conn)
 }
 
@@ -342,18 +399,18 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 9);
+        assert_eq!(ver, 10);
     }
 
     #[test]
     fn migrate_from_v1_is_noop_when_current() {
         let conn = open_in_memory().unwrap();
-        // Running migrate a second time must leave user_version at 9 without error.
+        // Running migrate a second time must leave user_version at 10 without error.
         super::migrate(&conn).unwrap();
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 9);
+        assert_eq!(ver, 10);
     }
 
     #[test]
@@ -372,7 +429,7 @@ mod tests {
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 9);
+        assert_eq!(post, 10);
     }
 
     #[test]
@@ -405,7 +462,7 @@ mod tests {
     }
 
     #[test]
-    fn open_in_memory_has_v2_tables_and_user_version_9() {
+    fn open_in_memory_has_v2_tables_and_user_version_10() {
         let conn = open_in_memory().unwrap();
         let v2_count: i64 = conn
             .query_row(
@@ -419,7 +476,7 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 9);
+        assert_eq!(ver, 10);
     }
 
     #[test]
@@ -430,12 +487,12 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(pre, 1);
-        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale, v8 metadata, v9 playback_position.
+        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale, v8 metadata, v9 playback_position, v10 label_types.
         super::migrate(&conn).unwrap();
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 9);
+        assert_eq!(post, 10);
         let v2_count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table'
@@ -465,10 +522,10 @@ mod tests {
             .unwrap();
         assert_eq!(has_col, 0, "metadata_source must not exist before v3 migration");
 
-        // Run the full migration to reach v9.
+        // Run the full migration to reach v10.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 9);
+        assert_eq!(post, 10);
 
         // Now both tables must have the column.
         let works_col: i64 = conn
@@ -523,10 +580,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist before v4 migration");
 
-        // Run the full migration to reach v9.
+        // Run the full migration to reach v10.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 9);
+        assert_eq!(post, 10);
 
         // Both tables must now exist.
         let series_count: i64 = conn.query_row(
@@ -586,7 +643,7 @@ mod tests {
         // Run the full migration.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 9);
+        assert_eq!(post, 10);
 
         // transcripts must now exist.
         let has_transcripts: i64 = conn
@@ -607,12 +664,12 @@ mod tests {
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN
                  ('authors','works','chapters','author_tags','play_events','grouping_overrides','settings',
                   'tag_aliases','tag_parents','series','work_series_membership','transcripts',
-                  'chapter_notes','chapter_bookmarks')",
+                  'chapter_notes','chapter_bookmarks','label_types','work_metadata')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(count, 14);
+        assert_eq!(count, 16);
     }
 
     // ---- v6 migration tests --------------------------------------------------------
@@ -647,11 +704,11 @@ mod tests {
 
     #[test]
     fn legacy_db_upgrades_through_v6() {
-        // Open at v1 (legacy), run full migrate(), expect LATEST (v9) and journal columns present.
+        // Open at v1 (legacy), run full migrate(), expect LATEST (v10) and journal columns present.
         let conn = open_at_version(1).unwrap();
         migrate(&conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 9);
+        assert_eq!(v, 10);
     }
 
     #[test]
@@ -677,10 +734,10 @@ mod tests {
     }
 
     #[test]
-    fn open_at_version_9_reaches_latest() {
-        let conn = open_at_version(9).unwrap();
+    fn open_at_version_10_reaches_latest() {
+        let conn = open_at_version(10).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 9);
+        assert_eq!(v, 10);
         assert_eq!(v, LATEST);
     }
 
@@ -694,5 +751,137 @@ mod tests {
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
         assert_eq!(v, 9);
         conn.prepare("SELECT playback_position_secs FROM chapters").unwrap();
+    }
+
+    // ---- v10 migration tests --------------------------------------------------------
+
+    #[test]
+    fn migration_v10_is_additive_and_migrates_tags() {
+        // Open at v9 (no label_types/work_metadata), seed legacy *_tags rows, then migrate.
+        let conn = open_at_version(9).unwrap();
+        let v9: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v9, 9);
+
+        // Seed prerequisite rows: one author, one work, one chapter.
+        conn.execute(
+            "INSERT INTO authors(folder_name, status) VALUES ('Author A', 'active')",
+            [],
+        ).unwrap();
+        let author_id: i64 = conn
+            .query_row("SELECT id FROM authors WHERE folder_name='Author A'", [], |r| r.get(0))
+            .unwrap();
+        conn.execute(
+            "INSERT INTO works(author_id, base_title, sort_key) VALUES (?1, 'Work W', 'work w')",
+            rusqlite::params![author_id],
+        ).unwrap();
+        let work_id: i64 = conn
+            .query_row("SELECT id FROM works WHERE base_title='Work W'", [], |r| r.get(0))
+            .unwrap();
+        conn.execute(
+            "INSERT INTO chapters(work_id, file_path, raw_filename, chapter_no, format, duration_secs)
+             VALUES (?1, '/fake/ch1.mp3', 'ch1.mp3', 1, 'mp3', 0)",
+            rusqlite::params![work_id],
+        ).unwrap();
+        let chapter_id: i64 = conn
+            .query_row("SELECT id FROM chapters WHERE file_path='/fake/ch1.mp3'", [], |r| r.get(0))
+            .unwrap();
+
+        // Seed legacy tag rows.
+        conn.execute(
+            "INSERT INTO author_tags(author_id, tag) VALUES (?1, 'fantasy')",
+            rusqlite::params![author_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO work_tags(work_id, tag) VALUES (?1, 'epic')",
+            rusqlite::params![work_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chapter_tags(chapter_id, tag) VALUES (?1, 'intro')",
+            rusqlite::params![chapter_id],
+        ).unwrap();
+
+        // Run migrate() to apply v10.
+        super::migrate(&conn).unwrap();
+        let v10: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v10, 10);
+
+        // label_types has the 4 seeded built-in rows.
+        let lt_count: i64 = conn
+            .query_row("SELECT count(*) FROM label_types", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(lt_count, 4, "label_types must have 4 seeded rows");
+        // Verify known names are present.
+        for name in ["narrator", "language", "tag", "mood"] {
+            let n: i64 = conn
+                .query_row(
+                    "SELECT count(*) FROM label_types WHERE name=?1",
+                    rusqlite::params![name],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(n, 1, "label_types must contain '{name}'");
+        }
+
+        // Tags were copied into metadata_terms with facet='tag'.
+        for tag in ["fantasy", "epic", "intro"] {
+            let n: i64 = conn
+                .query_row(
+                    "SELECT count(*) FROM metadata_terms WHERE facet='tag' AND value=?1",
+                    rusqlite::params![tag],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(n, 1, "metadata_terms must contain tag '{tag}'");
+        }
+
+        // author_metadata attach row exists for 'fantasy'.
+        let am: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM author_metadata am
+                 JOIN metadata_terms mt ON mt.id=am.term_id
+                 WHERE am.author_id=?1 AND mt.facet='tag' AND mt.value='fantasy'",
+                rusqlite::params![author_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(am, 1, "author_metadata must have 'fantasy' row");
+
+        // work_metadata attach row exists for 'epic'.
+        let wm: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM work_metadata wm
+                 JOIN metadata_terms mt ON mt.id=wm.term_id
+                 WHERE wm.work_id=?1 AND mt.facet='tag' AND mt.value='epic'",
+                rusqlite::params![work_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(wm, 1, "work_metadata must have 'epic' row");
+
+        // chapter_metadata attach row exists for 'intro'.
+        let cm: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM chapter_metadata cm
+                 JOIN metadata_terms mt ON mt.id=cm.term_id
+                 WHERE cm.chapter_id=?1 AND mt.facet='tag' AND mt.value='intro'",
+                rusqlite::params![chapter_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(cm, 1, "chapter_metadata must have 'intro' row");
+
+        // Legacy *_tags rows STILL EXIST (recoverable — never dropped).
+        let at: i64 = conn
+            .query_row("SELECT count(*) FROM author_tags WHERE author_id=?1", rusqlite::params![author_id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(at, 1, "author_tags must still exist after v10 migration");
+        let wt: i64 = conn
+            .query_row("SELECT count(*) FROM work_tags WHERE work_id=?1", rusqlite::params![work_id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(wt, 1, "work_tags must still exist after v10 migration");
+        let ct: i64 = conn
+            .query_row("SELECT count(*) FROM chapter_tags WHERE chapter_id=?1", rusqlite::params![chapter_id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(ct, 1, "chapter_tags must still exist after v10 migration");
     }
 }
