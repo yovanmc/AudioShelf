@@ -6,7 +6,7 @@ import { type A11yPrefs, a11yDataAttrs } from "../lib/a11y";
 
 export type ShellRoute = "home" | "library" | "discovery" | "rename" | "metadata" | "settings" | "journal" | "insights" | "collections";
 
-export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onSettings, onJournal, onInsights, onCollections, onOpenPalette, density, a11y, children, player }: {
+export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onSettings, onJournal, onInsights, onCollections, onOpenPalette, hasHistory, density, a11y, children, player }: {
   active: ShellRoute;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
@@ -18,13 +18,14 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
   onInsights: () => void;
   onCollections: () => void;
   onOpenPalette: () => void;
+  hasHistory: boolean;
   density: Density;
   a11y: A11yPrefs;
   children: ReactNode;
   player: ReactNode;
 }) {
   type NavItem = { key: ShellRoute; label: string; icon: IconName; action: () => void };
-  const groups: Array<{ label: string; items: NavItem[] }> = [
+  const allGroups: Array<{ label: string; items: NavItem[] }> = [
     { label: "Browse", items: [
       { key: "home", label: "Home", icon: "home", action: onHome },
       { key: "library", label: "Library", icon: "library", action: onLibrary },
@@ -36,6 +37,7 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
       { key: "insights", label: "Insights", icon: "insights", action: onInsights },
     ] },
   ];
+  const groups = hasHistory ? allGroups : allGroups.filter(g => g.label !== "My listening");
   type AnyNavItem = NavItem;
   const navButton = (item: AnyNavItem) => (
     <button

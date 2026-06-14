@@ -3243,6 +3243,7 @@ export default function App() {
           onInsights={openInsights}
           onCollections={openCollections}
           onOpenPalette={() => setPaletteOpen(true)}
+          hasHistory={home == null || !(!home.keepListening && home.stats.recent.length === 0 && home.stats.chaptersFinished === 0)}
           density={density}
           a11y={a11y}
           player={player}

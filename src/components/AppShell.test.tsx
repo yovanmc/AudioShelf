@@ -17,6 +17,7 @@ function props(overrides = {}) {
     onInsights: vi.fn(),
     onCollections: vi.fn(),
     onOpenPalette: vi.fn(),
+    hasHistory: true,
     density: "comfortable" as const,
     a11y: DEFAULT_A11Y,
     children: <main>Page</main>,
@@ -26,6 +27,15 @@ function props(overrides = {}) {
 }
 
 describe("AppShell", () => {
+  it("hides the My listening group until there is listening history", () => {
+    const { rerender } = render(<AppShell {...props({ hasHistory: false })} />);
+    expect(screen.queryByText("My listening")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Journal" })).not.toBeInTheDocument();
+    rerender(<AppShell {...props({ hasHistory: true })} />);
+    expect(screen.getByText("My listening")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Journal" })).toBeInTheDocument();
+  });
+
   it("shows destinations, active state, and Settings in the footer", () => {
     render(<AppShell {...props()} />);
     expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute("aria-current", "page");
