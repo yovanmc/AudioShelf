@@ -1,6 +1,6 @@
 export type IconName =
   | "home" | "library" | "discover" | "rename" | "metadata" | "settings"
-  | "menu" | "chevronLeft" | "chevronRight" | "more"
+  | "menu" | "chevronLeft" | "chevronRight" | "chevron" | "more"
   | "play" | "pause" | "back15" | "back30" | "forward15" | "forward30"
   | "volume" | "mute" | "sleep" | "search" | "check" | "tag"
   | "expand" | "collapse" | "close" | "refresh" | "folder"
@@ -20,6 +20,7 @@ const glyphs: Record<IconName, GlyphDef> = {
   menu:        { d: "M4 7h16M4 12h16M4 17h16" },
   chevronLeft: { d: "m15 18-6-6 6-6" },
   chevronRight:{ d: "m9 18 6-6-6-6" },
+  chevron:     { d: "M6 9l6 6 6-6" },
   more:        { d: "M5 12h.01M12 12h.01M19 12h.01" },
   play:        { d: "m8 5 11 7-11 7z" },
   pause:       { d: "M7 5h3v14H7zm7 0h3v14h-3z" },
