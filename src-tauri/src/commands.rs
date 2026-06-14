@@ -341,9 +341,13 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
 
     for work in &mut works {
         let mut cstmt = conn.prepare(
-            "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played,
-                    user_summary, takeaway, is_favorite, playback_position_secs
-             FROM chapters WHERE work_id=?1 AND status='active'",
+            "SELECT c.id, c.raw_filename, c.chapter_no, c.format, c.duration_secs, c.file_path, c.played,
+                    c.user_summary, c.takeaway, c.is_favorite, c.playback_position_secs,
+                    (c.user_summary <> '' OR c.takeaway <> '' OR c.is_favorite = 1
+                     OR EXISTS (SELECT 1 FROM chapter_notes     n WHERE n.chapter_id = c.id)
+                     OR EXISTS (SELECT 1 FROM chapter_bookmarks b WHERE b.chapter_id = c.id)
+                    ) AS has_journal
+             FROM chapters c WHERE c.work_id=?1 AND c.status='active'",
         )?;
         let mut chapters: Vec<ChapterRow> = cstmt
             .query_map(params![work.id], |r| {
@@ -367,6 +371,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                     metadata: Vec::new(),
                     labels: Vec::new(),
                     playback_position_secs: r.get::<_, i64>(10).unwrap_or(0),
+                    has_journal: r.get::<_, i64>(11).unwrap_or(0) != 0,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -824,8 +829,12 @@ pub(crate) fn more_from_author(conn: &rusqlite::Connection, author_id: i64) -> r
 fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<ChapterRow> {
     let mut row = conn.query_row(
         "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played,
-                user_summary, takeaway, is_favorite, playback_position_secs
-         FROM chapters WHERE id=?1",
+                user_summary, takeaway, is_favorite, playback_position_secs,
+                (c.user_summary <> '' OR c.takeaway <> '' OR c.is_favorite = 1
+                 OR EXISTS (SELECT 1 FROM chapter_notes     n WHERE n.chapter_id = c.id)
+                 OR EXISTS (SELECT 1 FROM chapter_bookmarks b WHERE b.chapter_id = c.id)
+                ) AS has_journal
+         FROM chapters c WHERE c.id=?1",
         params![chapter_id],
         |r| {
             let raw: String = r.get(1)?;
@@ -848,6 +857,7 @@ fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::R
                 metadata: Vec::new(),
                 labels: Vec::new(),
                 playback_position_secs: r.get::<_, i64>(10).unwrap_or(0),
+                has_journal: r.get::<_, i64>(11).unwrap_or(0) != 0,
             })
         },
     )?;
@@ -5140,6 +5150,39 @@ mod tests {
         let results = search(&conn, "Austen", SEARCH_CAP).unwrap();
         let chapter_ids: Vec<i64> = results.chapters.iter().map(|c| c.chapter_id).collect();
         assert!(chapter_ids.contains(&1), "chapter with label value 'Jane Austen' should appear in search for 'Austen'");
+    }
+
+    // ---- IA7-7: has_journal computed field tests ----------------------------------------
+
+    #[test]
+    fn has_journal_false_until_note_inserted() {
+        let conn = open_in_memory().unwrap();
+        conn.execute("INSERT INTO authors(id,folder_name,display_name,status) VALUES(1,'Auth','Auth','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES(1,1,'W','w','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status) VALUES(1,1,'/a.mp3','a.mp3',1,'mp3',100,0,'active')", []).unwrap();
+
+        // Initially no journal data → has_journal should be false.
+        let row = load_chapter_row(&conn, 1).unwrap();
+        assert!(!row.has_journal, "has_journal should be false when no notes/bookmarks/summary exist");
+
+        // Insert a chapter_notes row → has_journal should flip to true.
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (1, 42, 'test note', 1000)",
+            [],
+        ).unwrap();
+        let row2 = load_chapter_row(&conn, 1).unwrap();
+        assert!(row2.has_journal, "has_journal should be true after inserting a chapter_notes row");
+    }
+
+    #[test]
+    fn has_journal_true_when_user_summary_nonempty() {
+        let conn = open_in_memory().unwrap();
+        conn.execute("INSERT INTO authors(id,folder_name,display_name,status) VALUES(1,'Auth','Auth','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES(1,1,'W','w','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status,user_summary) VALUES(1,1,'/a.mp3','a.mp3',1,'mp3',100,0,'active','My thoughts')", []).unwrap();
+
+        let row = load_chapter_row(&conn, 1).unwrap();
+        assert!(row.has_journal, "has_journal should be true when user_summary is non-empty");
     }
 }
 

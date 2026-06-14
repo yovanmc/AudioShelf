@@ -421,6 +421,15 @@ export function AuthorDetailView(props: {
                 </label>
                 <span style={{ minWidth: 0, flex: 1 }}><span className="chapter-title" dir="auto">{c.title}</span><span className="chapter-duration muted" style={{ display: "block" }}>Chapter {c.chapterNo} · {formatDuration(c.durationSecs)}</span></span>
                 <TagGroup tags={c.tags} />
+                {c.hasJournal && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="View your notes & bookmarks"
+                    title="View your notes & bookmarks"
+                    onClick={() => { setEditState({ chapterId: c.id, mode: "journal" }); props.onOpenJournal?.(c.id); }}
+                  ><Icon name="journal" /></button>
+                )}
                 <Menu
                   label={`More options for '${c.title}'`}
                   items={[

@@ -21,8 +21,8 @@ const detail: AuthorDetail = {
       chapterSort: "",
       metadata: [],
       chapters: [
-        { id: 100, title: "Cool Story", chapterNo: 1, format: "mp3", durationSecs: 65, filePath: "x/Cool Story.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
-        { id: 101, title: "Cool Story 2 the sequel", chapterNo: 2, format: "mp3", durationSecs: 130, filePath: "x/Cool Story 2 the sequel.mp3", played: true, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+        { id: 100, title: "Cool Story", chapterNo: 1, format: "mp3", durationSecs: 65, filePath: "x/Cool Story.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
+        { id: 101, title: "Cool Story 2 the sequel", chapterNo: 2, format: "mp3", durationSecs: 130, filePath: "x/Cool Story 2 the sequel.mp3", played: true, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
       ],
     },
   ],
@@ -279,7 +279,7 @@ describe("AuthorDetailView", () => {
           chapterSort: "",
           metadata: [],
           chapters: [
-            { id: 100, title: "Cool Chapter A", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/a.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+            { id: 100, title: "Cool Chapter A", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/a.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
           ],
         },
         {
@@ -292,7 +292,7 @@ describe("AuthorDetailView", () => {
           chapterSort: "",
           metadata: [],
           chapters: [
-            { id: 200, title: "Other Chapter B", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/b.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+            { id: 200, title: "Other Chapter B", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/b.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
           ],
         },
       ],
@@ -344,7 +344,7 @@ describe("AuthorDetailView", () => {
           chapterSort: "",
           metadata: [],
           chapters: [
-            { id: 100, title: "Alpha Ch1", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/a.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+            { id: 100, title: "Alpha Ch1", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/a.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
           ],
         },
         {
@@ -357,7 +357,7 @@ describe("AuthorDetailView", () => {
           chapterSort: "",
           metadata: [],
           chapters: [
-            { id: 200, title: "Bravo Ch1", chapterNo: 1, format: "mp3", durationSecs: 300, filePath: "x/b.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+            { id: 200, title: "Bravo Ch1", chapterNo: 1, format: "mp3", durationSecs: 300, filePath: "x/b.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
           ],
         },
       ],
@@ -456,8 +456,8 @@ describe("AuthorDetailView", () => {
           metadata: [],
           chapters: [
             // 2h 5m = 7500s
-            { id: 300, title: "Part 1", chapterNo: 1, format: "mp3", durationSecs: 3600, filePath: "x/1.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
-            { id: 301, title: "Part 2", chapterNo: 2, format: "mp3", durationSecs: 3900, filePath: "x/2.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+            { id: 300, title: "Part 1", chapterNo: 1, format: "mp3", durationSecs: 3600, filePath: "x/1.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
+            { id: 301, title: "Part 2", chapterNo: 2, format: "mp3", durationSecs: 3900, filePath: "x/2.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
           ],
         },
       ],
@@ -487,8 +487,8 @@ describe("AuthorDetailView", () => {
           chapterSort: "",
           metadata: [],
           chapters: [
-            { id: 300, title: "Part 1", chapterNo: 1, format: "mp3", durationSecs: 3600, filePath: "x/1.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
-            { id: 301, title: "Part 2", chapterNo: 2, format: "mp3", durationSecs: 3900, filePath: "x/2.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+            { id: 300, title: "Part 1", chapterNo: 1, format: "mp3", durationSecs: 3600, filePath: "x/1.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
+            { id: 301, title: "Part 2", chapterNo: 2, format: "mp3", durationSecs: 3900, filePath: "x/2.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
           ],
         },
       ],
@@ -782,5 +782,69 @@ describe("AuthorDetailView", () => {
     );
     await userEvent.click(screen.getByLabelText("Add suggested tag thriller"));
     expect(onSetWorkTags).toHaveBeenCalledWith(detail.works[0].id, ["thriller"]);
+  });
+
+  // ---- IA7-7: has_journal affordance tests -------------------------------------------
+
+  it("chapter with hasJournal true renders the journal affordance button", () => {
+    const detailWithJournal: AuthorDetail = {
+      ...detail,
+      works: [{
+        ...detail.works[0],
+        chapters: [
+          { ...detail.works[0].chapters[0], hasJournal: true },
+          { ...detail.works[0].chapters[1], hasJournal: false },
+        ],
+      }],
+    };
+    render(
+      <AuthorDetailView
+        detail={detailWithJournal}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+      />,
+    );
+    // Chapter with hasJournal=true should show the affordance button.
+    expect(screen.getByRole("button", { name: "View your notes & bookmarks" })).toBeInTheDocument();
+  });
+
+  it("chapter with hasJournal false does not render the journal affordance button", () => {
+    const detailNoJournal: AuthorDetail = {
+      ...detail,
+      works: [{
+        ...detail.works[0],
+        chapters: [
+          { ...detail.works[0].chapters[0], hasJournal: false },
+          { ...detail.works[0].chapters[1], hasJournal: false },
+        ],
+      }],
+    };
+    render(
+      <AuthorDetailView
+        detail={detailNoJournal}
+        onTogglePlayed={noop}
+        onPlayChapter={noop}
+        onSetTags={noop}
+        onSetGrouping={noop}
+        onClearGrouping={noop}
+        onSetWorkTags={noop}
+        onSetChapterTags={noop}
+        allTags={[]}
+        onBack={noop}
+        workSort="az"
+        onWorkSortChange={vi.fn()}
+      />,
+    );
+    // No chapter has journal data → the affordance button must not appear.
+    expect(screen.queryByRole("button", { name: "View your notes & bookmarks" })).not.toBeInTheDocument();
   });
 });

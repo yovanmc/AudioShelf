@@ -11,6 +11,7 @@ export interface ChapterRow {
   durationSecs: number; filePath: string; played: boolean; tags: string[];
   userSummary: string; takeaway: string; isFavorite: boolean; metadata: MetaTag[];
   playbackPositionSecs: number; labels: MetaTag[];
+  hasJournal: boolean;
 }
 export interface WorkRow {
   id: number; baseTitle: string; tags: string[]; chapters: ChapterRow[];

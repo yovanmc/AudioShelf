@@ -39,6 +39,7 @@ pub struct ChapterRow {
     pub metadata: Vec<MetaTag>, // derived: labels where facet!="tag"
     pub labels: Vec<MetaTag>,   // all attached terms (every facet)
     pub playback_position_secs: i64,
+    pub has_journal: bool,      // computed: any note/bookmark/summary/takeaway/favorite for this chapter
 }
 
 #[derive(Serialize, Debug, PartialEq)]
