@@ -118,6 +118,18 @@ pub fn mark_chapter_finished(state: tauri::State<DbState>, chapter_id: i64, now_
 }
 
 #[tauri::command]
+pub fn save_playback_position(state: tauri::State<DbState>, chapter_id: i64, secs: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let secs = secs.max(0);
+    conn.execute(
+        "UPDATE chapters SET playback_position_secs=?2 WHERE id=?1",
+        params![chapter_id, secs],
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn get_all_tags(state: tauri::State<DbState>) -> Result<Vec<String>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
@@ -216,7 +228,10 @@ pub fn set_work_rating(state: tauri::State<DbState>, work_id: i64, rating: Strin
 
 /// Atomically mark a chapter played and record a play event at `now_ms`.
 pub(crate) fn mark_finished(conn: &rusqlite::Connection, chapter_id: i64, now_ms: i64) -> rusqlite::Result<()> {
-    conn.execute("UPDATE chapters SET played=1 WHERE id=?1", params![chapter_id])?;
+    conn.execute(
+        "UPDATE chapters SET played=1, playback_position_secs=0 WHERE id=?1",
+        params![chapter_id],
+    )?;
     conn.execute(
         "INSERT INTO play_events(chapter_id, played_at) VALUES (?1, ?2)",
         params![chapter_id, now_ms],
@@ -315,7 +330,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
     for work in &mut works {
         let mut cstmt = conn.prepare(
             "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played,
-                    user_summary, takeaway, is_favorite
+                    user_summary, takeaway, is_favorite, playback_position_secs
              FROM chapters WHERE work_id=?1 AND status='active'",
         )?;
         let mut chapters: Vec<ChapterRow> = cstmt
@@ -338,6 +353,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                     takeaway: r.get::<_, String>(8).unwrap_or_default(),
                     is_favorite: r.get::<_, i64>(9).unwrap_or(0) != 0,
                     metadata: Vec::new(),
+                    playback_position_secs: r.get::<_, i64>(10).unwrap_or(0),
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -775,7 +791,7 @@ pub(crate) fn more_from_author(conn: &rusqlite::Connection, author_id: i64) -> r
 fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<ChapterRow> {
     let mut row = conn.query_row(
         "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played,
-                user_summary, takeaway, is_favorite
+                user_summary, takeaway, is_favorite, playback_position_secs
          FROM chapters WHERE id=?1",
         params![chapter_id],
         |r| {
@@ -797,6 +813,7 @@ fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::R
                 takeaway: r.get::<_, String>(8).unwrap_or_default(),
                 is_favorite: r.get::<_, i64>(9).unwrap_or(0) != 0,
                 metadata: Vec::new(),
+                playback_position_secs: r.get::<_, i64>(10).unwrap_or(0),
             })
         },
     )?;
@@ -3093,7 +3110,7 @@ mod tests {
         // The pre-seeded schema_version key reflects the latest migration version.
         assert_eq!(
             get_setting_value(&conn, "schema_version").unwrap(),
-            Some("8".to_string())
+            Some("9".to_string())
         );
     }
 
@@ -3461,7 +3478,7 @@ mod tests {
         ).unwrap();
         assert_eq!(full_count, 2, "full open must have both taxonomy tables");
         let ver: i64 = full_conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(ver, 8);
+        assert_eq!(ver, 9);
     }
 
     #[test]
@@ -3628,7 +3645,7 @@ mod tests {
         // Upgrade to latest via open_in_memory pattern (open_at_version then migrate).
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 8);
+        assert_eq!(full_ver, 9);
 
         let col3: i64 = full.query_row(
             "SELECT count(*) FROM pragma_table_info('works') WHERE name='metadata_source'",
@@ -3757,10 +3774,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist at v3");
 
-        // After a full open (which runs migrate), both tables must exist and version is 8.
+        // After a full open (which runs migrate), both tables must exist and version is 9.
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 8);
+        assert_eq!(full_ver, 9);
 
         let series_count: i64 = full.query_row(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
@@ -4430,7 +4447,7 @@ mod tests {
 
     #[test]
     fn chapter_sort_override_reorders_in_detail() {
-        let conn = crate::db::open_at_version(8).unwrap();
+        let conn = crate::db::open_at_version(9).unwrap();
         conn.execute_batch(
             "INSERT INTO authors(id, folder_name, status) VALUES (1,'a','active');
              INSERT INTO works(id, author_id, base_title, sort_key, status, chapter_sort) VALUES (1,1,'W','w','active','number_desc');
@@ -4528,7 +4545,7 @@ mod tests {
 
     #[test]
     fn author_detail_surfaces_chapter_and_work_metadata() {
-        let conn = crate::db::open_at_version(8).unwrap();
+        let conn = crate::db::open_at_version(9).unwrap();
         conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
         conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
         conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (1,1,'/x.wav','x.wav',1,'wav',5,0,'active')", []).unwrap();

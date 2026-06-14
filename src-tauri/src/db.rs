@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 "#;
 
 /// The current schema version. Bump this constant whenever a new migration step is added.
-pub(crate) const LATEST: i64 = 8;
+pub(crate) const LATEST: i64 = 9;
 
 /// Open a file-backed connection and ensure the schema exists (idempotent).
 pub fn open(path: &str) -> rusqlite::Result<Connection> {
@@ -150,6 +150,14 @@ fn migration_v7_power_scale(conn: &Connection) -> rusqlite::Result<()> {
     )
 }
 
+/// Add playback_position_secs to chapters (migration v9). Stores resume position in
+/// seconds; cleared to 0 when a chapter is marked finished. Additive only.
+fn migration_v9_playback_position(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "ALTER TABLE chapters ADD COLUMN playback_position_secs INTEGER NOT NULL DEFAULT 0;",
+    )
+}
+
 /// Add the metadata_terms vocabulary + chapter_metadata / author_metadata attach
 /// tables (migration v8). Faceted user-defined metadata (narrator / language / mood)
 /// applied to files and creators. Additive only — no existing table touched.
@@ -234,6 +242,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     if current < 8 {
         run_step(conn, 8, migration_v8_metadata)?;
     }
+    if current < 9 { run_step(conn, 9, migration_v9_playback_position)?; }
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES ('schema_version', ?1)",
         [LATEST.to_string()],
@@ -297,6 +306,7 @@ pub fn open_at_version(version: i64) -> rusqlite::Result<Connection> {
     if version >= 8 {
         run_step(&conn, 8, migration_v8_metadata)?;
     }
+    if version >= 9 { run_step(&conn, 9, migration_v9_playback_position)?; }
     Ok(conn)
 }
 
@@ -332,18 +342,18 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 8);
+        assert_eq!(ver, 9);
     }
 
     #[test]
     fn migrate_from_v1_is_noop_when_current() {
         let conn = open_in_memory().unwrap();
-        // Running migrate a second time must leave user_version at 8 without error.
+        // Running migrate a second time must leave user_version at 9 without error.
         super::migrate(&conn).unwrap();
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 8);
+        assert_eq!(ver, 9);
     }
 
     #[test]
@@ -362,7 +372,7 @@ mod tests {
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 8);
+        assert_eq!(post, 9);
     }
 
     #[test]
@@ -395,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    fn open_in_memory_has_v2_tables_and_user_version_8() {
+    fn open_in_memory_has_v2_tables_and_user_version_9() {
         let conn = open_in_memory().unwrap();
         let v2_count: i64 = conn
             .query_row(
@@ -409,23 +419,23 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 8);
+        assert_eq!(ver, 9);
     }
 
     #[test]
     fn upgrade_from_v1_to_v2() {
-        // Open at v1 (no tag_aliases/tag_parents), then run migrate to reach v8.
+        // Open at v1 (no tag_aliases/tag_parents), then run migrate to reach v9.
         let conn = open_at_version(1).unwrap();
         let pre: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(pre, 1);
-        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale, v8 metadata.
+        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale, v8 metadata, v9 playback_position.
         super::migrate(&conn).unwrap();
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 8);
+        assert_eq!(post, 9);
         let v2_count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table'
@@ -455,10 +465,10 @@ mod tests {
             .unwrap();
         assert_eq!(has_col, 0, "metadata_source must not exist before v3 migration");
 
-        // Run the full migration to reach v8.
+        // Run the full migration to reach v9.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 8);
+        assert_eq!(post, 9);
 
         // Now both tables must have the column.
         let works_col: i64 = conn
@@ -513,10 +523,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist before v4 migration");
 
-        // Run the full migration to reach v8.
+        // Run the full migration to reach v9.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 8);
+        assert_eq!(post, 9);
 
         // Both tables must now exist.
         let series_count: i64 = conn.query_row(
@@ -576,7 +586,7 @@ mod tests {
         // Run the full migration.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 8);
+        assert_eq!(post, 9);
 
         // transcripts must now exist.
         let has_transcripts: i64 = conn
@@ -637,11 +647,11 @@ mod tests {
 
     #[test]
     fn legacy_db_upgrades_through_v6() {
-        // Open at v1 (legacy), run full migrate(), expect LATEST (v8) and journal columns present.
+        // Open at v1 (legacy), run full migrate(), expect LATEST (v9) and journal columns present.
         let conn = open_at_version(1).unwrap();
         migrate(&conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 8);
+        assert_eq!(v, 9);
     }
 
     #[test]
@@ -667,10 +677,22 @@ mod tests {
     }
 
     #[test]
-    fn open_at_version_8_reaches_latest() {
-        let conn = open_at_version(8).unwrap();
+    fn open_at_version_9_reaches_latest() {
+        let conn = open_at_version(9).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 8);
+        assert_eq!(v, 9);
         assert_eq!(v, LATEST);
+    }
+
+    #[test]
+    fn migration_v9_adds_playback_position_and_is_additive() {
+        let conn = open_at_version(8).unwrap();
+        assert!(conn
+            .prepare("SELECT playback_position_secs FROM chapters")
+            .is_err());
+        run_step(&conn, 9, migration_v9_playback_position).unwrap();
+        let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, 9);
+        conn.prepare("SELECT playback_position_secs FROM chapters").unwrap();
     }
 }

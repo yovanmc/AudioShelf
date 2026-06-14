@@ -37,6 +37,7 @@ pub struct ChapterRow {
     pub takeaway: String,
     pub is_favorite: bool,
     pub metadata: Vec<MetaTag>,
+    pub playback_position_secs: i64,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
