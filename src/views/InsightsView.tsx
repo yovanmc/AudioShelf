@@ -1,4 +1,5 @@
 import { PageHeader, SectionHeading, StatCard, Card, EmptyState, Button, Notice } from "../components/ui";
+import { Icon } from "../components/Icon";
 import { formatLong } from "../lib/time";
 import { heatColumns, heatLevel, maxCount } from "../lib/insights";
 import { buildRecapSvg } from "../lib/recap";
@@ -75,19 +76,24 @@ export function InsightsView({
   now,
   onExportRecap,
   recapStatus,
+  onBack,
 }: {
   data: InsightsData | null;
   now: number;
   onExportRecap: () => void;
   recapStatus: string | null;
+  onBack?: () => void;   // IA7-3
 }) {
   void now;
   if (!data || data.totalChapters === 0) {
     return (
       <div className="view">
+        {onBack && (
+          <Button variant="ghost" onClick={onBack}><Icon name="chevronLeft" /> Home</Button>
+        )}
         <PageHeader eyebrow="Your listening, visualized" title="Insights" />
         <EmptyState title="No listening history yet">
-          Finish a few chapters and your heatmap, trends, and a shareable “Year in Listening” recap will appear here.
+          Finish a few chapters and your heatmap, trends, and a shareable "Year in Listening" recap will appear here.
         </EmptyState>
       </div>
     );
@@ -99,6 +105,9 @@ export function InsightsView({
 
   return (
     <div className="view insights-grid">
+      {onBack && (
+        <Button variant="ghost" onClick={onBack}><Icon name="chevronLeft" /> Home</Button>
+      )}
       <PageHeader eyebrow="Your listening, visualized" title="Insights" />
 
       <div className="stat-row" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "var(--space-4)" }}>

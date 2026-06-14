@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { JournalResults, JournalEntry } from "../lib/api";
-import { EmptyState, Notice, PageHeader } from "../components/ui";
+import { Button, EmptyState, Notice, PageHeader } from "../components/ui";
+import { Icon } from "../components/Icon";
 
 type KindFilter = "all" | "note" | "bookmark" | "summary" | "takeaway" | "favorite" | "rating";
 
@@ -37,6 +38,7 @@ export function JournalView(props: {
   onSearch: (query: string) => void;
   onExport: (format: "markdown" | "json") => void;
   onPlayEntry?: (entry: JournalEntry) => void;   // CUR-2
+  onBack?: () => void;                           // IA7-3
 }) {
   const { journal, exportStatus, onSearch, onExport } = props;
 
@@ -86,6 +88,9 @@ export function JournalView(props: {
 
   return (
     <main className="view journal">
+      {props.onBack && (
+        <Button variant="ghost" onClick={props.onBack}><Icon name="chevronLeft" /> Home</Button>
+      )}
       <PageHeader
         eyebrow="Your listening record"
         title="Journal"

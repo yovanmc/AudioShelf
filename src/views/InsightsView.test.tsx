@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { InsightsView } from "./InsightsView";
 import type { InsightsData } from "../lib/api";
 
@@ -37,5 +38,31 @@ describe("InsightsView", () => {
     expect(screen.getAllByText("Jane Doe").length).toBeGreaterThan(0);
     expect(screen.getAllByText("mystery").length).toBeGreaterThan(0);
     expect(screen.getByText("Export PNG")).toBeTruthy();
+  });
+
+  it("renders a back button when onBack is provided (empty state)", () => {
+    const onBack = vi.fn();
+    render(<InsightsView data={empty} now={0} onExportRecap={() => {}} recapStatus={null} onBack={onBack} />);
+    expect(screen.getByRole("button", { name: /Home/i })).toBeInTheDocument();
+  });
+
+  it("calls onBack when the back button is clicked (empty state)", async () => {
+    const onBack = vi.fn();
+    render(<InsightsView data={empty} now={0} onExportRecap={() => {}} recapStatus={null} onBack={onBack} />);
+    await userEvent.click(screen.getByRole("button", { name: /Home/i }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a back button when onBack is provided (populated)", () => {
+    const onBack = vi.fn();
+    render(<InsightsView data={filled} now={0} onExportRecap={() => {}} recapStatus={null} onBack={onBack} />);
+    expect(screen.getByRole("button", { name: /Home/i })).toBeInTheDocument();
+  });
+
+  it("calls onBack when the back button is clicked (populated)", async () => {
+    const onBack = vi.fn();
+    render(<InsightsView data={filled} now={0} onExportRecap={() => {}} recapStatus={null} onBack={onBack} />);
+    await userEvent.click(screen.getByRole("button", { name: /Home/i }));
+    expect(onBack).toHaveBeenCalledTimes(1);
   });
 });

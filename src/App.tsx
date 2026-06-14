@@ -2760,6 +2760,7 @@ export default function App() {
               void playJournalEntry(entry.chapterId, entry.positionSecs);
             }
           }}
+          onBack={() => setRoute({ kind: "home" })}
         />
       );
     }
@@ -2770,6 +2771,7 @@ export default function App() {
           now={insightsNow}
           onExportRecap={handleExportRecap}
           recapStatus={recapStatus}
+          onBack={() => setRoute({ kind: "home" })}
         />
       );
     }

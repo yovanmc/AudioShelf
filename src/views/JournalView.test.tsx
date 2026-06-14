@@ -208,4 +208,23 @@ describe("JournalView", () => {
     // Confirm onPlayEntry is NOT called for entries without positionSecs
     expect(onPlayEntry).not.toHaveBeenCalled();
   });
+
+  it("renders a back button when onBack is provided", () => {
+    const onBack = vi.fn();
+    render(<JournalView {...baseProps({ onBack })} />);
+    expect(screen.getByRole("button", { name: /Home/i })).toBeInTheDocument();
+  });
+
+  it("calls onBack when the back button is clicked", async () => {
+    const onBack = vi.fn();
+    render(<JournalView {...baseProps({ onBack })} />);
+    await userEvent.click(screen.getByRole("button", { name: /Home/i }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render a back button when onBack is not provided", () => {
+    render(<JournalView {...baseProps()} />);
+    // No "Home" ghost button present
+    expect(screen.queryByRole("button", { name: /chevronLeft|Home/i })).not.toBeInTheDocument();
+  });
 });
