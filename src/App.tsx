@@ -2277,9 +2277,19 @@ export default function App() {
                   await openAuthor(jane.id);
                   await settle();
                   await settle();
-                  // The journal affordance button lives inside a chapter <li> that may be
-                  // below the author header in a tall view. Scroll it into view so the
-                  // icon is in frame before the screenshot is captured.
+                  // Works default to expanded, but a prior walkthrough step may have
+                  // collapsed them. If the journal affordance button is not in the DOM
+                  // the seeded work is collapsed — click its expand button first.
+                  if (!document.querySelector('button[aria-label="View your notes & bookmarks"]')) {
+                    const expandBtn = document.querySelector<HTMLButtonElement>(
+                      'button[aria-label^="Expand \'"]'
+                    );
+                    expandBtn?.click();
+                    await settle();
+                    await settle();
+                  }
+                  // The journal affordance button lives inside a chapter <li>. Scroll it
+                  // into view (centred) so the icon is visible in the captured frame.
                   const journalBtn = document.querySelector<HTMLElement>(
                     'button[aria-label="View your notes & bookmarks"]'
                   );
