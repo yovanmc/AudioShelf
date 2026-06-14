@@ -29,11 +29,11 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
       { key: "home", label: "Home", icon: "home", action: onHome },
       { key: "library", label: "Library", icon: "library", action: onLibrary },
       { key: "discovery", label: "Discover", icon: "discover", action: onDiscovery },
+      { key: "collections", label: "Collections", icon: "collections", action: onCollections },
     ] },
     { label: "My listening", items: [
       { key: "journal", label: "Journal", icon: "journal", action: onJournal },
       { key: "insights", label: "Insights", icon: "insights", action: onInsights },
-      { key: "collections", label: "Collections", icon: "collections", action: onCollections },
     ] },
   ];
   type AnyNavItem = NavItem;
