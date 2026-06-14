@@ -12,6 +12,7 @@ import {
   listTagsWithCounts, renameTag, mergeTags, setTagAlias, clearTagAlias,
   detectSeries, applySeries, getAuthorSeries,
   searchTranscripts, getChapterTranscript,
+  savePlaybackPosition,
   setChapterSummary, setChapterTakeaway, setChapterFavorite,
   setWorkReEntryNote, setWorkRating,
   getChapterJournal, addChapterNote, deleteChapterNote, addBookmark, deleteBookmark,
@@ -50,7 +51,7 @@ import { MiniPlayer } from "./player/MiniPlayer";
 import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
-import { clampSeek, type TimeLabelMode } from "./player/playback";
+import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
 import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps } from "./harness/walkthroughs";
 import {
@@ -245,6 +246,16 @@ export default function App() {
   const [timeLabelMode, setTimeLabelMode] = useState<TimeLabelMode>("elapsed");
   const cycleTimeLabel = () =>
     setTimeLabelMode((m) => (m === "elapsed" ? "remaining" : m === "remaining" ? "percent" : "elapsed"));
+  const [playbackSpeed, setPlaybackSpeedState] = useState(1);
+  const playbackSpeedRef = useRef(1);
+  playbackSpeedRef.current = playbackSpeed;
+  const [muted, setMuted] = useState(false);
+  const [sleepRemaining, setSleepRemaining] = useState<number | null>(null);
+  const [sleepAtChapterEnd, setSleepAtChapterEnd] = useState(false);
+  const sleepAtChapterEndRef = useRef(false);
+  sleepAtChapterEndRef.current = sleepAtChapterEnd;
+  const sleepIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastPosSaveRef = useRef(0); // wall-clock ms of last persisted position
   const [currentWorkChapters, setCurrentWorkChapters] = useState<ChapterRow[]>([]);
 
   const [home, setHome] = useState<HomeData | null>(null);
@@ -810,6 +821,9 @@ export default function App() {
     setCurrent(context);
     const audio = audioRef.current;
     if (audio) {
+      // Per-second resume (M24): seed a resume seek only if no bookmark seek is already pending.
+      const resumeAt = context.chapter.playbackPositionSecs;
+      if (pendingSeekRef.current == null && resumeAt > 1) pendingSeekRef.current = resumeAt;
       audio.src = fileUrl(context.chapter.filePath);
       audio.load();
       void audio.play().catch(() => { /* autoplay may be blocked; bar still shows */ });
@@ -838,22 +852,50 @@ export default function App() {
     setVolumeState(v);
   }
 
-  function setSleep(minutes: number | null) {
-    if (sleepTimerRef.current) {
-      clearTimeout(sleepTimerRef.current);
-      sleepTimerRef.current = null;
-    }
+  function setPlaybackSpeed(v: number) {
+    if (audioRef.current) audioRef.current.playbackRate = v;
+    setPlaybackSpeedState(v);
+    void setSetting("playback_speed", String(v));
+  }
+
+  function toggleMute() {
+    const audio = audioRef.current;
+    const next = !muted;
+    setMuted(next);
+    if (audio) audio.muted = next;
+  }
+
+  function setSleep(minutes: number | null, atChapterEnd = false) {
+    if (sleepTimerRef.current) { clearTimeout(sleepTimerRef.current); sleepTimerRef.current = null; }
+    if (sleepIntervalRef.current) { clearInterval(sleepIntervalRef.current); sleepIntervalRef.current = null; }
+    setSleepAtChapterEnd(atChapterEnd);
+    if (atChapterEnd) { setSleepMinutes(null); setSleepRemaining(null); return; }
     setSleepMinutes(minutes);
     if (minutes) {
+      const deadline = Date.now() + minutes * 60_000;
+      setSleepRemaining(minutes * 60);
       sleepTimerRef.current = setTimeout(() => {
         audioRef.current?.pause();
         setSleepMinutes(null);
+        setSleepRemaining(null);
+        if (sleepIntervalRef.current) { clearInterval(sleepIntervalRef.current); sleepIntervalRef.current = null; }
       }, minutes * 60_000);
+      sleepIntervalRef.current = setInterval(() => {
+        const rem = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+        setSleepRemaining(rem);
+        if (rem <= 0 && sleepIntervalRef.current) { clearInterval(sleepIntervalRef.current); sleepIntervalRef.current = null; }
+      }, 1000);
+    } else {
+      setSleepRemaining(null);
     }
   }
 
   async function handleEnded() {
     setIsPlaying(false);
+    if (sleepAtChapterEndRef.current) {
+      audioRef.current?.pause();
+      setSleepAtChapterEnd(false);
+    }
     const c = currentRef.current;
     if (!c) return;
     await markChapterFinished(c.chapter.id, Date.now());
@@ -977,6 +1019,7 @@ export default function App() {
       setHomeShelves(parseHomeShelves(await getSetting("home_shelves")).shelves);
       setDensity(parseDensity(await getSetting("library_density")));
       setA11y(parseA11yPrefs(await getSetting("a11y_prefs")));
+      { const s = parseFloat((await getSetting("playback_speed")) ?? ""); setPlaybackSpeedState(Number.isFinite(s) && s > 0 ? s : 1); }
 
       if (args.autostart && args.walkthrough) {
         const openFirstAuthor = async () => {
@@ -2417,6 +2460,13 @@ export default function App() {
       onOpenAuthor={openAuthor}
       timeLabelMode={timeLabelMode}
       onCycleTimeLabel={cycleTimeLabel}
+      playbackSpeed={playbackSpeed}
+      onCycleSpeed={() => setPlaybackSpeed(nextSpeed(playbackSpeed))}
+      muted={muted}
+      onToggleMute={toggleMute}
+      sleepRemaining={sleepRemaining}
+      sleepAtChapterEnd={sleepAtChapterEnd}
+      onOpenChapters={() => setPlayerExpanded(true)}
     />
   );
   const view = routedView();
@@ -2428,7 +2478,14 @@ export default function App() {
       <audio
         ref={audioRef}
         onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
+        onPause={() => {
+          setIsPlaying(false);
+          const cur = currentRef.current;
+          const audio = audioRef.current;
+          if (cur && audio && audio.currentTime > 0) {
+            void savePlaybackPosition(cur.chapter.id, Math.floor(audio.currentTime));
+          }
+        }}
         onTimeUpdate={(e) => {
           const t = e.currentTarget.currentTime;
           setCurrentTime(t);
@@ -2439,6 +2496,11 @@ export default function App() {
               t,
             );
           }
+          const cur = currentRef.current;
+          if (cur && t > 0 && Date.now() - lastPosSaveRef.current > 10_000) {
+            lastPosSaveRef.current = Date.now();
+            void savePlaybackPosition(cur.chapter.id, Math.floor(t));
+          }
         }}
         onLoadedMetadata={(e) => {
           setDuration(e.currentTarget.duration || 0);
@@ -2446,6 +2508,8 @@ export default function App() {
             try { e.currentTarget.currentTime = pendingSeekRef.current; } catch {}
             pendingSeekRef.current = null;
           }
+          e.currentTarget.playbackRate = playbackSpeedRef.current;
+          e.currentTarget.muted = muted;
         }}
         onEnded={handleEnded}
       />
@@ -2522,6 +2586,15 @@ export default function App() {
           onToggleFavorite={handleToggleCurrentFavorite}
           onJumpToBookmark={jumpToBookmark}
           onPopOut={() => { void openMiniPlayer(); }}
+          playbackSpeed={playbackSpeed}
+          onSetSpeed={setPlaybackSpeed}
+          muted={muted}
+          onToggleMute={toggleMute}
+          sleepRemaining={sleepRemaining}
+          sleepAtChapterEnd={sleepAtChapterEnd}
+          onPlayNextChapter={() => playNextChapterRef.current()}
+          onMarkComplete={() => { const c = currentRef.current; if (c) void markChapterFinished(c.chapter.id, Date.now()).then(() => { void loadAuthors(); }); }}
+          canPlayNext={(() => { const c = currentRef.current; return !!c && c.chapter.chapterNo < c.workTotalChapters; })()}
         />
       )}
     </div>
