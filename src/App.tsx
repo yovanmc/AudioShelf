@@ -2737,7 +2737,16 @@ export default function App() {
           sleepAtChapterEnd={sleepAtChapterEnd}
           onPlayNextChapter={() => playNextChapterRef.current()}
           onMarkComplete={() => { const c = currentRef.current; if (c) void markChapterFinished(c.chapter.id, Date.now()).then(() => { void loadAuthors(); }); }}
-          canPlayNext={(() => { const c = currentRef.current; return !!c && c.chapter.chapterNo < c.workTotalChapters; })()}
+          canPlayNext={(() => {
+            // Mirror playNextChapterRef exactly: a next chapter exists iff the current
+            // chapter is not the last *position* in the work. chapterNo is unreliable here —
+            // grouped works can repeat chapter numbers (1,2,2,3,3), so a position check is required.
+            const c = currentRef.current;
+            const chs = currentWorkChaptersRef.current;
+            if (!c || chs.length === 0) return false;
+            const idx = chs.findIndex((ch) => ch.id === c.chapter.id);
+            return idx >= 0 && idx < chs.length - 1;
+          })()}
         />
       )}
     </div>
