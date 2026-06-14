@@ -119,16 +119,16 @@ export function LibraryView(props: {
         </div>
       )}
       {props.savedSearches && props.savedSearches.length > 0 && (
-        <div className="scoped-chips" style={{ marginTop: 8 }}>
-          <span className="muted" style={{ fontSize: "0.82em" }}>Saved:</span>
+        <div className="saved-search-strip">
+          <span className="muted">Saved:</span>
           {props.savedSearches.map((s) => (
-            <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span key={s.id} className="saved-search-strip__item">
               <button className="chip chip--toggle" onClick={() => props.onRunSavedSearch && props.onRunSavedSearch(s.query)}>
                 {s.name}
               </button>
               {props.onDeleteSavedSearch && (
                 <button
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", padding: "0 2px" }}
+                  className="saved-search-strip__del"
                   aria-label={`Delete saved search "${s.name}"`}
                   onClick={() => props.onDeleteSavedSearch!(s.id)}
                 >
