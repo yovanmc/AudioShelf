@@ -3570,7 +3570,7 @@ mod tests {
         // The pre-seeded schema_version key reflects the latest migration version.
         assert_eq!(
             get_setting_value(&conn, "schema_version").unwrap(),
-            Some("10".to_string())
+            Some("11".to_string())
         );
     }
 
@@ -3939,7 +3939,7 @@ mod tests {
         ).unwrap();
         assert_eq!(full_count, 2, "full open must have both taxonomy tables");
         let ver: i64 = full_conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(ver, 10);
+        assert_eq!(ver, 11);
     }
 
     #[test]
@@ -4106,7 +4106,7 @@ mod tests {
         // Upgrade to latest via open_in_memory pattern (open_at_version then migrate).
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 10);
+        assert_eq!(full_ver, 11);
 
         let col3: i64 = full.query_row(
             "SELECT count(*) FROM pragma_table_info('works') WHERE name='metadata_source'",
@@ -4235,10 +4235,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist at v3");
 
-        // After a full open (which runs migrate), both tables must exist and version is 10.
+        // After a full open (which runs migrate), both tables must exist and version is 11.
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 10);
+        assert_eq!(full_ver, 11);
 
         let series_count: i64 = full.query_row(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
