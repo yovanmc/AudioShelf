@@ -142,6 +142,11 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .palette__label { color: var(--color-text); }
 .palette__sub { color: var(--color-text-muted); font-size: 13px; }
 .palette__empty { padding: 14px; color: var(--color-text-muted); text-align: center; }
+/* M29 IA7-9: palette section headers (non-interactive, not indexed for keyboard nav) */
+.palette__section { list-style: none; }
+.palette__section > ul { list-style: none; margin: 0; padding: 0; }
+.palette__section-label { font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--color-text-muted); padding: 8px 12px 4px; }
 /* ---- Scoped search (M19) ---- */
 .scoped-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--chip-gap); margin-bottom: var(--space-4); }
 /* ---- Saved-search strip (M25 VIS-8) ---- */
