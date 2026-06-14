@@ -2,11 +2,18 @@ param(
   [string]$Walkthrough = "browse",
   [int]$TimeoutSec = 240,
   [switch]$SkipBuild,
-  [string]$OutputRoot = ".shots"
+  [string]$OutputRoot = ".shots",
+  [switch]$Measure
 )
 $ErrorActionPreference = "Stop"
 $root    = Split-Path -Parent $PSScriptRoot
 $devenv  = Join-Path $PSScriptRoot "dev-env.cmd"
+
+if ($Measure) {
+  cmd /c "`"$devenv`" cargo test --manifest-path `"$root\src-tauri\Cargo.toml`" --test scaled_scan measure_scan_at_scale -- --ignored --nocapture"
+  exit $LASTEXITCODE
+}
+
 $fixture = Join-Path $root ".fixture"
 $output  = if ([System.IO.Path]::IsPathRooted($OutputRoot)) {
   $OutputRoot
