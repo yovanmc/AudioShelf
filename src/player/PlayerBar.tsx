@@ -1,8 +1,9 @@
+import { useState } from "react";
 import type { PlaybackContext } from "../lib/api";
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
 import { IconButton } from "../components/ui";
-import { formatTime, formatSpeed, timeLabel, type TimeLabelMode, SKIP_BACK_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, SKIP_FWD_LARGE } from "./playback";
+import { formatTime, formatSpeed, formatScrubPreview, timeLabel, type TimeLabelMode, SKIP_BACK_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, SKIP_FWD_LARGE } from "./playback";
 import { Select } from "../components/Select";
 import type { SelectOption } from "../components/Select";
 
@@ -57,7 +58,9 @@ export function PlaybackButtons(props: Pick<PlayerControls, "isPlaying" | "onTog
 
 export function PlayerBar(props: PlayerBarProps) {
   const context = props.context;
+  const [scrubbing, setScrubbing] = useState(false);
   if (!context) return null;
+  const resumeSecs = context.chapter.playbackPositionSecs ?? 0;
   return (
     <div className="player-bar" role="region" aria-label="Audio player">
       <div className="player-bar__track">
@@ -74,7 +77,24 @@ export function PlayerBar(props: PlayerBarProps) {
           <button type="button" className="time-label" title="Toggle time display" onClick={props.onCycleTimeLabel}>
             {timeLabel(props.timeLabelMode ?? "elapsed", props.currentTime, props.duration)}
           </button>
-          <input className="seek-range" type="range" aria-label="Seek" min={0} max={props.duration > 0 ? props.duration : 0} value={Math.min(props.currentTime, props.duration)} onChange={(event) => props.onSeek(Number(event.target.value))} />
+          <div className="seek-wrap">
+            <input
+              className="seek-range" type="range" aria-label="Seek"
+              min={0} max={props.duration > 0 ? props.duration : 0}
+              value={Math.min(props.currentTime, props.duration)}
+              onChange={(event) => props.onSeek(Number(event.target.value))}
+              onPointerDown={() => setScrubbing(true)}
+              onPointerUp={() => setScrubbing(false)}
+            />
+            {props.duration > 0 && resumeSecs > 0 && resumeSecs < props.duration && (
+              <span className="seek-cue seek-cue--resume" style={{ left: `${(resumeSecs / props.duration) * 100}%` }} title="Resume point" />
+            )}
+            {scrubbing && (
+              <span className="seek-bubble" style={{ left: `${props.duration ? (Math.min(props.currentTime, props.duration) / props.duration) * 100 : 0}%` }}>
+                {formatScrubPreview(props.currentTime, props.duration)}
+              </span>
+            )}
+          </div>
           <span>{formatTime(props.duration)}</span>
         </div>
       </div>

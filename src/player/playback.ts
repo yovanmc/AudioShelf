@@ -48,6 +48,12 @@ export function formatPercent(currentTime: number, duration: number): string {
   return `${pct}%`;
 }
 
+/** Scrub-preview label: "elapsed / total" at a hovered position, clamped to [0, total] (PL7-2). */
+export function formatScrubPreview(posSecs: number, totalSecs: number): string {
+  const clamped = Math.max(0, Math.min(posSecs, totalSecs));
+  return `${formatTime(clamped)} / ${formatTime(totalSecs)}`;
+}
+
 export type TimeLabelMode = "elapsed" | "remaining" | "percent";
 
 export function timeLabel(mode: TimeLabelMode, currentTime: number, duration: number): string {

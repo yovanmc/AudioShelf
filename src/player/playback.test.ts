@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clampSeek, formatTime, formatTimeLeft, formatPercent, timeLabel, SKIP_BACK_LARGE, SKIP_FWD_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, nextSpeed, formatSpeed, SPEEDS } from "./playback";
+import { clampSeek, formatTime, formatTimeLeft, formatPercent, timeLabel, SKIP_BACK_LARGE, SKIP_FWD_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, nextSpeed, formatSpeed, SPEEDS, formatScrubPreview } from "./playback";
 
 describe("clampSeek", () => {
   it("adds the delta within bounds", () => {
@@ -85,6 +85,16 @@ describe("formatTimeLeft (PL-9 no -0:00)", () => {
   });
   it("renders negative remaining mid-chapter", () => {
     expect(formatTimeLeft(30, 90)).toBe("-1:00");
+  });
+});
+
+describe("formatScrubPreview", () => {
+  it("renders elapsed / total at the hovered position", () => {
+    expect(formatScrubPreview(65, 600)).toBe("1:05 / 10:00");
+  });
+  it("clamps to bounds and never shows negative", () => {
+    expect(formatScrubPreview(-5, 600)).toBe("0:00 / 10:00");
+    expect(formatScrubPreview(605, 600)).toBe("10:00 / 10:00");
   });
 });
 

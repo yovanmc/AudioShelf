@@ -251,11 +251,32 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .creator-header__actions { flex: 0 0 auto; }
 .creator-header__meta { padding-top: var(--space-4); border-top: 1px solid var(--color-border-strong); }
 
-/* M24 — scrubber hit-area (PL-9) */
-.seek-range { height: 22px; cursor: pointer; }
-.seek-range::-webkit-slider-thumb { width: 14px; height: 14px; border-radius: 50%; opacity: 0; transition: opacity .12s; }
-.player-bar__seek:hover .seek-range::-webkit-slider-thumb,
-.now-playing__layout .seek-range:focus-visible::-webkit-slider-thumb { opacity: 1; }
+/* M24 — scrubber hit-area (PL-9); M29 PL7-1: always-visible thumb */
+.seek-range { height: 22px; cursor: pointer; accent-color: var(--color-accent); }
+.seek-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: var(--scrubber-thumb); height: var(--scrubber-thumb);
+  border-radius: 50%; background: var(--color-accent);
+  border: 2px solid var(--color-bg, #080b10);
+  opacity: 1; transition: transform .12s ease;
+}
+.seek-range:hover::-webkit-slider-thumb,
+.seek-range:active::-webkit-slider-thumb { transform: scale(1.18); }
+.seek-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 40%, transparent); }
+/* keep accent-color as the cross-browser track fill */
+
+/* M29 PL7-2: scrub-preview bubble + seek wrapper */
+.seek-wrap { position: relative; flex: 1; min-width: 90px; display: flex; align-items: center; }
+.seek-wrap .seek-range { width: 100%; }
+.seek-bubble {
+  position: absolute; bottom: 26px; transform: translateX(-50%);
+  background: var(--color-surface); color: var(--color-text);
+  border: 1px solid var(--color-divider); border-radius: 6px;
+  padding: 2px 6px; font-size: .75rem; white-space: nowrap; pointer-events: none;
+}
+.seek-cue { position: absolute; top: 50%; width: 2px; height: 12px; transform: translate(-50%, -50%); pointer-events: none; border-radius: 1px; }
+.seek-cue--resume { background: var(--color-success); }
+.seek-cue--boundary { background: var(--color-divider); }
 
 /* M24 — speed (PL-1) */
 .speed-btn { min-width: 3ch; padding: 2px 8px; border-radius: var(--radius-sm, 6px); background: var(--color-surface-raised, #1b1b1f); color: var(--color-text, #fff); border: 1px solid var(--color-divider, #333); cursor: pointer; font-variant-numeric: tabular-nums; }
