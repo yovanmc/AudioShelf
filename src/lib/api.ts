@@ -1,7 +1,26 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
-export interface ScanResult { authors: number; works: number; chapters: number; }
+export interface ScanError { path: string; reason: string; }
+export interface ScanResult {
+  authors: number;
+  works: number;
+  chapters: number;
+  added?: number;
+  updated?: number;
+  removed?: number;
+  skipped?: number;
+  errors?: ScanError[];
+  cancelled?: boolean;
+}
+export interface ScanProgress {
+  authorsDone: number;
+  authorsTotal: number;
+  current: string;
+  added: number;
+  updated: number;
+  skipped: number;
+}
 export interface AuthorRow {
   id: number; name: string; workCount: number; chapterCount: number; unplayedCount: number;
   totalSecs: number; tags: string[];
@@ -213,6 +232,7 @@ export interface TranscriptHit {
 
 export const getLaunchArgs = () => invoke<LaunchArgs>("get_launch_args");
 export const scanLibrary = (root: string) => invoke<ScanResult>("scan_library", { root });
+export const cancelScan = () => invoke("cancel_scan");
 export const getAuthors = () => invoke<AuthorRow[]>("get_authors");
 export const getAuthorDetail = (authorId: number) =>
   invoke<AuthorDetail>("get_author_detail", { authorId });

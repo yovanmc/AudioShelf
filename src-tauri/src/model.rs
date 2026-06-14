@@ -5,9 +5,48 @@ use serde::Serialize;
 #[derive(Serialize, Default, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanResult {
+    /// Active row totals after the scan (unchanged meaning; FE + existing tests rely on these).
     pub authors: usize,
     pub works: usize,
     pub chapters: usize,
+    /// Scan-diff diagnostics (this scan only).
+    #[serde(default)]
+    pub added: usize,
+    #[serde(default)]
+    pub updated: usize,
+    #[serde(default)]
+    pub removed: usize,
+    #[serde(default)]
+    pub skipped: usize,
+    /// Files/folders that could not be read this scan (skipped, not fatal).
+    #[serde(default)]
+    pub errors: Vec<ScanError>,
+    /// True if the scan stopped early because the user cancelled it.
+    #[serde(default)]
+    pub cancelled: bool,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanError {
+    pub path: String,
+    pub reason: String,
+}
+
+/// Progress payload emitted as the `scan:progress` event during a scan.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanProgress {
+    /// Author folders processed so far (including the current one).
+    pub authors_done: usize,
+    /// Total author folders discovered for this scan.
+    pub authors_total: usize,
+    /// Display name of the author folder currently being scanned.
+    pub current: String,
+    /// Running tallies so the UI can show live numbers.
+    pub added: usize,
+    pub updated: usize,
+    pub skipped: usize,
 }
 
 #[derive(Serialize, Debug, PartialEq)]

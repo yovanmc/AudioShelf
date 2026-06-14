@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import {
-  getLaunchArgs, scanLibrary, getAuthors, getAuthorDetail,
+  getLaunchArgs, scanLibrary, cancelScan, getAuthors, getAuthorDetail,
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
   getAllTags, setAuthorTags, setWorkTags, setChapterTags, getDiscovery, getDiscoveryByTags,
   getDormantWorks, getMoreLikeThis, suggestTags,
@@ -27,7 +27,7 @@ import {
   addMetadataValue, removeMetadataValue, getDiscoveryByMetadata,
   listLabelTypes, createLabelType, renameLabelType, deleteLabelType, reorderLabelTypes,
   addLabel, removeLabel,
-  type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
+  type AuthorRow, type AuthorDetail, type ScanResult, type ScanProgress, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
   type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
@@ -56,7 +56,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -156,6 +156,7 @@ async function rasterizeSvgToPng(svg: string, w: number, h: number): Promise<Uin
 export default function App() {
   const [route, setRoute] = useState<Route>({ kind: "loading" });
   const [scan, setScan] = useState<ScanResult | null>(null);
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [authors, setAuthors] = useState<AuthorRow[]>([]);
   const [detail, setDetail] = useState<AuthorDetail | null>(null);
   const [authorSeries, setAuthorSeries] = useState<SeriesView[]>([]);
@@ -805,6 +806,7 @@ export default function App() {
   async function scanRoot(root: string, persist: boolean) {
     setBusy(true);
     setScanError(null);
+    setScanProgress(null);
     try {
       const result = await scanLibrary(root);
       if (persist) await setSetting("library_root", root);
@@ -820,8 +822,11 @@ export default function App() {
       return false;
     } finally {
       setBusy(false);
+      setScanProgress(null);
     }
   }
+
+  function requestScanCancel() { void cancelScan(); }
 
   function openSettings() {
     setScanError(null);
@@ -2764,6 +2769,34 @@ export default function App() {
                   await settle();
                 },
               })
+            : args.walkthrough === "m30"
+            ? m30Steps({
+                // Step 1: ScanView showing a normal scan summary (scan-diff + stats).
+                // The scan ran at startup; just navigate to the scan route with
+                // the existing scan result in state and no progress overlay.
+                showScanSummary: async () => {
+                  setScanProgress(null);
+                  setRoute({ kind: "scan" });
+                  await settle();
+                },
+                // Step 2: ScanView in-progress card — seed a deterministic ScanProgress
+                // so the progress bar + Cancel button are visible. The live fixture scan
+                // is instantaneous so this state is otherwise un-screenshotable.
+                showScanProgress: async () => {
+                  setScanProgress({ authorsDone: 18, authorsTotal: 43, current: "Sam Smith", added: 6, updated: 2, skipped: 10 });
+                  setScan(null);
+                  setRoute({ kind: "scan" });
+                  await settle();
+                },
+                // Step 3: ScanView summary with removed > 0 — seed a mock ScanResult
+                // that includes a removed count, reflecting a soft-deleted item.
+                showScanRemoved: async () => {
+                  setScanProgress(null);
+                  setScan({ authors: 42, works: 43, chapters: 46, added: 0, updated: 0, removed: 1, skipped: 46, errors: [] });
+                  setRoute({ kind: "scan" });
+                  await settle();
+                },
+              })
             : browseSteps({
                 // Seed tags on a few authors + a played chapter so sort-by-length,
                 // played%, the tag filter, and the status filter all have signal.
@@ -2996,6 +3029,12 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  // Scan progress events from the backend.
+  useEffect(() => {
+    const un = listen<ScanProgress>("scan:progress", (e) => setScanProgress(e.payload));
+    return () => { void un.then((f) => f()); };
+  }, []);
+
   // Mini-player: receive commands from the mini window.
   useEffect(() => {
     const un = listen<{ action: "toggle" | "prev" | "next" }>("miniplayer:command", (e) => {
@@ -3068,7 +3107,7 @@ export default function App() {
 
   function routedView() {
     if (route.kind === "loading") return <div>Loading…</div>;
-    if (route.kind === "scan") return <ScanView result={scan} onOpenLibrary={() => setRoute({ kind: "library" })} onOpenHome={openHome} />;
+    if (route.kind === "scan") return <ScanView result={scan} progress={scanProgress} onCancel={requestScanCancel} onOpenLibrary={() => setRoute({ kind: "library" })} onOpenHome={openHome} />;
     if (route.kind === "home") {
       return (
         <HomeView

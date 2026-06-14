@@ -59,13 +59,18 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 "#;
 
 /// The current schema version. Bump this constant whenever a new migration step is added.
-pub(crate) const LATEST: i64 = 10;
+pub(crate) const LATEST: i64 = 11;
 
 /// Open a file-backed connection and ensure the schema exists (idempotent).
 pub fn open(path: &str) -> rusqlite::Result<Connection> {
     crate::backup::apply_pending_restore(path); // best-effort, crash-safe staged restore
     let conn = Connection::open(path)?;
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;
+         PRAGMA busy_timeout = 5000;",
+    )?;
     migrate(&conn)?;
     Ok(conn)
 }
@@ -213,6 +218,22 @@ fn migration_v10_label_types(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Add per-file scan-tracking columns to `chapters` (migration v11). Additive only —
+/// three ADD COLUMN + one index; SCHEMA_V1 untouched, no FK-off rebuild. These power
+/// incremental mtime/size skip and generation-stamped deletion detection.
+///   file_mtime     — file modified time, seconds since unix epoch (0 = unknown)
+///   file_size      — file size in bytes (0 = unknown)
+///   last_seen_scan — the scan_generation that last observed this file on disk
+fn migration_v11_scan_tracking(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "ALTER TABLE chapters ADD COLUMN file_mtime INTEGER NOT NULL DEFAULT 0;
+         ALTER TABLE chapters ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0;
+         ALTER TABLE chapters ADD COLUMN last_seen_scan INTEGER NOT NULL DEFAULT 0;
+         CREATE INDEX IF NOT EXISTS idx_chapters_last_seen ON chapters(last_seen_scan);",
+    )?;
+    Ok(())
+}
+
 /// Add the metadata_terms vocabulary + chapter_metadata / author_metadata attach
 /// tables (migration v8). Faceted user-defined metadata (narrator / language / mood)
 /// applied to files and creators. Additive only — no existing table touched.
@@ -299,6 +320,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     }
     if current < 9 { run_step(conn, 9, migration_v9_playback_position)?; }
     if current < 10 { run_step(conn, 10, migration_v10_label_types)?; }
+    if current < 11 { run_step(conn, 11, migration_v11_scan_tracking)?; }
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES ('schema_version', ?1)",
         [LATEST.to_string()],
@@ -364,6 +386,7 @@ pub fn open_at_version(version: i64) -> rusqlite::Result<Connection> {
     }
     if version >= 9 { run_step(&conn, 9, migration_v9_playback_position)?; }
     if version >= 10 { run_step(&conn, 10, migration_v10_label_types)?; }
+    if version >= 11 { run_step(&conn, 11, migration_v11_scan_tracking)?; }
     Ok(conn)
 }
 
@@ -399,18 +422,18 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 10);
+        assert_eq!(ver, 11);
     }
 
     #[test]
     fn migrate_from_v1_is_noop_when_current() {
         let conn = open_in_memory().unwrap();
-        // Running migrate a second time must leave user_version at 10 without error.
+        // Running migrate a second time must leave user_version at 11 without error.
         super::migrate(&conn).unwrap();
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 10);
+        assert_eq!(ver, 11);
     }
 
     #[test]
@@ -429,7 +452,7 @@ mod tests {
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 10);
+        assert_eq!(post, 11);
     }
 
     #[test]
@@ -462,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn open_in_memory_has_v2_tables_and_user_version_10() {
+    fn open_in_memory_has_v2_tables_and_user_version_11() {
         let conn = open_in_memory().unwrap();
         let v2_count: i64 = conn
             .query_row(
@@ -476,7 +499,7 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 10);
+        assert_eq!(ver, 11);
     }
 
     #[test]
@@ -487,12 +510,12 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(pre, 1);
-        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale, v8 metadata, v9 playback_position, v10 label_types.
+        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale, v8 metadata, v9 playback_position, v10 label_types, v11 scan_tracking.
         super::migrate(&conn).unwrap();
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 10);
+        assert_eq!(post, 11);
         let v2_count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table'
@@ -522,10 +545,10 @@ mod tests {
             .unwrap();
         assert_eq!(has_col, 0, "metadata_source must not exist before v3 migration");
 
-        // Run the full migration to reach v10.
+        // Run the full migration to reach v11.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 10);
+        assert_eq!(post, 11);
 
         // Now both tables must have the column.
         let works_col: i64 = conn
@@ -580,10 +603,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist before v4 migration");
 
-        // Run the full migration to reach v10.
+        // Run the full migration to reach v11.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 10);
+        assert_eq!(post, 11);
 
         // Both tables must now exist.
         let series_count: i64 = conn.query_row(
@@ -643,7 +666,7 @@ mod tests {
         // Run the full migration.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 10);
+        assert_eq!(post, 11);
 
         // transcripts must now exist.
         let has_transcripts: i64 = conn
@@ -704,11 +727,11 @@ mod tests {
 
     #[test]
     fn legacy_db_upgrades_through_v6() {
-        // Open at v1 (legacy), run full migrate(), expect LATEST (v10) and journal columns present.
+        // Open at v1 (legacy), run full migrate(), expect LATEST (v11) and journal columns present.
         let conn = open_at_version(1).unwrap();
         migrate(&conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 10);
+        assert_eq!(v, 11);
     }
 
     #[test]
@@ -734,10 +757,10 @@ mod tests {
     }
 
     #[test]
-    fn open_at_version_10_reaches_latest() {
-        let conn = open_at_version(10).unwrap();
+    fn open_at_version_11_reaches_latest() {
+        let conn = open_at_version(11).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 10);
+        assert_eq!(v, 11);
         assert_eq!(v, LATEST);
     }
 
@@ -800,10 +823,10 @@ mod tests {
             rusqlite::params![chapter_id],
         ).unwrap();
 
-        // Run migrate() to apply v10.
+        // Run migrate() to apply v10 + v11.
         super::migrate(&conn).unwrap();
         let v10: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v10, 10);
+        assert_eq!(v10, 11);
 
         // label_types has the 4 seeded built-in rows.
         let lt_count: i64 = conn
@@ -883,5 +906,32 @@ mod tests {
             .query_row("SELECT count(*) FROM chapter_tags WHERE chapter_id=?1", rusqlite::params![chapter_id], |r| r.get(0))
             .unwrap();
         assert_eq!(ct, 1, "chapter_tags must still exist after v10 migration");
+    }
+
+    // ---- v11 migration tests --------------------------------------------------------
+
+    #[test]
+    fn migration_v11_adds_scan_tracking_columns_and_is_additive() {
+        let conn = open_in_memory().unwrap();
+        // columns exist and default to 0
+        let (m, s, l): (i64, i64, i64) = {
+            // insert a chapter via a minimal author/work/chapter chain
+            conn.execute("INSERT INTO authors(folder_name,status) VALUES('A','active')", []).unwrap();
+            let aid: i64 = conn.query_row("SELECT id FROM authors WHERE folder_name='A'", [], |r| r.get(0)).unwrap();
+            conn.execute("INSERT INTO works(author_id,base_title,sort_key,status) VALUES(?1,'W','w','active')", [aid]).unwrap();
+            let wid: i64 = conn.query_row("SELECT id FROM works WHERE author_id=?1", [aid], |r| r.get(0)).unwrap();
+            conn.execute(
+                "INSERT INTO chapters(work_id,file_path,raw_filename,chapter_no,format,duration_secs,status)
+                 VALUES(?1,'/x/a.wav','a.wav',1,'wav',0,'active')", [wid]).unwrap();
+            conn.query_row(
+                "SELECT file_mtime, file_size, last_seen_scan FROM chapters LIMIT 1",
+                [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
+        };
+        assert_eq!((m, s, l), (0, 0, 0));
+        // the index exists
+        let idx: i64 = conn.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='index' AND name='idx_chapters_last_seen'",
+            [], |r| r.get(0)).unwrap();
+        assert_eq!(idx, 1);
     }
 }
