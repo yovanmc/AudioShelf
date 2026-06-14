@@ -48,7 +48,7 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .artwork__initials { position: relative; z-index: 1; color: #fff; font-weight: 700; }
 .work-artwork { border-radius: var(--radius-md); }
 .creator-avatar { border-radius: 50%; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: var(--chip-gap); }
 .chip, .badge {
   display: inline-flex; align-items: center; min-height: 24px; border: 1px solid var(--color-chip-border);
   border-radius: 999px; padding: 2px 9px; background: var(--color-chip-bg); color: var(--color-text); font-size: .78rem;
@@ -142,9 +142,9 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .palette__sub { color: var(--color-text-muted); font-size: 13px; }
 .palette__empty { padding: 14px; color: var(--color-text-muted); text-align: center; }
 /* ---- Scoped search (M19) ---- */
-.scoped-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); }
+.scoped-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--chip-gap); margin-bottom: var(--space-4); }
 /* ---- Saved-search strip (M25 VIS-8) ---- */
-.saved-search-strip { display: flex; align-items: center; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; margin-top: 8px; }
+.saved-search-strip { display: flex; align-items: center; gap: var(--chip-gap); overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; margin-top: 8px; }
 .saved-search-strip > .muted { flex: 0 0 auto; font-size: 0.82em; }
 .saved-search-strip .chip { flex: 0 0 auto; }
 .saved-search-strip__item { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
