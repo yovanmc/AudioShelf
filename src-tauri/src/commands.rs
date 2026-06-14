@@ -267,12 +267,18 @@ pub fn query_authors(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<Author
         })?
         .collect::<rusqlite::Result<_>>()?;
 
-    // Per-author tag set = author_tags ∪ that author's work_tags (chapter tags excluded
-    // by design, mirroring M9 Discover). Two grouped passes into a map, then assign.
+    // Per-author tag set = DISTINCT 'tag'-facet terms attached at author OR work level
+    // via the unified attach tables (author_metadata ∪ work_metadata where facet='tag').
+    // Chapter-level tags excluded by design (mirroring legacy M9 Discover behaviour).
     use std::collections::{BTreeSet, HashMap};
     let mut tag_map: HashMap<i64, BTreeSet<String>> = HashMap::new();
     {
-        let mut s = conn.prepare("SELECT author_id, tag FROM author_tags")?;
+        // Author-level tag terms.
+        let mut s = conn.prepare(
+            "SELECT am.author_id, t.value \
+             FROM author_metadata am JOIN metadata_terms t ON am.term_id=t.id \
+             WHERE t.facet='tag'",
+        )?;
         let mut q = s.query([])?;
         while let Some(r) = q.next()? {
             let id: i64 = r.get(0)?;
@@ -281,9 +287,13 @@ pub fn query_authors(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<Author
         }
     }
     {
+        // Work-level tag terms (rolled up to the author).
         let mut s = conn.prepare(
-            "SELECT w.author_id, t.tag FROM work_tags t JOIN works w ON t.work_id=w.id
-               WHERE w.status='active'",
+            "SELECT w.author_id, t.value \
+             FROM work_metadata wm \
+             JOIN metadata_terms t ON wm.term_id=t.id \
+             JOIN works w ON wm.work_id=w.id \
+             WHERE t.facet='tag' AND w.status='active'",
         )?;
         let mut q = s.query([])?;
         while let Some(r) = q.next()? {
@@ -323,6 +333,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                 completion_rating: r.get::<_, String>(3).unwrap_or_default(),
                 chapter_sort: r.get::<_, String>(4).unwrap_or_default(),
                 metadata: Vec::new(),
+                labels: Vec::new(),
             })
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -354,6 +365,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                     takeaway: r.get::<_, String>(8).unwrap_or_default(),
                     is_favorite: r.get::<_, i64>(9).unwrap_or(0) != 0,
                     metadata: Vec::new(),
+                    labels: Vec::new(),
                     playback_position_secs: r.get::<_, i64>(10).unwrap_or(0),
                 })
             })?
@@ -366,42 +378,29 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
             "duration_desc" => chapters.sort_by(|a, b| b.duration_secs.cmp(&a.duration_secs)),
             _               => chapters.sort_by(|a, b| a.chapter_no.cmp(&b.chapter_no)), // "" / unknown = default
         }
+
+        // Chapter labels: all facets from chapter_metadata; derive tags + metadata.
+        for ch in &mut chapters {
+            let lbl = labels_for(conn, "chapter_metadata", "chapter_id", ch.id)?;
+            let (tags, meta) = derive_tags_and_meta(&lbl);
+            ch.labels = lbl;
+            ch.tags = tags;
+            ch.metadata = meta;
+        }
         work.chapters = chapters;
 
-        // Work-level tags.
-        let mut wt = conn.prepare("SELECT tag FROM work_tags WHERE work_id=?1 ORDER BY tag")?;
-        work.tags = wt
-            .query_map(params![work.id], |r| r.get::<_, String>(0))?
-            .collect::<rusqlite::Result<_>>()?;
-
-        // Chapter-level tags and metadata.
-        for ch in &mut work.chapters {
-            let mut ct = conn.prepare("SELECT tag FROM chapter_tags WHERE chapter_id=?1 ORDER BY tag")?;
-            ch.tags = ct
-                .query_map(params![ch.id], |r| r.get::<_, String>(0))?
-                .collect::<rusqlite::Result<_>>()?;
-            ch.metadata = chapter_metadata(conn, ch.id)?;
-        }
-
-        // Work metadata = union of its chapters' metadata (per-audio rolls up to work).
-        let mut seen_terms = std::collections::BTreeSet::new();
-        let mut wm: Vec<MetaTag> = Vec::new();
-        for ch in &work.chapters {
-            for m in &ch.metadata {
-                if seen_terms.insert(m.term_id) { wm.push(m.clone()); }
-            }
-        }
-        wm.sort_by(|a, b| a.facet.cmp(&b.facet).then(a.value.to_lowercase().cmp(&b.value.to_lowercase())));
-        work.metadata = wm;
+        // Work labels: direct work-level attach (NOT a union of chapters); derive tags + metadata.
+        let wlbl = labels_for(conn, "work_metadata", "work_id", work.id)?;
+        let (wtags, wmeta) = derive_tags_and_meta(&wlbl);
+        work.labels = wlbl;
+        work.tags = wtags;
+        work.metadata = wmeta;
     }
 
-    let mut tstmt = conn.prepare("SELECT tag FROM author_tags WHERE author_id=?1 ORDER BY tag")?;
-    let tags: Vec<String> = tstmt
-        .query_map(params![author_id], |r| r.get::<_, String>(0))?
-        .collect::<rusqlite::Result<_>>()?;
-
-    let author_meta = author_metadata(conn, author_id)?;
-    Ok(AuthorDetail { id: author_id, name, tags, works, metadata: author_meta })
+    // Author labels: all facets from author_metadata; derive tags + metadata.
+    let albl = labels_for(conn, "author_metadata", "author_id", author_id)?;
+    let (atags, ameta) = derive_tags_and_meta(&albl);
+    Ok(AuthorDetail { id: author_id, name, tags: atags, works, metadata: ameta, labels: albl })
 }
 
 const SEARCH_CAP: usize = 50;
@@ -788,7 +787,7 @@ pub(crate) fn more_from_author(conn: &rusqlite::Connection, author_id: i64) -> r
     Ok(rows)
 }
 
-/// Load a single chapter as a `ChapterRow` (title derived from raw_filename; tags included).
+/// Load a single chapter as a `ChapterRow` (title derived from raw_filename; labels included).
 fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<ChapterRow> {
     let mut row = conn.query_row(
         "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played,
@@ -814,14 +813,17 @@ fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::R
                 takeaway: r.get::<_, String>(8).unwrap_or_default(),
                 is_favorite: r.get::<_, i64>(9).unwrap_or(0) != 0,
                 metadata: Vec::new(),
+                labels: Vec::new(),
                 playback_position_secs: r.get::<_, i64>(10).unwrap_or(0),
             })
         },
     )?;
-    let mut ct = conn.prepare("SELECT tag FROM chapter_tags WHERE chapter_id=?1 ORDER BY tag")?;
-    row.tags = ct
-        .query_map(params![chapter_id], |r| r.get::<_, String>(0))?
-        .collect::<rusqlite::Result<_>>()?;
+    // Build labels from unified attach; derive tags + metadata.
+    let lbl = labels_for(conn, "chapter_metadata", "chapter_id", chapter_id)?;
+    let (tags, meta) = derive_tags_and_meta(&lbl);
+    row.labels = lbl;
+    row.tags = tags;
+    row.metadata = meta;
     Ok(row)
 }
 
@@ -2851,28 +2853,58 @@ pub fn reorder_label_types(state: tauri::State<DbState>, names: Vec<String>) -> 
 
 // ---- attach table helpers ----------------------------------------------------------
 
-/// Read all metadata terms attached to a chapter.
-pub(crate) fn chapter_metadata(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<Vec<MetaTag>> {
-    let mut stmt = conn.prepare(
-        "SELECT t.id, t.facet, t.value FROM chapter_metadata cm
-         JOIN metadata_terms t ON cm.term_id=t.id
-         WHERE cm.chapter_id=?1 ORDER BY t.facet, lower(t.value)",
-    )?;
-    let rows = stmt.query_map(params![chapter_id], |r| Ok(MetaTag { term_id: r.get(0)?, facet: r.get(1)?, value: r.get(2)? }))?
+/// Generic helper: read ALL metadata_terms attached to an entity via any attach table.
+/// `attach_table` and `key_col` must be compile-time constants from `scope_table()`.
+/// Returns terms sorted by (facet, lower(value)) for deterministic ordering.
+fn labels_for(
+    conn: &rusqlite::Connection,
+    attach_table: &'static str,
+    key_col: &'static str,
+    id: i64,
+) -> rusqlite::Result<Vec<MetaTag>> {
+    let sql = format!(
+        "SELECT t.id, t.facet, t.value FROM {attach_table} a \
+         JOIN metadata_terms t ON a.term_id=t.id \
+         WHERE a.{key_col}=?1 ORDER BY t.facet, lower(t.value)"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map(params![id], |r| {
+            Ok(MetaTag { term_id: r.get(0)?, facet: r.get(1)?, value: r.get(2)? })
+        })?
         .collect();
     rows
 }
 
+/// Derive `tags` (facet=="tag", values only) and `metadata` (facet!="tag") from a
+/// full `labels` slice. This is the canonical derivation used at every level.
+fn derive_tags_and_meta(labels: &[MetaTag]) -> (Vec<String>, Vec<MetaTag>) {
+    let tags: Vec<String> = labels
+        .iter()
+        .filter(|m| m.facet == "tag")
+        .map(|m| m.value.clone())
+        .collect();
+    let metadata: Vec<MetaTag> = labels
+        .iter()
+        .filter(|m| m.facet != "tag")
+        .cloned()
+        .collect();
+    (tags, metadata)
+}
+
+/// Read all metadata terms attached to a chapter.
+pub(crate) fn chapter_metadata(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<Vec<MetaTag>> {
+    labels_for(conn, "chapter_metadata", "chapter_id", chapter_id)
+}
+
+/// Read all metadata terms attached to a work (direct work-level attach only).
+pub(crate) fn work_metadata(conn: &rusqlite::Connection, work_id: i64) -> rusqlite::Result<Vec<MetaTag>> {
+    labels_for(conn, "work_metadata", "work_id", work_id)
+}
+
 /// Read all metadata terms attached to an author.
 pub(crate) fn author_metadata(conn: &rusqlite::Connection, author_id: i64) -> rusqlite::Result<Vec<MetaTag>> {
-    let mut stmt = conn.prepare(
-        "SELECT t.id, t.facet, t.value FROM author_metadata am
-         JOIN metadata_terms t ON am.term_id=t.id
-         WHERE am.author_id=?1 ORDER BY t.facet, lower(t.value)",
-    )?;
-    let rows = stmt.query_map(params![author_id], |r| Ok(MetaTag { term_id: r.get(0)?, facet: r.get(1)?, value: r.get(2)? }))?
-        .collect();
-    rows
+    labels_for(conn, "author_metadata", "author_id", author_id)
 }
 
 /// Create-or-fetch the term, then attach it to `(scope, id)`. Idempotent.
@@ -2963,11 +2995,11 @@ mod tests {
         conn.execute("UPDATE chapters SET duration_secs=120 WHERE work_id IN (SELECT id FROM works WHERE author_id=?1)",
             params![ids["Bob"]]).unwrap();
 
-        // Give Alice an author-level tag and a work-level tag; Bob gets no tags.
+        // Give Alice an author-level tag and a work-level tag via the unified attach tables.
         let alice_work_id: i64 = conn.query_row(
             "SELECT id FROM works WHERE author_id=?1 LIMIT 1", params![ids["Alice"]], |r| r.get(0)).unwrap();
-        super::set_tags(&conn, ids["Alice"], &["cozy".into()]).unwrap();
-        super::replace_tags(&conn, "work_tags", "work_id", alice_work_id, &["epic".into()]).unwrap();
+        attach_value(&conn, "author", ids["Alice"], "tag", "cozy").unwrap();
+        attach_value(&conn, "work", alice_work_id, "tag", "epic").unwrap();
 
         let authors = query_authors(&conn).unwrap();
         let alice = authors.iter().find(|a| a.name == "Alice").unwrap();
@@ -2978,9 +3010,9 @@ mod tests {
         // Bob has 1 chapter at 120 s.
         assert_eq!(bob.total_secs, 120, "Bob total_secs should be sum of his chapter durations");
 
-        // Alice's tags = author_tags ∪ work_tags, sorted, de-duplicated.
+        // Alice's tags = author_metadata ∪ work_metadata (facet='tag'), sorted, de-duplicated.
         assert_eq!(alice.tags, vec!["cozy".to_string(), "epic".to_string()],
-            "Alice tags should be union of author_tags and work_tags, sorted");
+            "Alice tags should be union of author-level and work-level tag terms, sorted");
         // Bob has no tags.
         assert!(bob.tags.is_empty(), "Bob should have no tags");
     }
@@ -3008,12 +3040,19 @@ mod tests {
         scan::scan_into(&conn, root).unwrap();
         let id = query_authors(&conn).unwrap()[0].id;
 
-        super::set_tags(&conn, id, &["cozy".into(), " cozy ".into(), "".into(), "thriller".into()]).unwrap();
+        // Attach via unified model; idempotent for duplicates (INSERT OR IGNORE).
+        attach_value(&conn, "author", id, "tag", "cozy").unwrap();
+        attach_value(&conn, "author", id, "tag", "cozy").unwrap(); // idempotent
+        attach_value(&conn, "author", id, "tag", "thriller").unwrap();
         let detail = query_author_detail(&conn, id).unwrap();
         assert_eq!(detail.tags, vec!["cozy".to_string(), "thriller".to_string()]);
+        // Labels include both tag terms; metadata (non-tag) is empty.
+        assert_eq!(detail.labels.len(), 2);
+        assert!(detail.metadata.is_empty());
 
-        // Replace-all semantics.
-        super::set_tags(&conn, id, &["calm".into()]).unwrap();
+        // Replace-all semantics: detach all tag terms, attach new one.
+        for lbl in &detail.labels { detach_value(&conn, "author", id, lbl.term_id).unwrap(); }
+        attach_value(&conn, "author", id, "tag", "calm").unwrap();
         assert_eq!(query_author_detail(&conn, id).unwrap().tags, vec!["calm".to_string()]);
     }
 
@@ -3073,17 +3112,24 @@ mod tests {
         let work_id = detail.works[0].id;
         let chapter_id = detail.works[0].chapters[0].id;
 
-        super::replace_tags(&conn, "work_tags", "work_id", work_id,
-            &["epic".into(), " epic ".into(), "".into(), "saga".into()]).unwrap();
-        super::replace_tags(&conn, "chapter_tags", "chapter_id", chapter_id,
-            &["intro".into()]).unwrap();
+        // Seed via unified attach model (idempotent, deduped via UNIQUE(facet,value) term).
+        attach_value(&conn, "work", work_id, "tag", "epic").unwrap();
+        attach_value(&conn, "work", work_id, "tag", "saga").unwrap();
+        attach_value(&conn, "chapter", chapter_id, "tag", "intro").unwrap();
 
         let d = query_author_detail(&conn, author_id).unwrap();
-        assert_eq!(d.works[0].tags, vec!["epic".to_string(), "saga".to_string()]); // sorted, deduped, trimmed
+        // Work tags come from work_metadata directly (NOT chapter-union).
+        assert_eq!(d.works[0].tags, vec!["epic".to_string(), "saga".to_string()]); // sorted, deduped
         assert_eq!(d.works[0].chapters[0].tags, vec!["intro".to_string()]);
+        // Work labels reflect only the two directly-attached work terms.
+        assert_eq!(d.works[0].labels.len(), 2);
+        // Chapter labels reflect the one directly-attached chapter term.
+        assert_eq!(d.works[0].chapters[0].labels.len(), 1);
 
-        // Replace-all semantics.
-        super::replace_tags(&conn, "work_tags", "work_id", work_id, &["calm".into()]).unwrap();
+        // Replace-all: detach existing, attach new.
+        let work_detail = query_author_detail(&conn, author_id).unwrap();
+        for lbl in &work_detail.works[0].labels { detach_value(&conn, "work", work_id, lbl.term_id).unwrap(); }
+        attach_value(&conn, "work", work_id, "tag", "calm").unwrap();
         assert_eq!(query_author_detail(&conn, author_id).unwrap().works[0].tags, vec!["calm".to_string()]);
     }
 
@@ -4552,7 +4598,8 @@ mod tests {
 
     #[test]
     fn chapter_sort_override_reorders_in_detail() {
-        let conn = crate::db::open_at_version(9).unwrap();
+        // Must be at least v10 so that work_metadata table exists (query_author_detail reads it).
+        let conn = crate::db::open_at_version(10).unwrap();
         conn.execute_batch(
             "INSERT INTO authors(id, folder_name, status) VALUES (1,'a','active');
              INSERT INTO works(id, author_id, base_title, sort_key, status, chapter_sort) VALUES (1,1,'W','w','active','number_desc');
@@ -4659,12 +4706,64 @@ mod tests {
         conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
         conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
         conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (1,1,'/x.wav','x.wav',1,'wav',5,0,'active')", []).unwrap();
+
+        // Attach a narrator to the chapter and a language to the author.
         attach_value(&conn, "chapter", 1, "narrator", "Jane Roe").unwrap();
         attach_value(&conn, "author", 1, "language", "English").unwrap();
+
         let d = query_author_detail(&conn, 1).unwrap();
+
+        // Author: language appears in labels + metadata, NOT tags.
+        assert_eq!(d.labels.iter().filter(|m| m.facet == "language").count(), 1);
         assert_eq!(d.metadata.iter().filter(|m| m.facet == "language").count(), 1);
+        assert!(d.tags.is_empty());
+
+        // Chapter: narrator appears in labels + metadata, NOT tags.
+        assert_eq!(d.works[0].chapters[0].labels[0].value, "Jane Roe");
         assert_eq!(d.works[0].chapters[0].metadata[0].value, "Jane Roe");
-        assert_eq!(d.works[0].metadata[0].value, "Jane Roe"); // aggregated to the work
+        assert!(d.works[0].chapters[0].tags.is_empty());
+
+        // Work: labels/metadata come from work_metadata DIRECTLY (not chapter-union).
+        // No term is attached at work level, so work labels/metadata are empty.
+        assert!(d.works[0].labels.is_empty(),
+            "work labels should be empty: narrator was attached at chapter level, not work level");
+        assert!(d.works[0].metadata.is_empty());
+        assert!(d.works[0].tags.is_empty());
+    }
+
+    #[test]
+    fn unified_labels_work_direct_attach_and_derivation() {
+        // Proves: a term attached at work level appears in work.labels and (if facet='tag')
+        // work.tags; a narrator term appears in work.labels and work.metadata but NOT work.tags.
+        let conn = crate::db::open_in_memory().unwrap();
+        conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (1,1,'/x.wav','x.wav',1,'wav',5,0,'active')", []).unwrap();
+
+        // Attach a 'tag' facet and a 'narrator' facet directly at work level.
+        attach_value(&conn, "work", 1, "tag", "audiobook").unwrap();
+        attach_value(&conn, "work", 1, "narrator", "John Smith").unwrap();
+
+        let d = query_author_detail(&conn, 1).unwrap();
+        let work = &d.works[0];
+
+        // labels = ALL attached terms (both facets).
+        assert_eq!(work.labels.len(), 2, "work.labels should contain both attached terms");
+        assert!(work.labels.iter().any(|m| m.facet == "tag" && m.value == "audiobook"));
+        assert!(work.labels.iter().any(|m| m.facet == "narrator" && m.value == "John Smith"));
+
+        // tags = labels where facet=="tag" → value only.
+        assert_eq!(work.tags, vec!["audiobook".to_string()]);
+
+        // metadata = labels where facet!="tag".
+        assert_eq!(work.metadata.len(), 1);
+        assert_eq!(work.metadata[0].facet, "narrator");
+        assert_eq!(work.metadata[0].value, "John Smith");
+
+        // The chapter (no terms attached) has empty labels/tags/metadata.
+        assert!(work.chapters[0].labels.is_empty());
+        assert!(work.chapters[0].tags.is_empty());
+        assert!(work.chapters[0].metadata.is_empty());
     }
 
     #[test]
