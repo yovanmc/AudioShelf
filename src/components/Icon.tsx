@@ -2,9 +2,9 @@ export type IconName =
   | "home" | "library" | "discover" | "rename" | "metadata" | "settings"
   | "menu" | "chevronLeft" | "chevronRight" | "more"
   | "play" | "pause" | "back15" | "back30" | "forward15" | "forward30"
-  | "volume" | "sleep" | "search" | "check" | "tag"
+  | "volume" | "mute" | "sleep" | "search" | "check" | "tag"
   | "expand" | "collapse" | "close" | "refresh" | "folder"
-  | "journal" | "insights" | "collections" | "voice"
+  | "journal" | "insights" | "collections" | "voice" | "list"
   | "circle" | "circleHalf";
 
 type GlyphDef = { d: string; fill?: string };
@@ -27,6 +27,7 @@ const glyphs: Record<IconName, GlyphDef> = {
   forward15:   { d: "m15 7 4 4-4 4m4-4h-8a5 5 0 1 0 0 10" },
   forward30:   { d: "m15 4 4 4-4 4m4-4h-9a6 6 0 1 0 6 6" },
   volume:      { d: "M4 10v4h4l5 4V6l-5 4zm12-1a4 4 0 0 1 0 6m2-9a8 8 0 0 1 0 12" },
+  mute:        { d: "M4 10v4h4l5 4V6l-5 4H4zm14-2 5 8m0-8-5 8" },
   sleep:       { d: "M18 4a8 8 0 1 0 2 14 7 7 0 0 1-2-14" },
   search:      { d: "m21 21-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15" },
   check:       { d: "m5 12 4 4L19 6" },
@@ -40,6 +41,7 @@ const glyphs: Record<IconName, GlyphDef> = {
   insights:    { d: "M5 13v7m7-11v11m7-15v15M3 20h18" },
   collections: { d: "M3 7h18M3 12h18M3 17h18m-9-14v4m-6 0v4m12-4v4" },
   voice:       { d: "M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" },
+  list:        { d: "M4 6h16M4 12h16M4 18h16" },
   /** Outline circle — "unstarted" / "not played" status indicator. */
   circle:      { d: "M12 4a8 8 0 1 0 0 16A8 8 0 0 0 12 4z" },
   /** Half-filled circle — "in progress" status indicator. */

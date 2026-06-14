@@ -17,6 +17,7 @@ const chapter: ChapterRow = {
   takeaway: "My takeaway",
   isFavorite: false,
   metadata: [],
+  playbackPositionSecs: 0,
 };
 
 const seededJournal: ChapterJournal = {
@@ -199,7 +200,7 @@ const workDetail: AuthorDetail = {
         {
           id: 100, title: "Part One", chapterNo: 1, format: "mp3",
           durationSecs: 60, filePath: "x/1.mp3", played: false, tags: [],
-          userSummary: "", takeaway: "", isFavorite: false, metadata: [],
+          userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0,
         },
       ],
     },

@@ -3,7 +3,7 @@ import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
 import { Button, Dialog, IconButton, ProgressBar } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { formatTime, timeLabel, type TimeLabelMode } from "./playback";
+import { formatTime, formatSpeed, timeLabel, type TimeLabelMode, SPEEDS } from "./playback";
 import { PlaybackButtons, type PlayerControls } from "./PlayerBar";
 
 /** Formats integer seconds as m:ss. */
@@ -35,16 +35,17 @@ export function NowPlayingPanel(props: PlayerControls & {
   onJumpToBookmark?: (b: ChapterBookmark) => void;
   /** Open the always-on-top mini player window. */
   onPopOut?: () => void;
+  // M24 PL-1
+  onSetSpeed?: (v: number) => void;
+  // M24 PL-2
+  onPlayNextChapter?: () => void;
+  onMarkComplete?: () => void;
+  canPlayNext?: boolean;
 }) {
   const { context } = props;
   const progress = context.workTotalChapters > 0
     ? Math.round((context.workPlayedChapters / context.workTotalChapters) * 100)
     : 0;
-  const isLastChapter = context.chapter.chapterNo >= context.workTotalChapters;
-  const stopNote = isLastChapter
-    ? "Last chapter — playback stops at the end."
-    : "Plays this chapter, then stops.";
-
   return (
     <Dialog label="Now playing" title="Now playing" onClose={props.onClose}>
       <div className="now-playing__layout">
@@ -67,7 +68,7 @@ export function NowPlayingPanel(props: PlayerControls & {
           <PlaybackButtons {...props} />
           {props.onPopOut && (
             <div style={{ marginTop: "var(--space-2)" }}>
-              <IconButton icon="expand" label="Open mini player" onClick={props.onPopOut} />
+              <Button variant="secondary" onClick={props.onPopOut}>Pop out mini player</Button>
             </div>
           )}
           <div className="player-bar__seek">
@@ -77,9 +78,53 @@ export function NowPlayingPanel(props: PlayerControls & {
             <input type="range" aria-label="Seek" min={0} max={props.duration || 0} value={Math.min(props.currentTime, props.duration)} onChange={(event) => props.onSeek(Number(event.target.value))} />
             <span>{formatTime(props.duration)}</span>
           </div>
-          <label>Volume <input type="range" aria-label="Volume" min={0} max={1} step={.01} value={props.volume} onChange={(event) => props.onVolume(Number(event.target.value))} /></label>
-          <label>Sleep <select aria-label="Sleep timer" value={props.sleepMinutes ?? ""} onChange={(event) => props.onSetSleep(event.target.value ? Number(event.target.value) : null)}><option value="">Off</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label>
-          <p className="muted" style={{ fontSize: "0.85rem", marginTop: "var(--space-3)" }}>{stopNote}</p>
+          {props.onSetSpeed && (
+            <div className="np-row" role="group" aria-label="Playback speed">
+              <span className="np-row__label">Speed</span>
+              <div className="speed-seg">
+                {SPEEDS.map((s) => (
+                  <button key={s} type="button"
+                    className={`speed-seg__btn${(props.playbackSpeed ?? 1) === s ? " speed-seg__btn--active" : ""}`}
+                    aria-pressed={(props.playbackSpeed ?? 1) === s}
+                    onClick={() => props.onSetSpeed?.(s)}>{formatSpeed(s)}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="np-row">
+            <span className="np-row__label">Volume</span>
+            {props.onToggleMute && (
+              <IconButton icon={props.muted ? "mute" : "volume"} label={props.muted ? "Unmute" : "Mute"} onClick={props.onToggleMute} />
+            )}
+            <input type="range" aria-label="Volume" min={0} max={1} step={.01} value={props.muted ? 0 : props.volume} onChange={(event) => props.onVolume(Number(event.target.value))} />
+          </div>
+          <div className="np-row">
+            <span className="np-row__label">Sleep</span>
+            <select aria-label="Sleep timer" value={props.sleepAtChapterEnd ? "chapter" : (props.sleepMinutes ?? "")} onChange={(event) => {
+              const v = event.target.value;
+              if (v === "chapter") props.onSetSleep(null, true);
+              else props.onSetSleep(v ? Number(v) : null, false);
+            }}>
+              <option value="">Off</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="chapter">End of chapter</option>
+            </select>
+            {(props.sleepRemaining != null || props.sleepAtChapterEnd) && (
+              <span className="sleep-countdown muted" aria-live="polite">{props.sleepAtChapterEnd ? "until end of chapter" : formatTime(props.sleepRemaining ?? 0)}</span>
+            )}
+          </div>
+          <div className="np-endactions">
+            {props.canPlayNext && props.onPlayNextChapter ? (
+              <>
+                <Button variant="primary" onClick={props.onPlayNextChapter}>Play next chapter →</Button>
+                <p className="muted np-endactions__note">Plays this chapter, then stops. Tap to continue when you're ready.</p>
+              </>
+            ) : (
+              <>
+                <Button variant="secondary" onClick={props.onMarkComplete}>Mark work complete</Button>
+                <Button variant="secondary" onClick={() => props.onOpenAuthor(context.authorId)}>More by {context.authorName}</Button>
+                <p className="muted np-endactions__note">Last chapter — playback stops at the end.</p>
+              </>
+            )}
+          </div>
           {props.chapters && props.chapters.length > 1 && (
             <section className="now-playing__chapters">
               <h2 className="eyebrow muted">In this work</h2>
@@ -97,7 +142,11 @@ export function NowPlayingPanel(props: PlayerControls & {
                           <span className="visually-hidden">{c.played ? "Played" : "Not played"}</span>
                         </span>
                         <span className="chapter-jump__title" dir="auto">Ch {c.chapterNo} — {c.title}</span>
-                        {c.played ? <span className="muted" aria-hidden="true">played</span> : null}
+                        {isCurrent
+                          ? <span className="chapter-jump__state chapter-jump__state--current">Now playing</span>
+                          : c.played
+                            ? <span className="chapter-jump__state muted" aria-hidden="true">Played</span>
+                            : <span className="chapter-jump__state chapter-jump__state--new">New</span>}
                       </button>
                     </li>
                   );

@@ -205,3 +205,31 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .search-tips__list { margin: 6px 0 0; padding-inline-start: 18px; font-size: 0.82em; line-height: 1.7; }
 .search-tips__list code { font-size: 0.95em; }
 .link-button { background: none; border: none; padding: 0; color: var(--color-accent); font: inherit; cursor: pointer; text-decoration: underline; }
+
+/* M24 — scrubber hit-area (PL-9) */
+.seek-range { height: 22px; cursor: pointer; }
+.seek-range::-webkit-slider-thumb { width: 14px; height: 14px; border-radius: 50%; opacity: 0; transition: opacity .12s; }
+.player-bar__seek:hover .seek-range::-webkit-slider-thumb,
+.now-playing__layout .seek-range:focus-visible::-webkit-slider-thumb { opacity: 1; }
+
+/* M24 — speed (PL-1) */
+.speed-btn { min-width: 3ch; padding: 2px 8px; border-radius: var(--radius-sm, 6px); background: var(--color-surface-raised, #1b1b1f); color: var(--color-text, #fff); border: 1px solid var(--color-border, #333); cursor: pointer; font-variant-numeric: tabular-nums; }
+.speed-btn:hover { border-color: var(--color-accent, #218bff); }
+.speed-seg { display: inline-flex; gap: 4px; }
+.speed-seg__btn { padding: 2px 8px; border-radius: var(--radius-sm, 6px); background: transparent; color: var(--color-text-muted, #aaa); border: 1px solid var(--color-border, #333); cursor: pointer; font-variant-numeric: tabular-nums; }
+.speed-seg__btn--active { background: var(--color-accent, #218bff); color: #fff; border-color: var(--color-accent, #218bff); }
+
+/* M24 — Now Playing rows */
+.np-row { display: flex; align-items: center; gap: var(--space-2, 8px); margin: var(--space-2, 8px) 0; flex-wrap: wrap; }
+.np-row__label { min-width: 64px; color: var(--color-text-muted, #aaa); font-size: .9rem; }
+.sleep-countdown { font-variant-numeric: tabular-nums; }
+
+/* M24 — chapter-end actions (PL-2) */
+.np-endactions { display: flex; gap: var(--space-2, 8px); flex-wrap: wrap; align-items: center; margin-top: var(--space-3, 12px); }
+.np-endactions__note { flex-basis: 100%; font-size: .85rem; margin: 4px 0 0; }
+
+/* M24 — scannable chapter states (PL-4) */
+.chapter-jump__state { margin-left: auto; font-size: .8rem; }
+.chapter-jump__state--current { color: var(--color-accent, #218bff); font-weight: 600; }
+.chapter-jump__state--new { color: var(--color-text, #fff); }
+.chapter-jump--current { background: color-mix(in srgb, var(--color-accent, #218bff) 14%, transparent); }

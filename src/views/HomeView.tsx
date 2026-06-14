@@ -70,8 +70,8 @@ export function HomeView(props: {
             authorId={keepListening.authorId}
             authorName={keepListening.authorName}
             progress={keepListeningPercent(keepListening)}
-            meta={`Next: Chapter ${keepListening.nextChapter.chapterNo}, ${keepListening.nextChapter.title} · ${keepListening.remainingUnplayed} left · ${formatRelative(keepListening.lastPlayedAt, props.nowMs)}`}
-            actionLabel="Keep listening"
+            meta={<><strong dir="auto">{keepListening.nextChapter.title}</strong><span className="muted">{` · Ch. ${keepListening.nextChapter.chapterNo} · ${keepListening.remainingUnplayed} left · ${formatRelative(keepListening.lastPlayedAt, props.nowMs)}`}</span></>}
+            actionLabel={keepListening.playedChapters === 0 ? "Start listening" : "Keep listening"}
             onAction={() => props.onPlay(context)}
             onOpenAuthor={() => props.onOpenAuthor(keepListening.authorId)}
             menuItems={[{ label: "View creator", onSelect: () => props.onOpenAuthor(keepListening.authorId) }]}

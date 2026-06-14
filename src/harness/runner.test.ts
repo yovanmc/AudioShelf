@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -145,6 +145,29 @@ describe("m21Steps", () => {
       "chapter-metadata-edit",
       "narrators-browse",
       "discover-by-facet",
+    ]);
+  });
+});
+
+describe("m24Steps", () => {
+  it("captures the seven M24 listening-loop player surfaces in order", () => {
+    const noop = async () => {};
+    expect(m24Steps({
+      showCompactPlayer: noop,
+      showSpeedCycled: noop,
+      showNowPlaying: noop,
+      showNextAction: noop,
+      showLastAction: noop,
+      showChapterStates: noop,
+      showSleepCountdown: noop,
+    }).map((s) => s.name)).toEqual([
+      "01-player-compact",
+      "02-speed",
+      "03-now-playing",
+      "04-next-action",
+      "05-last-action",
+      "06-chapter-states",
+      "07-sleep-countdown",
     ]);
   });
 });

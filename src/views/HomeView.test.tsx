@@ -18,6 +18,7 @@ const nextChapter: ChapterRow = {
   takeaway: "",
   isFavorite: false,
   metadata: [],
+  playbackPositionSecs: 0,
 };
 
 const home: HomeData = {
@@ -76,10 +77,11 @@ function baseProps(over: Partial<React.ComponentProps<typeof HomeView>> = {}) {
 
 describe("HomeView", () => {
   it("renders continue-listening and stats", () => {
-    render(<HomeView {...baseProps()} />);
+    const { container } = render(<HomeView {...baseProps()} />);
     expect(screen.getByText("Keep listening to Alice")).toBeInTheDocument();
     expect(screen.getAllByText("Alice").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Next: Chapter 2, Tale 2/)).toBeInTheDocument();
+    // Next-chapter title (Tale 2) is now elevated as a <strong dir="auto"> in the hero meta (PL-5)
+    expect(container.querySelector("strong[dir='auto']")).toHaveTextContent("Tale 2");
     expect(screen.getByText("Total time")).toBeInTheDocument();
     expect(screen.getByText("2 days")).toBeInTheDocument();
     expect(screen.getByText("You May Like")).toBeInTheDocument();

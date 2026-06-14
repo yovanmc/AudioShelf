@@ -58,6 +58,7 @@ pub fn run() {
             commands::get_author_detail,
             commands::set_chapter_played,
             commands::mark_chapter_finished,
+            commands::save_playback_position,
             commands::set_author_display_name,
             commands::get_all_tags,
             commands::set_author_tags,

@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -312,6 +312,35 @@ export function m21Steps(nav: {
     { name: "chapter-metadata-edit", run: nav.showChapterMetadataEditor },
     { name: "narrators-browse", run: nav.showNarratorsBrowse },
     { name: "discover-by-facet", run: nav.showDiscoverByFacet },
+  ];
+}
+
+/**
+ * Build the "m24" walkthrough: seven surfaces introduced in M24 (Listening Loop) —
+ * compact player bar with speed/mute/sleep controls, speed cycled to 1.25×, expanded
+ * Now Playing panel (speed seg + volume row + sleep row), chapter-end action for a
+ * non-last chapter ("Play next chapter →"), chapter-end action for the last chapter
+ * ("Mark work complete" + "More by …"), the "In this work" chapter list with
+ * current/played/new states, and the sleep countdown label after setting a 15-min timer.
+ * Transient UI (expanded panel, sleep, speed) is reset between steps so nothing leaks.
+ */
+export function m24Steps(nav: {
+  showCompactPlayer: () => Promise<void>;
+  showSpeedCycled: () => Promise<void>;
+  showNowPlaying: () => Promise<void>;
+  showNextAction: () => Promise<void>;
+  showLastAction: () => Promise<void>;
+  showChapterStates: () => Promise<void>;
+  showSleepCountdown: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "01-player-compact", run: nav.showCompactPlayer },
+    { name: "02-speed", run: nav.showSpeedCycled },
+    { name: "03-now-playing", run: nav.showNowPlaying },
+    { name: "04-next-action", run: nav.showNextAction },
+    { name: "05-last-action", run: nav.showLastAction },
+    { name: "06-chapter-states", run: nav.showChapterStates },
+    { name: "07-sleep-countdown", run: nav.showSleepCountdown },
   ];
 }
 

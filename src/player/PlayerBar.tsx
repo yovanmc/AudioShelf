@@ -2,7 +2,7 @@ import type { PlaybackContext } from "../lib/api";
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
 import { IconButton } from "../components/ui";
-import { formatTime, timeLabel, type TimeLabelMode, SKIP_BACK_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, SKIP_FWD_LARGE } from "./playback";
+import { formatTime, formatSpeed, timeLabel, type TimeLabelMode, SKIP_BACK_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, SKIP_FWD_LARGE } from "./playback";
 
 export interface PlayerControls {
   isPlaying: boolean;
@@ -14,7 +14,13 @@ export interface PlayerControls {
   onSeek: (secs: number) => void;
   onSkip: (delta: number) => void;
   onVolume: (value: number) => void;
-  onSetSleep: (minutes: number | null) => void;
+  onSetSleep: (minutes: number | null, atChapterEnd?: boolean) => void;
+  // M24 additions
+  playbackSpeed?: number;
+  muted?: boolean;
+  onToggleMute?: () => void;
+  sleepRemaining?: number | null;
+  sleepAtChapterEnd?: boolean;
 }
 
 export interface PlayerBarProps extends PlayerControls {
@@ -23,6 +29,8 @@ export interface PlayerBarProps extends PlayerControls {
   onOpenAuthor: (authorId: number) => void;
   timeLabelMode?: TimeLabelMode;
   onCycleTimeLabel?: () => void;
+  onCycleSpeed?: () => void;     // M24 (PL-1)
+  onOpenChapters?: () => void;   // M24 (PL-6)
 }
 
 export function PlaybackButtons(props: Pick<PlayerControls, "isPlaying" | "onToggle" | "onSkip">) {
@@ -56,15 +64,33 @@ export function PlayerBar(props: PlayerBarProps) {
           <button type="button" className="time-label" title="Toggle time display" onClick={props.onCycleTimeLabel}>
             {timeLabel(props.timeLabelMode ?? "elapsed", props.currentTime, props.duration)}
           </button>
-          <input type="range" aria-label="Seek" min={0} max={props.duration > 0 ? props.duration : 0} value={Math.min(props.currentTime, props.duration)} onChange={(event) => props.onSeek(Number(event.target.value))} />
+          <input className="seek-range" type="range" aria-label="Seek" min={0} max={props.duration > 0 ? props.duration : 0} value={Math.min(props.currentTime, props.duration)} onChange={(event) => props.onSeek(Number(event.target.value))} />
           <span>{formatTime(props.duration)}</span>
         </div>
       </div>
       <div className="player-bar__utility">
-        <input type="range" aria-label="Volume" min={0} max={1} step={.01} value={props.volume} onChange={(event) => props.onVolume(Number(event.target.value))} />
-        <select aria-label="Sleep timer" value={props.sleepMinutes ?? ""} onChange={(event) => props.onSetSleep(event.target.value ? Number(event.target.value) : null)}>
-          <option value="">Sleep off</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option>
+        {props.onCycleSpeed && (
+          <button type="button" className="speed-btn" title="Playback speed" aria-label={`Playback speed ${formatSpeed(props.playbackSpeed ?? 1)}`} onClick={props.onCycleSpeed}>
+            {formatSpeed(props.playbackSpeed ?? 1)}
+          </button>
+        )}
+        {props.onToggleMute && (
+          <IconButton icon={props.muted ? "mute" : "volume"} label={props.muted ? "Unmute" : "Mute"} onClick={props.onToggleMute} />
+        )}
+        <input className="volume-range" type="range" aria-label="Volume" min={0} max={1} step={.01} value={props.muted ? 0 : props.volume} onChange={(event) => props.onVolume(Number(event.target.value))} />
+        <select aria-label="Sleep timer" value={props.sleepAtChapterEnd ? "chapter" : (props.sleepMinutes ?? "")} onChange={(event) => {
+          const v = event.target.value;
+          if (v === "chapter") props.onSetSleep(null, true);
+          else props.onSetSleep(v ? Number(v) : null, false);
+        }}>
+          <option value="">Sleep off</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="chapter">End of chapter</option>
         </select>
+        {(props.sleepRemaining != null || props.sleepAtChapterEnd) && (
+          <span className="sleep-countdown muted" aria-live="polite">{props.sleepAtChapterEnd ? "until end" : formatTime(props.sleepRemaining ?? 0)}</span>
+        )}
+        {props.onOpenChapters && (
+          <IconButton icon="list" label="Chapters" onClick={props.onOpenChapters} />
+        )}
         <IconButton icon="expand" label="Expand now playing" onClick={props.onExpand} />
       </div>
     </div>

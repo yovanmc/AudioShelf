@@ -12,6 +12,7 @@ import {
   listTagsWithCounts, renameTag, mergeTags, setTagAlias, clearTagAlias,
   detectSeries, applySeries, getAuthorSeries,
   searchTranscripts, getChapterTranscript,
+  savePlaybackPosition,
   setChapterSummary, setChapterTakeaway, setChapterFavorite,
   setWorkReEntryNote, setWorkRating,
   getChapterJournal, addChapterNote, deleteChapterNote, addBookmark, deleteBookmark,
@@ -50,9 +51,9 @@ import { MiniPlayer } from "./player/MiniPlayer";
 import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
-import { clampSeek, type TimeLabelMode } from "./player/playback";
+import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -245,6 +246,16 @@ export default function App() {
   const [timeLabelMode, setTimeLabelMode] = useState<TimeLabelMode>("elapsed");
   const cycleTimeLabel = () =>
     setTimeLabelMode((m) => (m === "elapsed" ? "remaining" : m === "remaining" ? "percent" : "elapsed"));
+  const [playbackSpeed, setPlaybackSpeedState] = useState(1);
+  const playbackSpeedRef = useRef(1);
+  playbackSpeedRef.current = playbackSpeed;
+  const [muted, setMuted] = useState(false);
+  const [sleepRemaining, setSleepRemaining] = useState<number | null>(null);
+  const [sleepAtChapterEnd, setSleepAtChapterEnd] = useState(false);
+  const sleepAtChapterEndRef = useRef(false);
+  sleepAtChapterEndRef.current = sleepAtChapterEnd;
+  const sleepIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastPosSaveRef = useRef(0); // wall-clock ms of last persisted position
   const [currentWorkChapters, setCurrentWorkChapters] = useState<ChapterRow[]>([]);
 
   const [home, setHome] = useState<HomeData | null>(null);
@@ -794,6 +805,22 @@ export default function App() {
     });
   }
 
+  async function playAuthorNext(authorId: number) {
+    const d = await getAuthorDetail(authorId);
+    for (const w of d.works) {
+      const ch = w.chapters.find((c) => !c.played) ?? w.chapters[0];
+      if (ch) {
+        playChapter({
+          chapter: ch, authorId: d.id, authorName: d.name,
+          workId: w.id, workTitle: w.baseTitle,
+          workTotalChapters: w.chapters.length,
+          workPlayedChapters: w.chapters.filter((c) => c.played).length,
+        });
+        return;
+      }
+    }
+  }
+
   function jumpToChapter(chapter: ChapterRow) {
     const ctx = currentRef.current;
     if (!ctx) return;
@@ -810,6 +837,9 @@ export default function App() {
     setCurrent(context);
     const audio = audioRef.current;
     if (audio) {
+      // Per-second resume (M24): seed a resume seek only if no bookmark seek is already pending.
+      const resumeAt = context.chapter.playbackPositionSecs;
+      if (pendingSeekRef.current == null && resumeAt > 1) pendingSeekRef.current = resumeAt;
       audio.src = fileUrl(context.chapter.filePath);
       audio.load();
       void audio.play().catch(() => { /* autoplay may be blocked; bar still shows */ });
@@ -838,22 +868,50 @@ export default function App() {
     setVolumeState(v);
   }
 
-  function setSleep(minutes: number | null) {
-    if (sleepTimerRef.current) {
-      clearTimeout(sleepTimerRef.current);
-      sleepTimerRef.current = null;
-    }
+  function setPlaybackSpeed(v: number) {
+    if (audioRef.current) audioRef.current.playbackRate = v;
+    setPlaybackSpeedState(v);
+    void setSetting("playback_speed", String(v));
+  }
+
+  function toggleMute() {
+    const audio = audioRef.current;
+    const next = !muted;
+    setMuted(next);
+    if (audio) audio.muted = next;
+  }
+
+  function setSleep(minutes: number | null, atChapterEnd = false) {
+    if (sleepTimerRef.current) { clearTimeout(sleepTimerRef.current); sleepTimerRef.current = null; }
+    if (sleepIntervalRef.current) { clearInterval(sleepIntervalRef.current); sleepIntervalRef.current = null; }
+    setSleepAtChapterEnd(atChapterEnd);
+    if (atChapterEnd) { setSleepMinutes(null); setSleepRemaining(null); return; }
     setSleepMinutes(minutes);
     if (minutes) {
+      const deadline = Date.now() + minutes * 60_000;
+      setSleepRemaining(minutes * 60);
       sleepTimerRef.current = setTimeout(() => {
         audioRef.current?.pause();
         setSleepMinutes(null);
+        setSleepRemaining(null);
+        if (sleepIntervalRef.current) { clearInterval(sleepIntervalRef.current); sleepIntervalRef.current = null; }
       }, minutes * 60_000);
+      sleepIntervalRef.current = setInterval(() => {
+        const rem = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+        setSleepRemaining(rem);
+        if (rem <= 0 && sleepIntervalRef.current) { clearInterval(sleepIntervalRef.current); sleepIntervalRef.current = null; }
+      }, 1000);
+    } else {
+      setSleepRemaining(null);
     }
   }
 
   async function handleEnded() {
     setIsPlaying(false);
+    if (sleepAtChapterEndRef.current) {
+      audioRef.current?.pause();
+      setSleepAtChapterEnd(false);
+    }
     const c = currentRef.current;
     if (!c) return;
     await markChapterFinished(c.chapter.id, Date.now());
@@ -977,6 +1035,7 @@ export default function App() {
       setHomeShelves(parseHomeShelves(await getSetting("home_shelves")).shelves);
       setDensity(parseDensity(await getSetting("library_density")));
       setA11y(parseA11yPrefs(await getSetting("a11y_prefs")));
+      { const s = parseFloat((await getSetting("playback_speed")) ?? ""); setPlaybackSpeedState(Number.isFinite(s) && s > 0 ? s : 1); }
 
       if (args.autostart && args.walkthrough) {
         const openFirstAuthor = async () => {
@@ -1865,6 +1924,132 @@ export default function App() {
                   openDiscovery();
                 },
               })
+            : args.walkthrough === "m24"
+            ? m24Steps({
+                // Step 1: compact bar — force-reset speed/sleep, start playing the
+                // first chapter of the multi-chapter work, collapse the panel.
+                showCompactPlayer: async () => {
+                  setPlaybackSpeed(1);
+                  setSleep(null);
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  setDetail(creator);
+                  setRoute({ kind: "author" });
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(false);
+                  await settle();
+                },
+                // Step 2: cycle speed once (1 → 1.25×); compact bar still collapsed.
+                showSpeedCycled: async () => {
+                  setPlaybackSpeed(nextSpeed(playbackSpeed));
+                  setPlayerExpanded(false);
+                  await settle();
+                },
+                // Step 3: expanded Now Playing panel — reset speed to 1 to avoid
+                // carrying forward the cycled value, open the panel.
+                showNowPlaying: async () => {
+                  setPlaybackSpeed(1);
+                  setPlayerExpanded(true);
+                  await settle();
+                },
+                // Step 4: non-last chapter — pick the first chapter of the multi-chapter
+                // work so "Play next chapter →" is shown. Keep panel expanded.
+                showNextAction: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  // chapters[0] is not the last chapter (work has ≥2 chapters).
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(true);
+                  await settle(); // let currentWorkChapters fetch resolve
+                },
+                // Step 5: last chapter — drive playChapter to the final chapter of the
+                // same multi-chapter work so "Mark work complete" + "More by …" appear.
+                showLastAction: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  const lastChapter = work?.chapters[work.chapters.length - 1];
+                  if (!work || !lastChapter) return;
+                  playChapter({
+                    chapter: lastChapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(true);
+                  await settle(); // let currentWorkChapters fetch resolve
+                },
+                // Step 6: "In this work" chapter list — revert to chapter[0] (non-last)
+                // so the list has current + new states visible. Panel stays expanded.
+                showChapterStates: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(true);
+                  await settle();
+                },
+                // Step 7: set a 15-min sleep timer and capture the countdown label.
+                // Reset speed to 1 so no leftover state bleeds through. Collapse panel
+                // after so subsequent sessions start clean.
+                showSleepCountdown: async () => {
+                  setPlaybackSpeed(1);
+                  setSleep(15);
+                  setPlayerExpanded(false);
+                  await settle();
+                },
+              })
             : browseSteps({
                 // Seed tags on a few authors + a played chapter so sort-by-length,
                 // played%, the tag filter, and the status filter all have signal.
@@ -2375,6 +2560,7 @@ export default function App() {
           onFilterStatusChange={setFilterStatus}
           allTags={allTags}
           onPlayNextOfWork={playNextChapterOfWork}
+          onPlayAuthor={(id) => void playAuthorNext(id)}
           selectMode={selectMode}
           onSelectModeChange={(on) => { setSelectMode(on); if (!on) setSelectedWorkIds([]); }}
           selectedWorkIds={selectedWorkIds}
@@ -2417,6 +2603,13 @@ export default function App() {
       onOpenAuthor={openAuthor}
       timeLabelMode={timeLabelMode}
       onCycleTimeLabel={cycleTimeLabel}
+      playbackSpeed={playbackSpeed}
+      onCycleSpeed={() => setPlaybackSpeed(nextSpeed(playbackSpeed))}
+      muted={muted}
+      onToggleMute={toggleMute}
+      sleepRemaining={sleepRemaining}
+      sleepAtChapterEnd={sleepAtChapterEnd}
+      onOpenChapters={() => setPlayerExpanded(true)}
     />
   );
   const view = routedView();
@@ -2428,7 +2621,14 @@ export default function App() {
       <audio
         ref={audioRef}
         onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
+        onPause={() => {
+          setIsPlaying(false);
+          const cur = currentRef.current;
+          const audio = audioRef.current;
+          if (cur && audio && audio.currentTime > 0) {
+            void savePlaybackPosition(cur.chapter.id, Math.floor(audio.currentTime));
+          }
+        }}
         onTimeUpdate={(e) => {
           const t = e.currentTarget.currentTime;
           setCurrentTime(t);
@@ -2439,6 +2639,11 @@ export default function App() {
               t,
             );
           }
+          const cur = currentRef.current;
+          if (cur && t > 0 && Date.now() - lastPosSaveRef.current > 10_000) {
+            lastPosSaveRef.current = Date.now();
+            void savePlaybackPosition(cur.chapter.id, Math.floor(t));
+          }
         }}
         onLoadedMetadata={(e) => {
           setDuration(e.currentTarget.duration || 0);
@@ -2446,6 +2651,8 @@ export default function App() {
             try { e.currentTarget.currentTime = pendingSeekRef.current; } catch {}
             pendingSeekRef.current = null;
           }
+          e.currentTarget.playbackRate = playbackSpeedRef.current;
+          e.currentTarget.muted = muted;
         }}
         onEnded={handleEnded}
       />
@@ -2522,6 +2729,24 @@ export default function App() {
           onToggleFavorite={handleToggleCurrentFavorite}
           onJumpToBookmark={jumpToBookmark}
           onPopOut={() => { void openMiniPlayer(); }}
+          playbackSpeed={playbackSpeed}
+          onSetSpeed={setPlaybackSpeed}
+          muted={muted}
+          onToggleMute={toggleMute}
+          sleepRemaining={sleepRemaining}
+          sleepAtChapterEnd={sleepAtChapterEnd}
+          onPlayNextChapter={() => playNextChapterRef.current()}
+          onMarkComplete={() => { const c = currentRef.current; if (c) void markChapterFinished(c.chapter.id, Date.now()).then(() => { void loadAuthors(); }); }}
+          canPlayNext={(() => {
+            // Mirror playNextChapterRef exactly: a next chapter exists iff the current
+            // chapter is not the last *position* in the work. chapterNo is unreliable here —
+            // grouped works can repeat chapter numbers (1,2,2,3,3), so a position check is required.
+            const c = currentRef.current;
+            const chs = currentWorkChaptersRef.current;
+            if (!c || chs.length === 0) return false;
+            const idx = chs.findIndex((ch) => ch.id === c.chapter.id);
+            return idx >= 0 && idx < chs.length - 1;
+          })()}
         />
       )}
     </div>
