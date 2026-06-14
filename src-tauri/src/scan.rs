@@ -127,6 +127,7 @@ pub fn scan_into(conn: &Connection, root: &Path) -> rusqlite::Result<ScanResult>
         authors: count(conn, "authors"),
         works: count(conn, "works"),
         chapters: count(conn, "chapters"),
+        ..Default::default()
     })
 }
 
