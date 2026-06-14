@@ -1,13 +1,17 @@
 //! Scan a single root folder of `Author/` directories full of loose audio files
 //! into the DB. Idempotent: re-scanning updates rather than duplicating.
+//! Incremental: files whose mtime+size are unchanged are skipped (no re-probe).
+//! Transactional: each author folder is committed or rolled back independently.
+//! Observable: progress callbacks + cancellation flag supported via `ScanOpts`.
 
 use crate::grouping::{group_author, Work};
-use crate::model::ScanResult;
+use crate::model::{ScanError, ScanProgress, ScanResult};
 use crate::natsort::natural_cmp;
 use crate::regroup::regroup_author;
 use crate::transcripts::parse_srt_vtt;
 use rusqlite::{params, Connection};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const AUDIO_EXTS: &[&str] = &["mp3", "m4a", "aac", "mp4", "opus", "ogg", "flac", "wav"];
 
@@ -15,16 +19,21 @@ fn is_audio(ext: &str) -> bool {
     AUDIO_EXTS.contains(&ext.to_ascii_lowercase().as_str())
 }
 
-fn sorted_dirs(root: &Path) -> Vec<std::path::PathBuf> {
-    let mut dirs: Vec<_> = std::fs::read_dir(root)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.is_dir())
-        .collect();
+/// Read + naturally-sort the author subfolders. Returns an io::Error if the root is unreadable.
+fn sorted_dirs(root: &Path) -> std::io::Result<Vec<std::path::PathBuf>> {
+    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+    for entry in std::fs::read_dir(root)? {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let p = entry.path();
+        if p.is_dir() {
+            dirs.push(p);
+        }
+    }
     dirs.sort_by(|a, b| natural_cmp(&a.to_string_lossy(), &b.to_string_lossy()));
-    dirs
+    Ok(dirs)
 }
 
 fn file_name(p: &Path) -> String {
@@ -42,93 +51,326 @@ fn probe_duration_secs(path: &Path) -> i64 {
     }
 }
 
+/// Hooks the command layer passes in. Defaults make `scan_into` (tests) behave as before:
+/// never cancel, no progress callback.
+pub struct ScanOpts<'a> {
+    /// Checked between authors; when true the scan stops early (cancelled).
+    pub cancel: Option<&'a AtomicBool>,
+    /// Called between authors with live progress (the command layer emits a Tauri event).
+    pub progress: Option<&'a mut dyn FnMut(ScanProgress)>,
+}
+
+impl<'a> Default for ScanOpts<'a> {
+    fn default() -> Self {
+        ScanOpts { cancel: None, progress: None }
+    }
+}
+
+/// Back-compat entry point used by tests and `fixture_scan.rs`: a full scan with no
+/// cancellation and no progress reporting.
 pub fn scan_into(conn: &Connection, root: &Path) -> rusqlite::Result<ScanResult> {
-    for author_path in sorted_dirs(root) {
+    scan_into_with(conn, root, &mut ScanOpts::default())
+}
+
+pub fn scan_into_with(
+    conn: &Connection,
+    root: &Path,
+    opts: &mut ScanOpts,
+) -> rusqlite::Result<ScanResult> {
+    let generation = next_scan_generation(conn)?;
+    let mut errors: Vec<ScanError> = Vec::new();
+    let mut added = 0usize;
+    let mut updated = 0usize;
+    let mut skipped = 0usize;
+    let mut cancelled = false;
+
+    let author_dirs = match sorted_dirs(root) {
+        Ok(d) => d,
+        Err(e) => {
+            errors.push(ScanError { path: root.to_string_lossy().to_string(), reason: e.to_string() });
+            return Ok(finish_result(conn, added, updated, 0, skipped, errors, false));
+        }
+    };
+    let authors_total = author_dirs.len();
+
+    for (i, author_path) in author_dirs.into_iter().enumerate() {
+        if let Some(flag) = opts.cancel.as_ref() {
+            if flag.load(Ordering::Relaxed) {
+                cancelled = true;
+                break;
+            }
+        }
         let folder = file_name(&author_path);
-        conn.execute(
-            "INSERT INTO authors(folder_name, status) VALUES (?1, 'active')
-             ON CONFLICT(folder_name) DO UPDATE SET status='active'",
-            params![folder],
-        )?;
-        let author_id: i64 = conn.query_row(
-            "SELECT id FROM authors WHERE folder_name=?1",
-            params![folder],
-            |r| r.get(0),
-        )?;
 
-        // Collect audio files in this author dir (top-level only).
-        let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&author_path)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| {
-                p.is_file()
-                    && p.extension()
-                        .map(|x| is_audio(&x.to_string_lossy()))
-                        .unwrap_or(false)
-            })
-            .collect();
-        files.sort_by(|a, b| natural_cmp(&a.to_string_lossy(), &b.to_string_lossy()));
-
-        let stems: Vec<String> = files
-            .iter()
-            .map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default())
-            .collect();
-        let works: Vec<Work> = group_author(&stems);
-
-        for work in works {
-            conn.execute(
-                "INSERT INTO works(author_id, base_title, sort_key, status)
-                 VALUES (?1, ?2, ?3, 'active')
-                 ON CONFLICT(author_id, base_title) DO UPDATE SET status='active'",
-                params![author_id, work.base_title, work.base_title.to_lowercase()],
-            )?;
-            let work_id: i64 = conn.query_row(
-                "SELECT id FROM works WHERE author_id=?1 AND base_title=?2",
-                params![author_id, work.base_title],
-                |r| r.get(0),
-            )?;
-
-            for chapter in work.chapters {
-                // Find the on-disk file whose stem matches this chapter.
-                // Use original_stem (the verbatim input stem) for accurate lookup.
-                let file = files.iter().find(|p| {
-                    p.file_stem()
-                        .map(|s| s.to_string_lossy() == chapter.original_stem)
-                        .unwrap_or(false)
-                });
-                let Some(file) = file else { continue };
-                let path_str = file.to_string_lossy().to_string();
-                let raw = file_name(file);
-                let format = file
-                    .extension()
-                    .map(|x| x.to_string_lossy().to_ascii_lowercase())
-                    .unwrap_or_default();
-                let duration = probe_duration_secs(file);
-                upsert_chapter(conn, work_id, &path_str, &raw, chapter.chapter_no, &format, duration)?;
-
-                // Look up the chapter id just upserted, then check for a sidecar
-                // transcript file (.srt or .vtt with the same stem).
-                let chapter_id: i64 = conn.query_row(
-                    "SELECT id FROM chapters WHERE file_path=?1",
-                    params![path_str],
-                    |r| r.get(0),
-                )?;
-                ingest_sidecar_transcript(conn, chapter_id, file)?;
+        if let Err(e) = conn.execute_batch("BEGIN") {
+            errors.push(ScanError { path: folder.clone(), reason: format!("begin: {e}") });
+            continue;
+        }
+        let author_res = scan_author(
+            conn,
+            &author_path,
+            &folder,
+            generation,
+            &mut added,
+            &mut updated,
+            &mut skipped,
+            &mut errors,
+        );
+        match author_res {
+            Ok(()) => {
+                let _ = conn.execute_batch("COMMIT");
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                errors.push(ScanError { path: folder.clone(), reason: e.to_string() });
             }
         }
 
-        // Re-apply any saved grouping overrides for this author (DB-only).
-        regroup_author(conn, author_id)?;
+        if let Some(cb) = opts.progress.as_mut() {
+            cb(ScanProgress {
+                authors_done: i + 1,
+                authors_total,
+                current: folder.clone(),
+                added,
+                updated,
+                skipped,
+            });
+        }
     }
 
-    Ok(ScanResult {
+    let mut removed = 0usize;
+    if !cancelled {
+        removed = sweep_deleted(conn, generation)?;
+    }
+
+    Ok(finish_result(conn, added, updated, removed, skipped, errors, cancelled))
+}
+
+/// Monotonic scan counter persisted in `settings`. Incremented once per scan; used to stamp
+/// `chapters.last_seen_scan` so the deletion sweep can find rows not observed this scan.
+fn next_scan_generation(conn: &Connection) -> rusqlite::Result<i64> {
+    let current: i64 = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key='scan_generation'",
+            [],
+            |r| {
+                let v: String = r.get(0)?;
+                Ok(v.parse::<i64>().unwrap_or(0))
+            },
+        )
+        .unwrap_or(0);
+    let next = current + 1;
+    conn.execute(
+        "INSERT OR REPLACE INTO settings(key, value) VALUES('scan_generation', ?1)",
+        params![next.to_string()],
+    )?;
+    Ok(next)
+}
+
+/// Scan one author folder. Errors here roll back only this author's transaction.
+#[allow(clippy::too_many_arguments)]
+fn scan_author(
+    conn: &Connection,
+    author_path: &Path,
+    folder: &str,
+    generation: i64,
+    added: &mut usize,
+    updated: &mut usize,
+    skipped: &mut usize,
+    errors: &mut Vec<ScanError>,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO authors(folder_name, status) VALUES (?1, 'active')
+         ON CONFLICT(folder_name) DO UPDATE SET status='active'",
+        params![folder],
+    )?;
+    let author_id: i64 = conn.query_row(
+        "SELECT id FROM authors WHERE folder_name=?1",
+        params![folder],
+        |r| r.get(0),
+    )?;
+
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    match std::fs::read_dir(author_path) {
+        Ok(rd) => {
+            for entry in rd {
+                let entry = match entry {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                let p = entry.path();
+                if p.is_file()
+                    && p.extension()
+                        .map(|x| is_audio(&x.to_string_lossy()))
+                        .unwrap_or(false)
+                {
+                    files.push(p);
+                }
+            }
+        }
+        Err(e) => {
+            errors.push(ScanError { path: folder.to_string(), reason: e.to_string() });
+            return Ok(());
+        }
+    }
+    files.sort_by(|a, b| natural_cmp(&a.to_string_lossy(), &b.to_string_lossy()));
+
+    use std::collections::HashMap;
+    let mut by_stem: HashMap<String, &std::path::PathBuf> = HashMap::with_capacity(files.len());
+    for p in &files {
+        if let Some(s) = p.file_stem() {
+            by_stem.insert(s.to_string_lossy().to_string(), p);
+        }
+    }
+
+    let stems: Vec<String> = files
+        .iter()
+        .map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default())
+        .collect();
+    let works: Vec<Work> = group_author(&stems);
+
+    for work in works {
+        conn.execute(
+            "INSERT INTO works(author_id, base_title, sort_key, status)
+             VALUES (?1, ?2, ?3, 'active')
+             ON CONFLICT(author_id, base_title) DO UPDATE SET status='active'",
+            params![author_id, work.base_title, work.base_title.to_lowercase()],
+        )?;
+        let work_id: i64 = conn.query_row(
+            "SELECT id FROM works WHERE author_id=?1 AND base_title=?2",
+            params![author_id, work.base_title],
+            |r| r.get(0),
+        )?;
+
+        for chapter in work.chapters {
+            let Some(file) = by_stem.get(chapter.original_stem.as_str()).copied() else {
+                continue;
+            };
+            let path_str = file.to_string_lossy().to_string();
+
+            let (mtime, size) = file_stats(file);
+
+            let existing: Option<(i64, i64, i64)> = conn
+                .query_row(
+                    "SELECT id, file_mtime, file_size FROM chapters WHERE file_path=?1",
+                    params![path_str],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .ok();
+
+            let chapter_id: i64 = match existing {
+                Some((id, old_mtime, old_size))
+                    if old_mtime == mtime && old_size == size && mtime != 0 =>
+                {
+                    conn.execute(
+                        "UPDATE chapters SET last_seen_scan=?1, status='active' WHERE id=?2",
+                        params![generation, id],
+                    )?;
+                    *skipped += 1;
+                    id
+                }
+                other => {
+                    let raw = file_name(file);
+                    let format = file
+                        .extension()
+                        .map(|x| x.to_string_lossy().to_ascii_lowercase())
+                        .unwrap_or_default();
+                    let duration = probe_duration_secs(file);
+                    upsert_chapter(
+                        conn,
+                        work_id,
+                        &path_str,
+                        &raw,
+                        chapter.chapter_no,
+                        &format,
+                        duration,
+                        mtime,
+                        size,
+                        generation,
+                    )?;
+                    if other.is_some() {
+                        *updated += 1;
+                    } else {
+                        *added += 1;
+                    }
+                    conn.query_row(
+                        "SELECT id FROM chapters WHERE file_path=?1",
+                        params![path_str],
+                        |r| r.get(0),
+                    )?
+                }
+            };
+
+            ingest_sidecar_transcript(conn, chapter_id, file)?;
+        }
+    }
+
+    // Always regroup: grouping_overrides may have changed between scans even if no
+    // files changed on disk. This is DB-only (no disk access) so it's cheap.
+    regroup_author(conn, author_id)?;
+    Ok(())
+}
+
+/// (mtime_secs_since_epoch, size_bytes); (0, 0) if metadata is unreadable.
+fn file_stats(path: &Path) -> (i64, i64) {
+    match std::fs::metadata(path) {
+        Ok(md) => {
+            let size = md.len() as i64;
+            let mtime = md
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            (mtime, size)
+        }
+        Err(_) => (0, 0),
+    }
+}
+
+/// Soft-delete (status='inactive') every active chapter not observed this generation, then
+/// cascade to works/authors with no remaining active children. NEVER deletes rows or files
+/// (recoverable).
+fn sweep_deleted(conn: &Connection, generation: i64) -> rusqlite::Result<usize> {
+    let removed = conn.execute(
+        "UPDATE chapters SET status='inactive' WHERE status='active' AND last_seen_scan < ?1",
+        params![generation],
+    )?;
+    conn.execute(
+        "UPDATE works SET status='inactive'
+         WHERE status='active'
+           AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.work_id=works.id AND c.status='active')",
+        [],
+    )?;
+    conn.execute(
+        "UPDATE authors SET status='inactive'
+         WHERE status='active'
+           AND NOT EXISTS (SELECT 1 FROM works w WHERE w.author_id=authors.id AND w.status='active')",
+        [],
+    )?;
+    Ok(removed)
+}
+
+fn finish_result(
+    conn: &Connection,
+    added: usize,
+    updated: usize,
+    removed: usize,
+    skipped: usize,
+    errors: Vec<ScanError>,
+    cancelled: bool,
+) -> ScanResult {
+    ScanResult {
         authors: count(conn, "authors"),
         works: count(conn, "works"),
         chapters: count(conn, "chapters"),
-        ..Default::default()
-    })
+        added,
+        updated,
+        removed,
+        skipped,
+        errors,
+        cancelled,
+    }
 }
 
 /// Check for a `.srt` or `.vtt` sidecar next to the audio file (same stem), parse it,
@@ -168,6 +410,7 @@ fn ingest_sidecar_transcript(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn upsert_chapter(
     conn: &Connection,
     work_id: i64,
@@ -176,20 +419,27 @@ fn upsert_chapter(
     chapter_no: u32,
     format: &str,
     duration: i64,
+    mtime: i64,
+    size: i64,
+    generation: i64,
 ) -> rusqlite::Result<()> {
     // The UPSERT below is self-sufficient: on conflict it updates every column
     // EXCEPT `played`, so re-scanning preserves listening progress.
     conn.execute(
-        "INSERT INTO chapters(work_id, file_path, raw_filename, chapter_no, format, duration_secs, status)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active')
+        "INSERT INTO chapters(work_id, file_path, raw_filename, chapter_no, format, duration_secs,
+                              status, file_mtime, file_size, last_seen_scan)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', ?7, ?8, ?9)
          ON CONFLICT(file_path) DO UPDATE SET
            work_id=excluded.work_id,
            raw_filename=excluded.raw_filename,
            chapter_no=excluded.chapter_no,
            format=excluded.format,
            duration_secs=excluded.duration_secs,
-           status='active'",
-        params![work_id, path, raw, chapter_no as i64, format, duration],
+           status='active',
+           file_mtime=excluded.file_mtime,
+           file_size=excluded.file_size,
+           last_seen_scan=excluded.last_seen_scan",
+        params![work_id, path, raw, chapter_no as i64, format, duration, mtime, size, generation],
     )?;
     Ok(())
 }
@@ -205,13 +455,13 @@ fn count(conn: &Connection, table: &str) -> usize {
 mod tests {
     use super::*;
     use crate::db::open_in_memory;
-    use std::fs::{self, File};
+    use std::fs;
 
     fn touch(path: &std::path::Path) {
         if let Some(p) = path.parent() {
             fs::create_dir_all(p).unwrap();
         }
-        File::create(path).unwrap();
+        std::fs::write(path, b"x").unwrap();
     }
 
     #[test]
@@ -243,11 +493,18 @@ mod tests {
         assert_eq!(count(&conn, "works"), 2);
 
         // Override "Other.mp3" to merge into "Tale".
-        let path: String = conn.query_row(
-            "SELECT file_path FROM chapters WHERE raw_filename='Other.mp3'", [], |r| r.get(0)).unwrap();
+        let path: String = conn
+            .query_row(
+                "SELECT file_path FROM chapters WHERE raw_filename='Other.mp3'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         conn.execute(
             "INSERT INTO grouping_overrides(chapter_path, base_title, chapter_no) VALUES (?1,'Tale',2)",
-            params![path]).unwrap();
+            params![path],
+        )
+        .unwrap();
 
         // A fresh scan must re-apply the override (not just the regroup command).
         scan_into(&conn, tmp.path()).unwrap();
@@ -265,8 +522,13 @@ mod tests {
         let conn = open_in_memory().unwrap();
         let first = scan_into(&conn, root).unwrap();
         let second = scan_into(&conn, root).unwrap();
-        assert_eq!(first, second);
+        assert_eq!(
+            (first.authors, first.works, first.chapters),
+            (second.authors, second.works, second.chapters)
+        );
         assert_eq!(second.chapters, 2);
+        assert_eq!(second.added, 0);
+        assert_eq!(second.skipped, 2);
     }
 
     /// Write a small text file with the given content.
@@ -358,5 +620,84 @@ mod tests {
         let conn = open_in_memory().unwrap();
         let report = scan_into(&conn, root).unwrap();
         assert_eq!(report.chapters, 0, "srt/vtt alone must not add chapters");
+    }
+
+    #[test]
+    fn deletion_marks_chapters_inactive_recoverably() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let author = root.join("A");
+        touch(&author.join("Tale.mp3"));
+        touch(&author.join("Tale 2.mp3"));
+        let conn = open_in_memory().unwrap();
+        let first = scan_into(&conn, root).unwrap();
+        assert_eq!(first.chapters, 2);
+
+        std::fs::remove_file(author.join("Tale 2.mp3")).unwrap();
+        let second = scan_into(&conn, root).unwrap();
+        assert_eq!(second.removed, 1, "one chapter removed");
+        assert_eq!(second.chapters, 1, "active count drops to 1");
+
+        let total: i64 =
+            conn.query_row("SELECT count(*) FROM chapters", [], |r| r.get(0)).unwrap();
+        assert_eq!(total, 2, "row retained (inactive), not deleted");
+
+        touch(&author.join("Tale 2.mp3"));
+        let third = scan_into(&conn, root).unwrap();
+        assert_eq!(third.chapters, 2, "reappeared file reactivates");
+    }
+
+    #[test]
+    fn whole_author_deletion_cascades_to_inactive() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Gone").join("Only.mp3"));
+        touch(&root.join("Stays").join("Keep.mp3"));
+        let conn = open_in_memory().unwrap();
+        let first = scan_into(&conn, root).unwrap();
+        assert_eq!(first.authors, 2);
+
+        std::fs::remove_dir_all(root.join("Gone")).unwrap();
+        let second = scan_into(&conn, root).unwrap();
+        assert_eq!(second.authors, 1, "deleted author folder cascades to inactive");
+        assert_eq!(second.works, 1);
+        assert_eq!(second.chapters, 1);
+    }
+
+    #[test]
+    fn unchanged_rescan_skips_without_reprobe() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let author = root.join("A");
+        touch(&author.join("Tale.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan_into(&conn, root).unwrap();
+        let second = scan_into(&conn, root).unwrap();
+        assert_eq!(second.added, 0);
+        assert_eq!(second.updated, 0);
+        assert_eq!(second.skipped, 1);
+    }
+
+    #[test]
+    fn cancel_between_authors_stops_early_and_keeps_done_work() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("A").join("a.mp3"));
+        touch(&root.join("B").join("b.mp3"));
+        let conn = open_in_memory().unwrap();
+        let flag = AtomicBool::new(false);
+        let mut first_seen = false;
+        let mut cb = |_p: crate::model::ScanProgress| {
+            if !first_seen {
+                first_seen = true;
+                flag.store(true, Ordering::Relaxed);
+            }
+        };
+        let mut opts = ScanOpts { cancel: Some(&flag), progress: Some(&mut cb) };
+        let res = scan_into_with(&conn, root, &mut opts).unwrap();
+        assert!(res.cancelled, "scan reports cancelled");
+        assert!(res.authors >= 1);
+        assert_eq!(res.removed, 0);
     }
 }
