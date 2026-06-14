@@ -375,6 +375,10 @@ pub struct InsightsData {
     pub top_creators: Vec<CreatorStat>, // ≤8
     pub top_tags: Vec<TagStat>,         // ≤8 by owned
     pub recap: RecapData,
+    /// CUR-10: count of active works with a non-empty completion_rating.
+    pub works_rated: i64,
+    /// CUR-10: count of active works with a non-empty re_entry_note.
+    pub works_re_entered: i64,
 }
 
 // Harness-only seeding payload (insights walkthrough). Deserialize from camelCase JS.

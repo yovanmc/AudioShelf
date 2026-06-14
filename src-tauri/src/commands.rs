@@ -783,7 +783,124 @@ pub(crate) fn recent_authors(conn: &rusqlite::Connection, limit: usize) -> rusql
     Ok(ids.into_iter().take(limit).collect())
 }
 
+/// Pick a seed work from rated/re-entered works (CUR-10).
+/// Priority: re-entered-and-rated > rated-only > re-entered-only; tie-break by work id (ascending).
+/// Returns (work_id, base_title, signal) or None if no affection signal exists.
+fn pick_affection_seed(
+    conn: &rusqlite::Connection,
+) -> rusqlite::Result<Option<(i64, String, &'static str)>> {
+    // Fetch all active works that have any signal of affection.
+    let mut stmt = conn.prepare(
+        "SELECT id, base_title, completion_rating, re_entry_note
+         FROM works
+         WHERE status='active' AND (completion_rating <> '' OR re_entry_note <> '')",
+    )?;
+    let rows: Vec<(i64, String, String, String)> = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+
+    if rows.is_empty() {
+        return Ok(None);
+    }
+
+    // Rank: re-entered-and-rated (score 2) > rated-only (1) > re-entered-only (0).
+    // Tie-break: lower work id wins (deterministic).
+    let best = rows
+        .into_iter()
+        .map(|(id, title, rating, re_entry)| {
+            let score = match (!rating.is_empty(), !re_entry.is_empty()) {
+                (true, true) => 2u8,
+                (true, false) => 1u8,
+                (false, true) => 0u8,
+                (false, false) => unreachable!("query filters require at least one signal"),
+            };
+            let signal: &'static str = match (!rating.is_empty(), !re_entry.is_empty()) {
+                (_, true) if score == 2 => "rated_and_reentered",
+                (true, _) => "rated",
+                _ => "reentered",
+            };
+            (score, id, title, signal)
+        })
+        .max_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(&a.1)));
+
+    Ok(best.map(|(_, id, title, signal)| (id, title, signal)))
+}
+
 pub(crate) fn discovery_for_you(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<DiscoveryWork>> {
+    // CUR-10: if any rated/re-entered work exists, seed from it and annotate reason.
+    if let Some((seed_id, seed_title, signal)) = pick_affection_seed(conn)? {
+        // Collect tags of the seed work (author + work level, unified attach, facet='tag').
+        let seed_author_id: i64 = conn.query_row(
+            "SELECT author_id FROM works WHERE id=?1",
+            params![seed_id],
+            |r| r.get(0),
+        )?;
+        let mut tags: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        {
+            let mut astmt = conn.prepare(
+                "SELECT mt.value FROM author_metadata am
+                 JOIN metadata_terms mt ON am.term_id=mt.id
+                 WHERE am.author_id=?1 AND mt.facet='tag'",
+            )?;
+            for t in astmt.query_map(params![seed_author_id], |r| r.get::<_, String>(0))? {
+                tags.insert(t?);
+            }
+        }
+        {
+            let mut wstmt = conn.prepare(
+                "SELECT mt.value FROM work_metadata wm
+                 JOIN metadata_terms mt ON wm.term_id=mt.id
+                 WHERE wm.work_id=?1 AND mt.facet='tag'",
+            )?;
+            for t in wstmt.query_map(params![seed_id], |r| r.get::<_, String>(0))? {
+                tags.insert(t?);
+            }
+        }
+        let tag_vec: Vec<String> = tags.into_iter().collect();
+        // Build reason string reflecting the affection signal.
+        let reason_prefix = match signal {
+            "rated" | "rated_and_reentered" => format!("Because you rated {seed_title}"),
+            _ => format!("You came back to {seed_title}"),
+        };
+        // Drive discovery_for_tags, then stamp the reason on every returned item.
+        let mut results = if tag_vec.is_empty() {
+            // No tags on the seed work — fall back to recent-play path if available.
+            let recent = recent_authors(conn, 10)?;
+            if recent.is_empty() {
+                return Ok(Vec::new());
+            }
+            let mut fallback_tags: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            for id in &recent {
+                let mut astmt = conn.prepare(
+                    "SELECT mt.value FROM author_metadata am
+                     JOIN metadata_terms mt ON am.term_id=mt.id
+                     WHERE am.author_id=?1 AND mt.facet='tag'",
+                )?;
+                for t in astmt.query_map(params![id], |r| r.get::<_, String>(0))? {
+                    fallback_tags.insert(t?);
+                }
+                let mut wstmt = conn.prepare(
+                    "SELECT mt.value FROM work_metadata wm
+                     JOIN works w ON wm.work_id=w.id
+                     JOIN metadata_terms mt ON wm.term_id=mt.id
+                     WHERE w.author_id=?1 AND mt.facet='tag'",
+                )?;
+                for t in wstmt.query_map(params![id], |r| r.get::<_, String>(0))? {
+                    fallback_tags.insert(t?);
+                }
+            }
+            discovery_for_tags(conn, &fallback_tags.into_iter().collect::<Vec<_>>(), &recent, 20)?
+        } else {
+            discovery_for_tags(conn, &tag_vec, &[seed_author_id], 20)?
+        };
+        // Stamp the affection-seed reason on every result.
+        for w in &mut results {
+            w.reason = reason_prefix.clone();
+        }
+        return Ok(results);
+    }
+
+    // Cold-start fallback: current behavior (seed from recent play history).
     let recent = recent_authors(conn, 10)?;
     if recent.is_empty() {
         return Ok(Vec::new());
@@ -5346,6 +5463,106 @@ mod tests {
         // Window starts after the only play event.
         let r = super::played_in_range(&conn, 1000, 2000).unwrap();
         assert!(r.works.is_empty(), "no works when all play events fall outside the window");
+    }
+
+    // ---- CUR-10: affection-seed discovery -----------------------------------------------
+
+    #[test]
+    fn discovery_for_you_uses_rated_work_as_seed_and_stamps_reason() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // Three authors: Alice (rated work, tagged "cozy"), Bob (cozy tag, no rating), Carol (no tags, no rating).
+        touch(&root.join("Alice").join("Tale.mp3"));
+        touch(&root.join("Bob").join("Saga.mp3"));
+        touch(&root.join("Carol").join("Quiet.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+
+        // Alice's work gets a completion_rating and a "cozy" tag.
+        let alice_detail = query_author_detail(&conn, ids["Alice"]).unwrap();
+        let alice_work_id = alice_detail.works[0].id;
+        conn.execute(
+            "UPDATE works SET completion_rating='loved it' WHERE id=?1",
+            params![alice_work_id],
+        ).unwrap();
+        attach_value(&conn, "work", alice_work_id, "tag", "cozy").unwrap();
+        // Bob's author also has "cozy" tag — should be discovered via Alice's seed.
+        attach_value(&conn, "author", ids["Bob"], "tag", "cozy").unwrap();
+
+        let results = super::discovery_for_you(&conn).unwrap();
+        // Results must not be empty.
+        assert!(!results.is_empty(), "should return discovery results seeded from rated work");
+        // Every result should carry the affection-seed reason.
+        for w in &results {
+            assert!(
+                w.reason.contains("Because you rated") || w.reason.contains("You came back to"),
+                "expected affection reason, got: {:?}", w.reason
+            );
+        }
+        // Bob should appear (shares "cozy" with Alice's rated seed).
+        assert!(
+            results.iter().any(|w| w.author_name == "Bob"),
+            "Bob (shares cozy tag with rated seed) should appear in results"
+        );
+    }
+
+    #[test]
+    fn discovery_for_you_cold_start_fallback_when_no_affection_signal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Alice").join("Tale.mp3"));
+        touch(&root.join("Bob").join("Saga.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+        // Seed play history for Alice so cold-start has a signal.
+        attach_value(&conn, "author", ids["Alice"], "tag", "cozy").unwrap();
+        attach_value(&conn, "author", ids["Bob"], "tag", "cozy").unwrap();
+        let alice_detail = query_author_detail(&conn, ids["Alice"]).unwrap();
+        mark_finished(&conn, alice_detail.works[0].chapters[0].id, 1_000).unwrap();
+
+        // No completion_rating or re_entry_note set on any work — cold-start path.
+        let results = super::discovery_for_you(&conn).unwrap();
+        // Bob shares "cozy" with Alice (recently played); should appear.
+        assert!(
+            results.iter().any(|w| w.author_name == "Bob"),
+            "cold-start fallback should still surface Bob via recent-play tags"
+        );
+        // No affection reason should be present in cold-start results.
+        for w in &results {
+            assert!(
+                !w.reason.contains("Because you rated") && !w.reason.contains("You came back to"),
+                "cold-start results must not carry affection reason, got: {:?}", w.reason
+            );
+        }
+    }
+
+    #[test]
+    fn compute_insights_counts_rated_and_reentered_works() {
+        let conn = open_in_memory().unwrap();
+        // Seed works: one rated, one re-entered, one both, one neither.
+        conn.execute_batch(
+            "INSERT INTO authors(id,folder_name,display_name,status) VALUES (1,'A','A','active');
+             INSERT INTO works(id,author_id,base_title,sort_key,status,completion_rating,re_entry_note) VALUES
+               (1,1,'Rated Only','rated','active','loved it',''),
+               (2,1,'ReEntered Only','reentered','active','','came back'),
+               (3,1,'Both','both','active','great','read again'),
+               (4,1,'Neither','neither','active','',''),
+               (5,1,'Inactive Rated','inactive_rated','inactive','great','');",
+        ).unwrap();
+
+        let now_ms = 30 * 86_400_000i64;
+        let data = crate::insights::compute_insights(&conn, now_ms, 0).unwrap();
+
+        // works_rated = works 1 + 3 (both active with non-empty completion_rating).
+        assert_eq!(data.works_rated, 2, "works_rated should count works with non-empty completion_rating (active only)");
+        // works_re_entered = works 2 + 3 (both active with non-empty re_entry_note).
+        assert_eq!(data.works_re_entered, 2, "works_re_entered should count works with non-empty re_entry_note (active only)");
     }
 }
 

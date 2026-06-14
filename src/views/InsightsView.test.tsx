@@ -11,6 +11,7 @@ const empty: InsightsData = {
   lastMonth: { label: "May 2026", chapters: 0, secs: 0, activeDays: 0 },
   rhythm: [], topCreators: [], topTags: [],
   recap: { year: 2026, totalSecs: 0, totalChapters: 0, activeDays: 0, longestStreak: 0, topCreator: null, topCreatorChapters: 0, topTag: null, busiestMonth: null, busiestWeekday: null, firstPlayMs: null, lastPlayMs: null },
+  worksRated: 0, worksReEntered: 0,
 };
 
 const filled: InsightsData = {
@@ -114,5 +115,17 @@ describe("InsightsView", () => {
     const tagBtn = screen.getByRole("button", { name: /Filter library by tag "mystery"/i });
     await userEvent.click(tagBtn);
     expect(onFilterTag).toHaveBeenCalledWith("mystery");
+  });
+
+  // CUR-10: Reflections stat tile
+  it("renders Reflections stat with worksRated and worksReEntered counts", () => {
+    const data: InsightsData = { ...filled, worksRated: 3, worksReEntered: 2 };
+    render(<InsightsView data={data} now={0} onExportRecap={() => {}} recapStatus={null} />);
+    expect(screen.getByText("3 rated · 2 revisited")).toBeTruthy();
+  });
+
+  it("renders Reflections stat tile label", () => {
+    render(<InsightsView data={filled} now={0} onExportRecap={() => {}} recapStatus={null} />);
+    expect(screen.getByText("Reflections")).toBeTruthy();
   });
 });

@@ -240,6 +240,9 @@ pub fn build_insights(
         top_creators,
         top_tags,
         recap,
+        // CUR-10: set to 0 by default; compute_insights fills these from the DB.
+        works_rated: 0,
+        works_re_entered: 0,
     }
 }
 
@@ -394,7 +397,22 @@ pub fn compute_insights(
         }
     }
 
-    Ok(build_insights(&events, &author_names, &works, now_ms, tz_offset_minutes))
+    // CUR-10: count active works with a completion_rating / re_entry_note.
+    let works_rated: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM works WHERE status='active' AND completion_rating <> ''",
+        [],
+        |r| r.get(0),
+    )?;
+    let works_re_entered: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM works WHERE status='active' AND re_entry_note <> ''",
+        [],
+        |r| r.get(0),
+    )?;
+
+    let mut data = build_insights(&events, &author_names, &works, now_ms, tz_offset_minutes);
+    data.works_rated = works_rated;
+    data.works_re_entered = works_re_entered;
+    Ok(data)
 }
 
 #[cfg(test)]

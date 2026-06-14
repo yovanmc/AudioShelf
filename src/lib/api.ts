@@ -131,6 +131,10 @@ export interface InsightsData {
   topCreators: CreatorStat[];
   topTags: InsightTagStat[];
   recap: RecapData;
+  /** CUR-10: works with a non-empty completion_rating. */
+  worksRated: number;
+  /** CUR-10: works with a non-empty re_entry_note. */
+  worksReEntered: number;
 }
 export interface HomeData {
   keepListening: ContinueItem | null;

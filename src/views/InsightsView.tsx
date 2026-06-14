@@ -230,6 +230,7 @@ export function InsightsView({
         <StatCard label="Active days" value={data.activeDays} />
         <StatCard label="Days in a row" value={data.currentStreak} />
         <StatCard label="Longest run" value={data.longestStreak} />
+        <StatCard label="Reflections" value={`${data.worksRated} rated · ${data.worksReEntered} revisited`} />
       </div>
 
       <Heatmap data={data} onDrillRange={onDrillRange} />
