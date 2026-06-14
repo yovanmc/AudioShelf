@@ -277,8 +277,9 @@ fn scan_author(
                         .extension()
                         .map(|x| x.to_string_lossy().to_ascii_lowercase())
                         .unwrap_or_default();
+                    // M31: parallelism deferred (see ROADMAP M32+); the probe stays single-threaded.
                     let duration = probe_duration_secs(file);
-                    upsert_chapter(
+                    let id = upsert_chapter(
                         conn,
                         work_id,
                         &path_str,
@@ -295,11 +296,7 @@ fn scan_author(
                     } else {
                         *added += 1;
                     }
-                    conn.query_row(
-                        "SELECT id FROM chapters WHERE file_path=?1",
-                        params![path_str],
-                        |r| r.get(0),
-                    )?
+                    id
                 }
             };
 
@@ -424,10 +421,11 @@ fn upsert_chapter(
     mtime: i64,
     size: i64,
     generation: i64,
-) -> rusqlite::Result<()> {
-    // The UPSERT below is self-sufficient: on conflict it updates every column
-    // EXCEPT `played`, so re-scanning preserves listening progress.
-    conn.execute(
+) -> rusqlite::Result<i64> {
+    // The UPSERT updates every column EXCEPT `played`, so re-scanning preserves listening
+    // progress. RETURNING id hands back the row id for both INSERT and UPDATE, so callers no
+    // longer need a follow-up `SELECT id`. prepare_cached compiles this SQL once per connection.
+    conn.prepare_cached(
         "INSERT INTO chapters(work_id, file_path, raw_filename, chapter_no, format, duration_secs,
                               status, file_mtime, file_size, last_seen_scan)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', ?7, ?8, ?9)
@@ -440,10 +438,13 @@ fn upsert_chapter(
            status='active',
            file_mtime=excluded.file_mtime,
            file_size=excluded.file_size,
-           last_seen_scan=excluded.last_seen_scan",
+           last_seen_scan=excluded.last_seen_scan
+         RETURNING id",
+    )?
+    .query_row(
         params![work_id, path, raw, chapter_no as i64, format, duration, mtime, size, generation],
-    )?;
-    Ok(())
+        |r| r.get(0),
+    )
 }
 
 fn count(conn: &Connection, table: &str) -> usize {
