@@ -1,7 +1,7 @@
 import type { PlaybackContext, ChapterRow, ChapterJournal, ChapterBookmark } from "../lib/api";
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
-import { Button, Dialog, IconButton, ProgressBar } from "../components/ui";
+import { Button, Dialog, IconButton, ProgressBar, SectionHeading } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { formatTime, formatSpeed, timeLabel, type TimeLabelMode, SPEEDS } from "./playback";
 import { PlaybackButtons, type PlayerControls } from "./PlayerBar";
@@ -141,7 +141,7 @@ export function NowPlayingPanel(props: PlayerControls & {
           </div>
           {props.chapters && props.chapters.length > 1 && (
             <section className="now-playing__chapters">
-              <h2 className="eyebrow muted">In this work</h2>
+              <SectionHeading title="In this work" />
               <ul className="chapter-jump-list">
                 {props.chapters.map((c) => {
                   const isCurrent = c.id === props.context.chapter.id;
@@ -170,7 +170,7 @@ export function NowPlayingPanel(props: PlayerControls & {
           )}
           {/* Journal capture controls */}
           <section className="now-playing__journal-capture" aria-label="Journal capture">
-            <h2 className="eyebrow muted">Notes &amp; bookmarks</h2>
+            <SectionHeading title="Notes & bookmarks" />
             <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center", marginBottom: "var(--space-2)" }}>
               <Button
                 variant="secondary"
@@ -221,7 +221,7 @@ export function NowPlayingPanel(props: PlayerControls & {
 
           {props.transcript && (
             <section className="now-playing__transcript" aria-label="Transcript">
-              <h2 className="eyebrow muted">Transcript</h2>
+              <SectionHeading title="Transcript" />
               <div
                 className="muted"
                 style={{ fontSize: "0.85rem", whiteSpace: "pre-wrap", maxHeight: "200px", overflowY: "auto" }}
