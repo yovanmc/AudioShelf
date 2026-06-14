@@ -74,3 +74,31 @@ pub fn generate(root: &Path) -> std::io::Result<()> {
 
     Ok(())
 }
+
+/// Generate a large synthetic library for scale testing: `authors` author folders, each with
+/// `works_per` works of `chapters_per` chapters (all 1-second silent WAVs). Deterministic.
+/// Produces authors*works_per*chapters_per chapters. Author folders are named "Scale Author NNNN"
+/// (zero-padded) so they sort deterministically.
+pub fn generate_scaled(
+    root: &Path,
+    authors: u32,
+    works_per: u32,
+    chapters_per: u32,
+) -> std::io::Result<()> {
+    std::fs::create_dir_all(root)?;
+    for a in 1..=authors {
+        let dir = root.join(format!("Scale Author {a:04}"));
+        for w in 1..=works_per {
+            // Multi-chapter works use the "<base> <n>" numbering the grouper recognizes.
+            for c in 1..=chapters_per {
+                let name = if c == 1 {
+                    format!("Story {w:03}.wav")
+                } else {
+                    format!("Story {w:03} {c}.wav")
+                };
+                write_silence(&dir.join(name), 1)?;
+            }
+        }
+    }
+    Ok(())
+}
