@@ -247,7 +247,7 @@ export function AuthorDetailView(props: {
             workTitle: firstUnplayed.work.baseTitle,
             workTotalChapters: firstUnplayed.work.chapters.length,
             workPlayedChapters: firstUnplayed.work.chapters.filter((chapter) => chapter.played).length,
-          })}>Keep listening</Button>}
+          })}>{played === 0 ? "Start listening" : "Keep listening"}</Button>}
         </div>
       </section>
       <div className="work-controls toolbar">
