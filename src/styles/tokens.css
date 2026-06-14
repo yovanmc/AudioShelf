@@ -32,6 +32,16 @@
   --radius-lg: 18px;
   --shadow-card: 0 10px 30px rgb(0 0 0 / 24%);
   --shadow-overlay: 0 24px 80px rgb(0 0 0 / 55%);
+  /* Border-strength rule (M28/VIS7-10): structural separators, table rows,
+     input/control/card resting borders use --color-divider (reads on every theme).
+     --color-border is a reserved low-emphasis hairline; --color-border-strong is
+     the explicit emphasis border (e.g. card hover). */
+  --color-divider: var(--color-border-strong);
+  --shadow-card-hover: 0 8px 24px rgb(0 0 0 / 45%);
+  --icon-sm: 16px;
+  --icon-md: 20px;
+  --icon-lg: 24px;
+  --chip-gap: 8px;
   --sidebar-expanded: 224px;
   --sidebar-collapsed: 72px;
   --player-height: 96px;
@@ -78,6 +88,8 @@
   --focus-ring: 0 0 0 3px rgb(27 111 208 / 40%);
   --shadow-card: 0 10px 30px rgb(20 32 46 / 10%);
   --shadow-overlay: 0 24px 80px rgb(20 32 46 / 28%);
+  --color-divider: var(--color-border);
+  --shadow-card-hover: 0 8px 24px rgb(15 23 42 / 18%);
 }
 [data-theme="high-contrast"] {
   color-scheme: dark;
@@ -103,6 +115,9 @@
   --focus-ring: 0 0 0 3px #ffd000;
   --shadow-card: none;
   --shadow-overlay: 0 0 0 1px #ffffff;
+  --color-divider: var(--color-border-strong);
+  /* HC is border-driven (--shadow-card: none); no hover shadow, emphasis comes from --color-border-strong. */
+  --shadow-card-hover: none;
 }
 /* Windows High Contrast / forced-colors: let the OS drive colors, keep focus visible. */
 @media (forced-colors: active) {

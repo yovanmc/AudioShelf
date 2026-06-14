@@ -56,7 +56,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -2488,6 +2488,102 @@ export default function App() {
                   setSelectMode(false);
                   setSelectedWorkIds([]);
                   setRoute({ kind: "library" });
+                  await settle();
+                },
+              })
+            : args.walkthrough === "m28"
+            ? m28Steps({
+                // Step 1: reset to the base library so the always-rendered sidebar +
+                // its search box show their resting borders (copied from m25's
+                // showCoverPlaceholders reset). Focus the sidebar search input so the
+                // input border is the subject of the shot.
+                showSearchAndSidebar: async () => {
+                  setQuery("");
+                  setResults(null);
+                  setScopedResults(null);
+                  setSelectMode(false);
+                  setSelectedWorkIds([]);
+                  setRoute({ kind: "library" });
+                  await settle();
+                  document.querySelector<HTMLElement>(".sidebar__search")?.focus?.();
+                  await settle();
+                },
+                // Step 2: Rename view — renders the .data-table whose row dividers are
+                // the subject (copied from m12's showRename: openRename).
+                showDataTable: async () => {
+                  await openRename();
+                  await settle();
+                },
+                // Step 3: a dialog that renders .dialog__title + .dialog__context. The
+                // ChapterJournalDialog has no .dialog__context, so we open BulkTagDialog
+                // (src/components/BulkTagDialog.tsx) which passes a `context` prop to the
+                // shared Dialog → renders <p class="dialog__context">. Enter select mode,
+                // select the first author's first work, then open the bulk-tag dialog.
+                showDialogContext: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works[0];
+                  if (!work) return;
+                  setQuery("");
+                  setResults(null);
+                  setScopedResults(null);
+                  setRoute({ kind: "library" });
+                  setSelectMode(true);
+                  setSelectedWorkIds([work.id]);
+                  setBulkDialogOpen(true);
+                  await settle();
+                },
+                // Step 4: a chip row (.chips) — open Discovery and apply a tag so the
+                // labelled tag picker / by-tag chips render (copied from m12's
+                // showDiscoveryByTag).
+                showChipRow: async () => {
+                  await resetPlayHistory();
+                  await openDiscovery();
+                  await pickTags(["cozy"]);
+                  await settle();
+                  await imagesSettled();
+                },
+                // Step 5: the work-card grid resting borders — base library grid of
+                // cards (copied exactly from m25's showCoverPlaceholders).
+                showCardGrid: async () => {
+                  setSavedSearches([]);
+                  setQuery("");
+                  setResults(null);
+                  setScopedResults(null);
+                  setSelectMode(false);
+                  setSelectedWorkIds([]);
+                  setBulkDialogOpen(false);
+                  setRoute({ kind: "library" });
+                  await settle();
+                },
+                // Step 6: expanded player two-column layout — build a now-playing
+                // chapter from the first author's longest work and expand the panel
+                // (copied from m24's showCompactPlayer + showNowPlaying).
+                showExpandedPlayer: async () => {
+                  setPlaybackSpeed(1);
+                  setSleep(null);
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  setDetail(creator);
+                  setRoute({ kind: "author" });
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(true);
                   await settle();
                 },
               })
