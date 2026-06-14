@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import {
-  getLaunchArgs, scanLibrary, getAuthors, getAuthorDetail,
+  getLaunchArgs, scanLibrary, cancelScan, getAuthors, getAuthorDetail,
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
   getAllTags, setAuthorTags, setWorkTags, setChapterTags, getDiscovery, getDiscoveryByTags,
   getDormantWorks, getMoreLikeThis, suggestTags,
@@ -27,7 +27,7 @@ import {
   addMetadataValue, removeMetadataValue, getDiscoveryByMetadata,
   listLabelTypes, createLabelType, renameLabelType, deleteLabelType, reorderLabelTypes,
   addLabel, removeLabel,
-  type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
+  type AuthorRow, type AuthorDetail, type ScanResult, type ScanProgress, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
   type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
@@ -156,6 +156,7 @@ async function rasterizeSvgToPng(svg: string, w: number, h: number): Promise<Uin
 export default function App() {
   const [route, setRoute] = useState<Route>({ kind: "loading" });
   const [scan, setScan] = useState<ScanResult | null>(null);
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [authors, setAuthors] = useState<AuthorRow[]>([]);
   const [detail, setDetail] = useState<AuthorDetail | null>(null);
   const [authorSeries, setAuthorSeries] = useState<SeriesView[]>([]);
@@ -805,6 +806,7 @@ export default function App() {
   async function scanRoot(root: string, persist: boolean) {
     setBusy(true);
     setScanError(null);
+    setScanProgress(null);
     try {
       const result = await scanLibrary(root);
       if (persist) await setSetting("library_root", root);
@@ -820,8 +822,11 @@ export default function App() {
       return false;
     } finally {
       setBusy(false);
+      setScanProgress(null);
     }
   }
+
+  function requestScanCancel() { void cancelScan(); }
 
   function openSettings() {
     setScanError(null);
@@ -2996,6 +3001,12 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  // Scan progress events from the backend.
+  useEffect(() => {
+    const un = listen<ScanProgress>("scan:progress", (e) => setScanProgress(e.payload));
+    return () => { void un.then((f) => f()); };
+  }, []);
+
   // Mini-player: receive commands from the mini window.
   useEffect(() => {
     const un = listen<{ action: "toggle" | "prev" | "next" }>("miniplayer:command", (e) => {
@@ -3068,7 +3079,7 @@ export default function App() {
 
   function routedView() {
     if (route.kind === "loading") return <div>Loading…</div>;
-    if (route.kind === "scan") return <ScanView result={scan} onOpenLibrary={() => setRoute({ kind: "library" })} onOpenHome={openHome} />;
+    if (route.kind === "scan") return <ScanView result={scan} progress={scanProgress} onCancel={requestScanCancel} onOpenLibrary={() => setRoute({ kind: "library" })} onOpenHome={openHome} />;
     if (route.kind === "home") {
       return (
         <HomeView
