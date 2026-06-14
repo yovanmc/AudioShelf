@@ -118,9 +118,19 @@ describe("DiscoveryView", () => {
     expect(screen.queryByText("Mood")).not.toBeInTheDocument();
   });
 
-  it("shows empty state when no types have terms", () => {
+  it("shows guiding empty state when library is un-indexed (no label types at all)", () => {
     render(<DiscoveryView {...baseProps} labelTypes={[]} termsByType={{}} />);
+    expect(screen.getByText("Nothing to discover yet")).toBeInTheDocument();
+    expect(screen.queryByText("No labels yet")).not.toBeInTheDocument();
+  });
+
+  it("shows No labels yet when types exist but none have terms", () => {
+    const typesWithNoTerms: LabelType[] = [
+      { name: "narrator", display: "Narrator", builtin: true, sort: 0 },
+    ];
+    render(<DiscoveryView {...baseProps} labelTypes={typesWithNoTerms} termsByType={{}} />);
     expect(screen.getByText("No labels yet")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing to discover yet")).not.toBeInTheDocument();
   });
 
   it("opens an author from a For You suggestion", async () => {

@@ -142,6 +142,11 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .palette__label { color: var(--color-text); }
 .palette__sub { color: var(--color-text-muted); font-size: 13px; }
 .palette__empty { padding: 14px; color: var(--color-text-muted); text-align: center; }
+/* M29 IA7-9: palette section headers (non-interactive, not indexed for keyboard nav) */
+.palette__section { list-style: none; }
+.palette__section > ul { list-style: none; margin: 0; padding: 0; }
+.palette__section-label { font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--color-text-muted); padding: 8px 12px 4px; }
 /* ---- Scoped search (M19) ---- */
 .scoped-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--chip-gap); margin-bottom: var(--space-4); }
 /* ---- Saved-search strip (M25 VIS-8) ---- */
@@ -214,6 +219,11 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
   color: var(--color-text-muted);
 }
 .settings-group:first-of-type { margin-top: var(--space-3); }
+/* ---- Settings anchor sub-nav (M29 IA7-4) ---- */
+.settings-subnav { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 8px 0; margin-bottom: 8px; background: var(--color-bg); border-bottom: 1px solid var(--color-divider); }
+.settings-subnav a { font-size: .85rem; color: var(--color-text-muted); text-decoration: none; padding: 4px 8px; border-radius: 6px; }
+.settings-subnav a:hover { color: var(--color-text); background: var(--color-chip-bg); }
 /* ---- Search tips (M22 Task 6) ---- */
 .search-tips__list { margin: 6px 0 0; padding-inline-start: 18px; font-size: 0.82em; line-height: 1.7; }
 .search-tips__list code { font-size: 0.95em; }
@@ -251,27 +261,67 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .creator-header__actions { flex: 0 0 auto; }
 .creator-header__meta { padding-top: var(--space-4); border-top: 1px solid var(--color-border-strong); }
 
-/* M24 — scrubber hit-area (PL-9) */
-.seek-range { height: 22px; cursor: pointer; }
-.seek-range::-webkit-slider-thumb { width: 14px; height: 14px; border-radius: 50%; opacity: 0; transition: opacity .12s; }
-.player-bar__seek:hover .seek-range::-webkit-slider-thumb,
-.now-playing__layout .seek-range:focus-visible::-webkit-slider-thumb { opacity: 1; }
+/* M24 — scrubber hit-area (PL-9); M29 PL7-1: always-visible thumb */
+.seek-range { height: 22px; cursor: pointer; accent-color: var(--color-accent); }
+.seek-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: var(--scrubber-thumb); height: var(--scrubber-thumb);
+  border-radius: 50%; background: var(--color-accent);
+  border: 2px solid var(--color-bg, #080b10);
+  opacity: 1; transition: transform .12s ease;
+}
+.seek-range:hover::-webkit-slider-thumb,
+.seek-range:active::-webkit-slider-thumb { transform: scale(1.18); }
+.seek-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 40%, transparent); }
+/* keep accent-color as the cross-browser track fill */
 
-/* M24 — speed (PL-1) */
-.speed-btn { min-width: 3ch; padding: 2px 8px; border-radius: var(--radius-sm, 6px); background: var(--color-surface-raised, #1b1b1f); color: var(--color-text, #fff); border: 1px solid var(--color-divider, #333); cursor: pointer; font-variant-numeric: tabular-nums; }
+/* M29 PL7-2: scrub-preview bubble + seek wrapper */
+.seek-wrap { position: relative; flex: 1; min-width: 90px; display: flex; align-items: center; }
+.seek-wrap .seek-range { width: 100%; }
+.seek-bubble {
+  position: absolute; bottom: 26px; transform: translateX(-50%);
+  background: var(--color-surface); color: var(--color-text);
+  border: 1px solid var(--color-divider); border-radius: 6px;
+  padding: 2px 6px; font-size: .75rem; white-space: nowrap; pointer-events: none;
+}
+.seek-cue { position: absolute; top: 50%; width: 2px; height: 12px; transform: translate(-50%, -50%); pointer-events: none; border-radius: 1px; }
+.seek-cue--resume { background: var(--color-success); }
+.seek-cue--boundary { background: var(--color-divider); }
+
+/* M24 — speed (PL-1); M29 PL7-4: unified active state */
+.speed-btn, .speed-seg__btn { font-variant-numeric: tabular-nums; }
+.speed-btn { min-width: 3ch; padding: 2px 8px; border-radius: var(--radius-sm, 6px); background: var(--color-surface-raised, #1b1b1f); color: var(--color-text, #fff); border: 1px solid var(--color-divider, #333); cursor: pointer; }
 .speed-btn:hover { border-color: var(--color-accent, #218bff); }
+.speed-btn[data-active="true"] { background: var(--color-chip-bg); color: var(--color-text); border-color: var(--color-accent); }
 .speed-seg { display: inline-flex; gap: 4px; }
-.speed-seg__btn { padding: 2px 8px; border-radius: var(--radius-sm, 6px); background: transparent; color: var(--color-text-muted, #aaa); border: 1px solid var(--color-divider, #333); cursor: pointer; font-variant-numeric: tabular-nums; }
-.speed-seg__btn--active { background: var(--color-accent, #218bff); color: #fff; border-color: var(--color-accent, #218bff); }
+.speed-seg__btn { padding: 2px 8px; border-radius: var(--radius-sm, 6px); background: transparent; color: var(--color-text-muted, #aaa); border: 1px solid var(--color-divider, #333); cursor: pointer; }
+.speed-seg__btn--active, .speed-seg__btn[aria-pressed="true"] { background: var(--color-chip-bg); color: var(--color-text); border-color: var(--color-accent); }
 
 /* M24 — Now Playing rows */
 .np-row { display: flex; align-items: center; gap: var(--space-2, 8px); margin: var(--space-2, 8px) 0; flex-wrap: wrap; }
 .np-row__label { min-width: 64px; color: var(--color-text-muted, #aaa); font-size: .9rem; }
-.sleep-countdown { font-variant-numeric: tabular-nums; }
+/* M29 PL7-10: prominent sleep countdown */
+.sleep-countdown { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--color-text); }
+.sleep-countdown--soon { color: var(--color-accent); animation: sleep-pulse 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .sleep-countdown--soon { animation: none; } }
+@keyframes sleep-pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
 
-/* M24 — chapter-end actions (PL-2) */
-.np-endactions { display: flex; gap: var(--space-2, 8px); flex-wrap: wrap; align-items: center; margin-top: var(--space-3, 12px); }
+/* M24 — chapter-end actions (PL-2); M29 PL7-3: cross-fade animation */
+.np-endactions { display: flex; gap: var(--space-2, 8px); flex-wrap: wrap; align-items: center; margin-top: var(--space-3, 12px); animation: np-endactions-in var(--transition-swap); }
 .np-endactions__note { flex-basis: 100%; font-size: .85rem; margin: 4px 0 0; }
+@keyframes np-endactions-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .np-endactions { animation: none; } }
+
+/* M29 PL7-9: keyboard shortcut hints */
+kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.6em; padding: 1px 6px; border: 1px solid var(--color-divider);
+  border-radius: 4px; font-size: 0.78rem; font-family: var(--font-sans, inherit);
+  background: var(--color-surface-raised); color: var(--color-text-muted);
+}
+.shortcut-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.shortcut-list li { display: flex; align-items: center; gap: 10px; }
+.shortcut-list span { color: var(--color-text-muted); }
 
 /* M24 — scannable chapter states (PL-4) */
 .chapter-jump__state { margin-left: auto; font-size: .8rem; }

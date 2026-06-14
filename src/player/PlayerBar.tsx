@@ -1,18 +1,25 @@
+import { useState } from "react";
 import type { PlaybackContext } from "../lib/api";
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
 import { IconButton } from "../components/ui";
-import { formatTime, formatSpeed, timeLabel, type TimeLabelMode, SKIP_BACK_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, SKIP_FWD_LARGE } from "./playback";
+import { formatTime, formatSpeed, formatScrubPreview, endOfChapterPreview, timeLabel, type TimeLabelMode, SKIP_BACK_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, SKIP_FWD_LARGE } from "./playback";
 import { Select } from "../components/Select";
 import type { SelectOption } from "../components/Select";
 
-const SLEEP_OPTIONS: SelectOption<string>[] = [
+const BASE_SLEEP_OPTIONS: SelectOption<string>[] = [
   { value: "", label: "Sleep off" },
   { value: "15", label: "15 min" },
   { value: "30", label: "30 min" },
   { value: "60", label: "60 min" },
-  { value: "chapter", label: "End of chapter" },
 ];
+
+function makeSleepOptions(duration: number, currentTime: number): SelectOption<string>[] {
+  return [
+    ...BASE_SLEEP_OPTIONS,
+    { value: "chapter", label: duration > 0 ? endOfChapterPreview(duration, currentTime) : "End of chapter" },
+  ];
+}
 
 export interface PlayerControls {
   isPlaying: boolean;
@@ -57,7 +64,9 @@ export function PlaybackButtons(props: Pick<PlayerControls, "isPlaying" | "onTog
 
 export function PlayerBar(props: PlayerBarProps) {
   const context = props.context;
+  const [scrubbing, setScrubbing] = useState(false);
   if (!context) return null;
+  const resumeSecs = context.chapter.playbackPositionSecs ?? 0;
   return (
     <div className="player-bar" role="region" aria-label="Audio player">
       <div className="player-bar__track">
@@ -74,13 +83,36 @@ export function PlayerBar(props: PlayerBarProps) {
           <button type="button" className="time-label" title="Toggle time display" onClick={props.onCycleTimeLabel}>
             {timeLabel(props.timeLabelMode ?? "elapsed", props.currentTime, props.duration)}
           </button>
-          <input className="seek-range" type="range" aria-label="Seek" min={0} max={props.duration > 0 ? props.duration : 0} value={Math.min(props.currentTime, props.duration)} onChange={(event) => props.onSeek(Number(event.target.value))} />
+          <div className="seek-wrap">
+            <input
+              className="seek-range" type="range" aria-label="Seek"
+              min={0} max={props.duration > 0 ? props.duration : 0}
+              value={Math.min(props.currentTime, props.duration)}
+              onChange={(event) => props.onSeek(Number(event.target.value))}
+              onPointerDown={() => setScrubbing(true)}
+              onPointerUp={() => setScrubbing(false)}
+            />
+            {props.duration > 0 && resumeSecs > 0 && resumeSecs < props.duration && (
+              <span className="seek-cue seek-cue--resume" style={{ left: `${(resumeSecs / props.duration) * 100}%` }} title="Resume point" />
+            )}
+            {scrubbing && (
+              <span className="seek-bubble" style={{ left: `${props.duration ? (Math.min(props.currentTime, props.duration) / props.duration) * 100 : 0}%` }}>
+                {formatScrubPreview(props.currentTime, props.duration)}
+              </span>
+            )}
+          </div>
           <span>{formatTime(props.duration)}</span>
         </div>
       </div>
       <div className="player-bar__utility">
         {props.onCycleSpeed && (
-          <button type="button" className="speed-btn" title="Playback speed" aria-label={`Playback speed ${formatSpeed(props.playbackSpeed ?? 1)}`} onClick={props.onCycleSpeed}>
+          <button
+            type="button" className="speed-btn"
+            title="Playback speed"
+            aria-label={`Playback speed ${formatSpeed(props.playbackSpeed ?? 1)}`}
+            data-active={(props.playbackSpeed ?? 1) !== 1 ? "true" : undefined}
+            onClick={props.onCycleSpeed}
+          >
             {formatSpeed(props.playbackSpeed ?? 1)}
           </button>
         )}
@@ -91,14 +123,19 @@ export function PlayerBar(props: PlayerBarProps) {
         <Select<string>
           label="Sleep timer"
           value={props.sleepAtChapterEnd ? "chapter" : (props.sleepMinutes != null ? String(props.sleepMinutes) : "")}
-          options={SLEEP_OPTIONS}
+          options={makeSleepOptions(props.duration, props.currentTime)}
           onChange={(v) => {
             if (v === "chapter") props.onSetSleep(null, true);
             else props.onSetSleep(v ? Number(v) : null, false);
           }}
         />
         {(props.sleepRemaining != null || props.sleepAtChapterEnd) && (
-          <span className="sleep-countdown muted" aria-live="polite">{props.sleepAtChapterEnd ? "until end" : formatTime(props.sleepRemaining ?? 0)}</span>
+          <span
+            className={`sleep-countdown muted${(props.sleepRemaining != null && props.sleepRemaining <= 60) ? " sleep-countdown--soon" : ""}`}
+            aria-live="polite"
+          >
+            {props.sleepAtChapterEnd ? "until end" : formatTime(props.sleepRemaining ?? 0)}
+          </span>
         )}
         {props.onOpenChapters && (
           <IconButton icon="list" label="Chapters" onClick={props.onOpenChapters} />

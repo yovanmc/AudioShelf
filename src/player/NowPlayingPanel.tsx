@@ -3,18 +3,25 @@ import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
 import { Button, Dialog, IconButton, ProgressBar, SectionHeading } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { formatTime, formatSpeed, timeLabel, type TimeLabelMode, SPEEDS } from "./playback";
+import { useState } from "react";
+import { formatTime, formatSpeed, formatScrubPreview, endOfChapterPreview, nextChapterLabel, timeLabel, type TimeLabelMode, SPEEDS } from "./playback";
 import { PlaybackButtons, type PlayerControls } from "./PlayerBar";
 import { Select } from "../components/Select";
 import type { SelectOption } from "../components/Select";
 
-const SLEEP_OPTIONS: SelectOption<string>[] = [
+const BASE_SLEEP_OPTIONS_NP: SelectOption<string>[] = [
   { value: "", label: "Off" },
   { value: "15", label: "15 min" },
   { value: "30", label: "30 min" },
   { value: "60", label: "60 min" },
-  { value: "chapter", label: "End of chapter" },
 ];
+
+function makeSleepOptionsNP(duration: number, currentTime: number): SelectOption<string>[] {
+  return [
+    ...BASE_SLEEP_OPTIONS_NP,
+    { value: "chapter", label: duration > 0 ? endOfChapterPreview(duration, currentTime) : "End of chapter" },
+  ];
+}
 
 /** Formats integer seconds as m:ss. */
 function fmtPos(secs: number): string {
@@ -51,11 +58,16 @@ export function NowPlayingPanel(props: PlayerControls & {
   onPlayNextChapter?: () => void;
   onMarkComplete?: () => void;
   canPlayNext?: boolean;
+  /** Title of the next chapter, for the play-next button label (M29 PL7-7). */
+  nextChapterTitle?: string;
 }) {
   const { context } = props;
+  const [scrubbing, setScrubbing] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const progress = context.workTotalChapters > 0
     ? Math.round((context.workPlayedChapters / context.workTotalChapters) * 100)
     : 0;
+  const resumeSecs = context.chapter.playbackPositionSecs ?? 0;
   return (
     <Dialog label="Now playing" title="Now playing" onClose={props.onClose}>
       <div className="now-playing__layout">
@@ -83,11 +95,40 @@ export function NowPlayingPanel(props: PlayerControls & {
               <Button variant="secondary" onClick={props.onPopOut}>Pop out mini player</Button>
             </div>
           )}
+          <div style={{ marginTop: "var(--space-2)" }}>
+            <IconButton icon="keyboard" label="Keyboard shortcuts" onClick={() => setShowShortcuts(true)} />
+          </div>
+          {showShortcuts && (
+            <Dialog label="Keyboard shortcuts" title="Keyboard shortcuts" context="Works when the player is focused and you're not typing in a field." onClose={() => setShowShortcuts(false)}>
+              <ul className="shortcut-list">
+                <li><kbd>Space</kbd><span>Play / pause</span></li>
+                <li><kbd>←</kbd> <kbd>→</kbd><span>Skip back / forward</span></li>
+                <li><kbd>Ctrl</kbd> <kbd>K</kbd><span>Command palette</span></li>
+              </ul>
+            </Dialog>
+          )}
           <div className="player-bar__seek">
             <button type="button" className="time-label" title="Toggle time display" onClick={props.onCycleTimeLabel}>
               {timeLabel(props.timeLabelMode ?? "elapsed", props.currentTime, props.duration)}
             </button>
-            <input type="range" aria-label="Seek" min={0} max={props.duration || 0} value={Math.min(props.currentTime, props.duration)} onChange={(event) => props.onSeek(Number(event.target.value))} />
+            <div className="seek-wrap">
+              <input
+                className="seek-range" type="range" aria-label="Seek"
+                min={0} max={props.duration || 0}
+                value={Math.min(props.currentTime, props.duration)}
+                onChange={(event) => props.onSeek(Number(event.target.value))}
+                onPointerDown={() => setScrubbing(true)}
+                onPointerUp={() => setScrubbing(false)}
+              />
+              {props.duration > 0 && resumeSecs > 0 && resumeSecs < props.duration && (
+                <span className="seek-cue seek-cue--resume" style={{ left: `${(resumeSecs / props.duration) * 100}%` }} title="Resume point" />
+              )}
+              {scrubbing && (
+                <span className="seek-bubble" style={{ left: `${props.duration ? (Math.min(props.currentTime, props.duration) / props.duration) * 100 : 0}%` }}>
+                  {formatScrubPreview(props.currentTime, props.duration)}
+                </span>
+              )}
+            </div>
             <span>{formatTime(props.duration)}</span>
           </div>
           {props.onSetSpeed && (
@@ -115,20 +156,25 @@ export function NowPlayingPanel(props: PlayerControls & {
             <Select<string>
               label="Sleep timer"
               value={props.sleepAtChapterEnd ? "chapter" : (props.sleepMinutes != null ? String(props.sleepMinutes) : "")}
-              options={SLEEP_OPTIONS}
+              options={makeSleepOptionsNP(props.duration, props.currentTime)}
               onChange={(v) => {
                 if (v === "chapter") props.onSetSleep(null, true);
                 else props.onSetSleep(v ? Number(v) : null, false);
               }}
             />
             {(props.sleepRemaining != null || props.sleepAtChapterEnd) && (
-              <span className="sleep-countdown muted" aria-live="polite">{props.sleepAtChapterEnd ? "until end of chapter" : formatTime(props.sleepRemaining ?? 0)}</span>
+              <span
+                className={`sleep-countdown muted${(props.sleepRemaining != null && props.sleepRemaining <= 60) ? " sleep-countdown--soon" : ""}`}
+                aria-live="polite"
+              >
+                {props.sleepAtChapterEnd ? "until end of chapter" : formatTime(props.sleepRemaining ?? 0)}
+              </span>
             )}
           </div>
-          <div className="np-endactions">
+          <div className="np-endactions" key={props.canPlayNext ? "next" : "last"}>
             {props.canPlayNext && props.onPlayNextChapter ? (
               <>
-                <Button variant="primary" onClick={props.onPlayNextChapter}>Play next chapter →</Button>
+                <Button variant="primary" onClick={props.onPlayNextChapter}>{nextChapterLabel(props.nextChapterTitle)} →</Button>
                 <p className="muted np-endactions__note">Plays this chapter, then stops. Tap to continue when you're ready.</p>
               </>
             ) : (

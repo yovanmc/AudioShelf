@@ -55,6 +55,10 @@
   --letter-spacing: normal;
   --word-spacing: normal;
   --line-height: 1.5;
+  /* M29 */
+  --scrubber-thumb: 14px;        /* always-visible thumb size */
+  --scrubber-track-h: 6px;       /* visible filled track height */
+  --transition-swap: 160ms ease; /* chapter-end button cross-fade (PL7-3) */
 }
 [data-text-size="large"]  { --font-scale: 1.15; }
 [data-text-size="xlarge"] { --font-scale: 1.3; }

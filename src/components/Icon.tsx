@@ -6,7 +6,8 @@ export type IconName =
   | "expand" | "collapse" | "close" | "refresh" | "folder"
   | "journal" | "insights" | "collections" | "voice" | "list"
   | "circle" | "circleHalf"
-  | "music";
+  | "music"
+  | "keyboard";
 
 type GlyphDef = { d: string; fill?: string };
 
@@ -50,6 +51,8 @@ const glyphs: Record<IconName, GlyphDef> = {
   circleHalf:  { d: "M12 4a8 8 0 0 1 0 16V4z", fill: "currentColor" },
   /** Music note — cover-art placeholder glyph. */
   music:       { d: "M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm12-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" },
+  /** Keyboard outline — used for the shortcuts hints affordance (PL7-9). */
+  keyboard:    { d: "M3 5h18a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm2 3v2h2V8H5Zm4 0v2h2V8H9Zm4 0v2h2V8h-2Zm4 0v2h2V8h-2ZM5 12v2h2v-2H5Zm4 0v2h6v-2H9Zm8 0v2h2v-2h-2Z" },
 };
 
 export function Icon({ name, className = "" }: { name: IconName; className?: string }) {

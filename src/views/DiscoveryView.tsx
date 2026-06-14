@@ -1,6 +1,6 @@
 import type { LabelType, DiscoveryWork } from "../lib/api";
 import { WorkCard } from "../components/WorkCard";
-import { EmptyState, PageHeader, SectionHeading } from "../components/ui";
+import { Button, EmptyState, PageHeader, SectionHeading } from "../components/ui";
 
 function WorkList({ works, onOpenAuthor, onPlayNext, emptyTitle = "Nothing to show yet", emptyBody = "Play some audio or add tags to build recommendations." }: { works: DiscoveryWork[]; onOpenAuthor: (id: number) => void; onPlayNext?: (workId: number, authorId: number) => void; emptyTitle?: string; emptyBody?: string }) {
   if (!works.length) return <EmptyState title={emptyTitle}>{emptyBody}</EmptyState>;
@@ -43,6 +43,8 @@ export interface DiscoveryViewProps {
   onOpenAuthor: (id: number) => void;
   onBack?: () => void;
   onPlayNextOfWork?: (workId: number, authorId: number) => void;
+  /** Opens Settings so the user can add their library folder. */
+  onOpenSettings?: () => void;
 }
 
 export function DiscoveryView(props: DiscoveryViewProps) {
@@ -52,6 +54,19 @@ export function DiscoveryView(props: DiscoveryViewProps) {
   const activeTypes = labelTypes
     .filter((lt) => (termsByType[lt.name] ?? []).length > 0)
     .sort((a, b) => a.sort - b.sort);
+
+  // Un-indexed library: no label types with any terms at all.
+  if (activeTypes.length === 0 && labelTypes.length === 0) {
+    return (
+      <main className="view discovery">
+        <PageHeader eyebrow="Suggestions from your library" title="Discover" />
+        <EmptyState
+          title="Nothing to discover yet"
+          action={props.onOpenSettings && <Button variant="primary" onClick={props.onOpenSettings}>Set up my library</Button>}
+        >Once you've added your library and listened a little, this is where you'll find picks by mood, narrator, and the labels you create.</EmptyState>
+      </main>
+    );
+  }
 
   return (
     <main className="view discovery">

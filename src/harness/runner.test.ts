@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -254,6 +254,37 @@ describe("m28Steps", () => {
       "04-chip-row-rhythm",
       "05-card-grid",
       "06-expanded-player",
+    ]);
+  });
+});
+
+describe("m29Steps", () => {
+  it("captures the eleven M29 player-&-onboarding-polish surfaces in order", () => {
+    const noop = async () => {};
+    expect(m29Steps({
+      showScrubberRest: noop,
+      showScrubberCue: noop,
+      showChapterEnd: noop,
+      showTransport: noop,
+      showShortcuts: noop,
+      showHomeEmpty: noop,
+      showHomeShelves: noop,
+      showScanComplete: noop,
+      showSettingsSubnav: noop,
+      showSidebarCollapsed: noop,
+      showPaletteSections: noop,
+    }).map((s) => s.name)).toEqual([
+      "01-scrubber-rest",
+      "02-scrubber-cue",
+      "03-chapter-end",
+      "04-transport",
+      "05-shortcuts",
+      "06-home-empty",
+      "07-home-shelves",
+      "08-scan-complete",
+      "09-settings-subnav",
+      "10-sidebar-collapsed",
+      "11-palette-sections",
     ]);
   });
 });

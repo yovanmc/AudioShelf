@@ -275,8 +275,9 @@ describe("SettingsView — Library tools", () => {
 describe("SettingsView — Settings group headings", () => {
   it("shows Curation and Maintenance group headings on non-first-run", () => {
     render(<SettingsView {...baseSettingsProps()} />);
-    expect(screen.getByText("Curation")).toBeInTheDocument();
-    expect(screen.getByText("Maintenance")).toBeInTheDocument();
+    // sub-nav also renders the same words as links — check for heading role specifically
+    expect(screen.getByRole("heading", { name: "Curation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Maintenance" })).toBeInTheDocument();
   });
 
   it("does not show group headings on first run", () => {
