@@ -48,6 +48,13 @@ export function formatPercent(currentTime: number, duration: number): string {
   return `${pct}%`;
 }
 
+/** Sleep-timer "End of chapter" option label with remaining minutes preview (PL7-8). */
+export function endOfChapterPreview(totalSecs: number, currentSecs: number): string {
+  const remaining = Math.max(0, totalSecs - currentSecs);
+  const mins = Math.ceil(remaining / 60);
+  return remaining < 60 ? "End of chapter · <1 min left" : `End of chapter · ~${mins} min left`;
+}
+
 /** Play-next button label — includes the upcoming chapter title if known (PL7-7). */
 export function nextChapterLabel(nextTitle?: string): string {
   const t = (nextTitle ?? "").trim();

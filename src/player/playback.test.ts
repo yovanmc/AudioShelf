@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clampSeek, formatTime, formatTimeLeft, formatPercent, timeLabel, SKIP_BACK_LARGE, SKIP_FWD_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, nextSpeed, formatSpeed, SPEEDS, formatScrubPreview, nextChapterLabel } from "./playback";
+import { clampSeek, formatTime, formatTimeLeft, formatPercent, timeLabel, SKIP_BACK_LARGE, SKIP_FWD_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, nextSpeed, formatSpeed, SPEEDS, formatScrubPreview, nextChapterLabel, endOfChapterPreview } from "./playback";
 
 describe("clampSeek", () => {
   it("adds the delta within bounds", () => {
@@ -105,6 +105,15 @@ describe("nextChapterLabel", () => {
   it("falls back when no title is known", () => {
     expect(nextChapterLabel("")).toBe("Play next chapter");
     expect(nextChapterLabel(undefined)).toBe("Play next chapter");
+  });
+});
+
+describe("endOfChapterPreview", () => {
+  it("rounds up remaining minutes", () => {
+    expect(endOfChapterPreview(600, 130)).toBe("End of chapter · ~8 min left");
+  });
+  it("shows <1 min near the end", () => {
+    expect(endOfChapterPreview(600, 580)).toBe("End of chapter · <1 min left");
   });
 });
 

@@ -290,7 +290,11 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 /* M24 — Now Playing rows */
 .np-row { display: flex; align-items: center; gap: var(--space-2, 8px); margin: var(--space-2, 8px) 0; flex-wrap: wrap; }
 .np-row__label { min-width: 64px; color: var(--color-text-muted, #aaa); font-size: .9rem; }
-.sleep-countdown { font-variant-numeric: tabular-nums; }
+/* M29 PL7-10: prominent sleep countdown */
+.sleep-countdown { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--color-text); }
+.sleep-countdown--soon { color: var(--color-accent); animation: sleep-pulse 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .sleep-countdown--soon { animation: none; } }
+@keyframes sleep-pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
 
 /* M24 — chapter-end actions (PL-2); M29 PL7-3: cross-fade animation */
 .np-endactions { display: flex; gap: var(--space-2, 8px); flex-wrap: wrap; align-items: center; margin-top: var(--space-3, 12px); animation: np-endactions-in var(--transition-swap); }

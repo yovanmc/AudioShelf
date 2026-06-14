@@ -3,17 +3,23 @@ import type { PlaybackContext } from "../lib/api";
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
 import { IconButton } from "../components/ui";
-import { formatTime, formatSpeed, formatScrubPreview, timeLabel, type TimeLabelMode, SKIP_BACK_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, SKIP_FWD_LARGE } from "./playback";
+import { formatTime, formatSpeed, formatScrubPreview, endOfChapterPreview, timeLabel, type TimeLabelMode, SKIP_BACK_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, SKIP_FWD_LARGE } from "./playback";
 import { Select } from "../components/Select";
 import type { SelectOption } from "../components/Select";
 
-const SLEEP_OPTIONS: SelectOption<string>[] = [
+const BASE_SLEEP_OPTIONS: SelectOption<string>[] = [
   { value: "", label: "Sleep off" },
   { value: "15", label: "15 min" },
   { value: "30", label: "30 min" },
   { value: "60", label: "60 min" },
-  { value: "chapter", label: "End of chapter" },
 ];
+
+function makeSleepOptions(duration: number, currentTime: number): SelectOption<string>[] {
+  return [
+    ...BASE_SLEEP_OPTIONS,
+    { value: "chapter", label: duration > 0 ? endOfChapterPreview(duration, currentTime) : "End of chapter" },
+  ];
+}
 
 export interface PlayerControls {
   isPlaying: boolean;
@@ -117,14 +123,19 @@ export function PlayerBar(props: PlayerBarProps) {
         <Select<string>
           label="Sleep timer"
           value={props.sleepAtChapterEnd ? "chapter" : (props.sleepMinutes != null ? String(props.sleepMinutes) : "")}
-          options={SLEEP_OPTIONS}
+          options={makeSleepOptions(props.duration, props.currentTime)}
           onChange={(v) => {
             if (v === "chapter") props.onSetSleep(null, true);
             else props.onSetSleep(v ? Number(v) : null, false);
           }}
         />
         {(props.sleepRemaining != null || props.sleepAtChapterEnd) && (
-          <span className="sleep-countdown muted" aria-live="polite">{props.sleepAtChapterEnd ? "until end" : formatTime(props.sleepRemaining ?? 0)}</span>
+          <span
+            className={`sleep-countdown muted${(props.sleepRemaining != null && props.sleepRemaining <= 60) ? " sleep-countdown--soon" : ""}`}
+            aria-live="polite"
+          >
+            {props.sleepAtChapterEnd ? "until end" : formatTime(props.sleepRemaining ?? 0)}
+          </span>
         )}
         {props.onOpenChapters && (
           <IconButton icon="list" label="Chapters" onClick={props.onOpenChapters} />
