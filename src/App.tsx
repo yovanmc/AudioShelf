@@ -2278,13 +2278,16 @@ export default function App() {
                   await settle();
                   await settle();
                   // Works default to expanded, but a prior walkthrough step may have
-                  // collapsed them. If the journal affordance button is not in the DOM
-                  // the seeded work is collapsed — click its expand button first.
-                  if (!document.querySelector('button[aria-label="View your notes & bookmarks"]')) {
-                    const expandBtn = document.querySelector<HTMLButtonElement>(
-                      'button[aria-label^="Expand \'"]'
-                    );
-                    expandBtn?.click();
+                  // collapsed some of them. Expand EVERY collapsed work so we don't
+                  // accidentally leave "Another Standalone Tale" (the one with seeded
+                  // journal data) collapsed while expanding the wrong work.
+                  const expandBtns = Array.from(
+                    document.querySelectorAll<HTMLButtonElement>('button[aria-label^="Expand \'"]')
+                  );
+                  for (const btn of expandBtns) {
+                    btn.click();
+                  }
+                  if (expandBtns.length > 0) {
                     await settle();
                     await settle();
                   }
