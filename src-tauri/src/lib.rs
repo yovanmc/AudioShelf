@@ -135,7 +135,12 @@ pub fn run() {
             commands::merge_metadata_terms,
             commands::add_metadata_value,
             commands::remove_metadata_value,
-            commands::get_discovery_by_metadata
+            commands::get_discovery_by_metadata,
+            commands::list_label_types,
+            commands::create_label_type,
+            commands::rename_label_type,
+            commands::delete_label_type,
+            commands::reorder_label_types
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

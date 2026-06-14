@@ -401,6 +401,16 @@ pub struct MetaTerm {
     pub author_count: i64,
 }
 
+/// A label type (facet) row from `label_types`.
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelType {
+    pub name: String,
+    pub display: String,
+    pub builtin: bool,
+    pub sort: i64,
+}
+
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ScopedWork {

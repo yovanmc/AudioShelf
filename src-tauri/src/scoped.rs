@@ -171,7 +171,8 @@ mod tests {
 
     #[test]
     fn scoped_query_filters_by_narrator() {
-        let conn = crate::db::open_at_version(8).unwrap();
+        // Requires v10 for label_types (is_valid_facet is DB-backed).
+        let conn = crate::db::open_in_memory().unwrap();
         conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
         // two works; only work 1's chapter carries the narrator.
         for w in 1..=2 {

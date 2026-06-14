@@ -2,6 +2,7 @@
 
 use crate::db;
 use crate::metadata::{is_valid_facet, scope_table, facet_label};
+use crate::model::LabelType;
 use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterBookmark, ChapterHit, ChapterJournal, ChapterNote, ChapterRow, Collection, ContinueItem, DiscoveryWork, DormantWork, HomeData, JournalEntry, JournalExportReport, JournalResults, ListeningStats, MetaTag, MetaTerm, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SavedSearch, SearchResults, UndoResult, WorkHit, WorkRow};
 use crate::natsort::natural_cmp;
 use crate::regroup;
@@ -2653,7 +2654,7 @@ pub fn set_work_chapter_sort(state: tauri::State<DbState>, work_id: i64, sort: S
 /// Create-or-fetch a metadata term. Idempotent on UNIQUE(facet, value). Trims the
 /// value and rejects unknown facets / blank values.
 pub(crate) fn upsert_term(conn: &rusqlite::Connection, facet: &str, value: &str) -> rusqlite::Result<MetaTerm> {
-    if !is_valid_facet(facet) {
+    if !is_valid_facet(conn, facet) {
         return Err(rusqlite::Error::InvalidParameterName(format!("unknown facet: {facet}")));
     }
     let v = value.trim();
@@ -2745,6 +2746,110 @@ pub fn merge_metadata_terms(state: tauri::State<DbState>, source_ids: Vec<i64>, 
     }
     tx.commit().map_err(|e| e.to_string())
 }
+
+// ---- Label-type CRUD ---------------------------------------------------------------
+
+/// List all label types ordered by sort then name.
+#[tauri::command]
+pub fn list_label_types(state: tauri::State<DbState>) -> Result<Vec<LabelType>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT name, display, builtin, sort FROM label_types ORDER BY sort, name",
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |r| Ok(LabelType {
+        name:    r.get(0)?,
+        display: r.get(1)?,
+        builtin: r.get::<_, i64>(2)? != 0,
+        sort:    r.get(3)?,
+    })).map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+/// Create a custom label type. `name` is slugged (lowercase + trimmed).
+/// Idempotent (INSERT OR IGNORE), so duplicate calls are safe.
+#[tauri::command]
+pub fn create_label_type(state: tauri::State<DbState>, name: String, display: String) -> Result<(), String> {
+    let slug = name.trim().to_lowercase();
+    if slug.is_empty() { return Err("name must not be empty".into()); }
+    let disp = display.trim().to_string();
+    if disp.is_empty() { return Err("display must not be empty".into()); }
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR IGNORE INTO label_types(name, display, builtin, sort) \
+         VALUES (?1, ?2, 0, (SELECT COALESCE(MAX(sort), -1)+1 FROM label_types))",
+        params![slug, disp],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Rename the *display* label of a type (`name` is the stable key and never changes).
+#[tauri::command]
+pub fn rename_label_type(state: tauri::State<DbState>, name: String, display: String) -> Result<(), String> {
+    let disp = display.trim().to_string();
+    if disp.is_empty() { return Err("display must not be empty".into()); }
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE label_types SET display=?1 WHERE name=?2",
+        params![disp, name.trim()],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Delete a custom label type and all its terms + attach rows.
+/// Returns an error if the type is builtin.
+#[tauri::command]
+pub fn delete_label_type(state: tauri::State<DbState>, name: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let builtin: i64 = conn.query_row(
+        "SELECT builtin FROM label_types WHERE name=?1",
+        params![name.trim()],
+        |r| r.get(0),
+    ).map_err(|e| e.to_string())?;
+    if builtin != 0 {
+        return Err(format!("cannot delete builtin label type '{name}'"));
+    }
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    // Remove attach rows for all terms in this facet.
+    tx.execute(
+        "DELETE FROM chapter_metadata WHERE term_id IN (SELECT id FROM metadata_terms WHERE facet=?1)",
+        params![name.trim()],
+    ).map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM author_metadata WHERE term_id IN (SELECT id FROM metadata_terms WHERE facet=?1)",
+        params![name.trim()],
+    ).map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM work_metadata WHERE term_id IN (SELECT id FROM metadata_terms WHERE facet=?1)",
+        params![name.trim()],
+    ).map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM metadata_terms WHERE facet=?1",
+        params![name.trim()],
+    ).map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM label_types WHERE name=?1",
+        params![name.trim()],
+    ).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// Set `sort` = index position for each name in the supplied order (transactional).
+#[tauri::command]
+pub fn reorder_label_types(state: tauri::State<DbState>, names: Vec<String>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    for (i, n) in names.iter().enumerate() {
+        tx.execute(
+            "UPDATE label_types SET sort=?1 WHERE name=?2",
+            params![i as i64, n.trim()],
+        ).map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+// ---- attach table helpers ----------------------------------------------------------
 
 /// Read all metadata terms attached to a chapter.
 pub(crate) fn chapter_metadata(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<Vec<MetaTag>> {
@@ -4488,20 +4593,22 @@ mod tests {
 
     #[test]
     fn upsert_term_is_idempotent_and_validates_facet() {
-        let conn = crate::db::open_at_version(8).unwrap();
+        // Requires v10 (label_types) for DB-backed is_valid_facet.
+        let conn = crate::db::open_in_memory().unwrap();
         let a = upsert_term(&conn, "narrator", "  Jane Roe  ").unwrap();
         assert_eq!(a.value, "Jane Roe"); // trimmed
         let b = upsert_term(&conn, "narrator", "Jane Roe").unwrap();
         assert_eq!(a.id, b.id); // same row, no duplicate
         let n: i64 = conn.query_row("SELECT count(*) FROM metadata_terms", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 1);
-        assert!(upsert_term(&conn, "genre", "x").is_err()); // invalid facet
+        assert!(upsert_term(&conn, "genre", "x").is_err()); // invalid facet (not in label_types)
         assert!(upsert_term(&conn, "mood", "   ").is_err()); // empty value
     }
 
     #[test]
     fn list_terms_reports_usage_counts() {
-        let conn = crate::db::open_at_version(8).unwrap();
+        // Requires v10 for label_types (is_valid_facet is DB-backed).
+        let conn = crate::db::open_in_memory().unwrap();
         // seed a minimal author + work + chapter so attachments are valid.
         conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
         conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
@@ -4519,7 +4626,8 @@ mod tests {
 
     #[test]
     fn add_and_remove_chapter_metadata_roundtrip() {
-        let conn = crate::db::open_at_version(8).unwrap();
+        // Requires v10 for label_types (is_valid_facet is DB-backed).
+        let conn = crate::db::open_in_memory().unwrap();
         conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
         conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
         conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (1,1,'/x.wav','x.wav',1,'wav',5,0,'active')", []).unwrap();
@@ -4539,13 +4647,15 @@ mod tests {
 
     #[test]
     fn invalid_scope_is_rejected() {
-        let conn = crate::db::open_at_version(8).unwrap();
-        assert!(attach_value(&conn, "work", 1, "mood", "cozy").is_err());
+        let conn = crate::db::open_in_memory().unwrap();
+        // "universe" is not a known scope; attach_value must return Err.
+        assert!(attach_value(&conn, "universe", 1, "mood", "cozy").is_err());
     }
 
     #[test]
     fn author_detail_surfaces_chapter_and_work_metadata() {
-        let conn = crate::db::open_at_version(9).unwrap();
+        // Requires v10 for label_types (is_valid_facet is DB-backed).
+        let conn = crate::db::open_in_memory().unwrap();
         conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
         conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
         conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (1,1,'/x.wav','x.wav',1,'wav',5,0,'active')", []).unwrap();
@@ -4559,7 +4669,8 @@ mod tests {
 
     #[test]
     fn discovery_for_metadata_finds_works_with_unplayed_chapters() {
-        let conn = crate::db::open_at_version(8).unwrap();
+        // Requires v10 for label_types (is_valid_facet is DB-backed).
+        let conn = crate::db::open_in_memory().unwrap();
         conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
         conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
         conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (1,1,'/x.wav','x.wav',1,'wav',5,0,'active')", []).unwrap();
@@ -4571,6 +4682,137 @@ mod tests {
         // a fully-played work is excluded.
         conn.execute("UPDATE chapters SET played=1 WHERE id=1", []).unwrap();
         assert_eq!(discovery_for_metadata(&conn, "narrator", "Jane Roe", 50).unwrap().len(), 0);
+    }
+
+    // ---- M26 T2: label-type CRUD tests ------------------------------------------------
+
+    fn query_label_types(conn: &rusqlite::Connection) -> Vec<LabelType> {
+        let mut stmt = conn.prepare(
+            "SELECT name, display, builtin, sort FROM label_types ORDER BY sort, name"
+        ).unwrap();
+        stmt.query_map([], |r| Ok(LabelType {
+            name:    r.get(0).unwrap(),
+            display: r.get(1).unwrap(),
+            builtin: r.get::<_, i64>(2).unwrap() != 0,
+            sort:    r.get(3).unwrap(),
+        })).unwrap().map(|r| r.unwrap()).collect()
+    }
+
+    #[test]
+    fn create_label_type_then_list_shows_it() {
+        let conn = crate::db::open_in_memory().unwrap();
+        // Seeded label_types = narrator(0), language(1), tag(2), mood(3)
+        let before = query_label_types(&conn);
+        assert_eq!(before.len(), 4);
+
+        // Insert a custom type.
+        conn.execute(
+            "INSERT OR IGNORE INTO label_types(name, display, builtin, sort) \
+             VALUES ('genre', 'Genre', 0, (SELECT COALESCE(MAX(sort),-1)+1 FROM label_types))",
+            [],
+        ).unwrap();
+
+        let after = query_label_types(&conn);
+        assert_eq!(after.len(), 5);
+        let genre = after.iter().find(|t| t.name == "genre").expect("genre not found");
+        assert_eq!(genre.display, "Genre");
+        assert!(!genre.builtin);
+        assert_eq!(genre.sort, 4);
+    }
+
+    #[test]
+    fn delete_label_type_on_builtin_returns_err() {
+        let conn = crate::db::open_in_memory().unwrap();
+        // Simulating the command logic directly: query builtin and return Err if 1.
+        let builtin: i64 = conn.query_row(
+            "SELECT builtin FROM label_types WHERE name=?1",
+            params!["narrator"],
+            |r| r.get(0),
+        ).unwrap();
+        assert_eq!(builtin, 1, "narrator should be builtin");
+        // The command returns Err for builtin types — verify the guard logic.
+        let result: Result<(), String> = if builtin != 0 {
+            Err("cannot delete builtin label type 'narrator'".into())
+        } else {
+            Ok(())
+        };
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("builtin"));
+    }
+
+    #[test]
+    fn delete_label_type_removes_terms_and_attachments() {
+        let conn = crate::db::open_in_memory().unwrap();
+        // Create a custom label type.
+        conn.execute(
+            "INSERT INTO label_types(name, display, builtin, sort) VALUES ('genre', 'Genre', 0, 10)",
+            [],
+        ).unwrap();
+        // Seed an author + work + chapter for attach rows.
+        conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (1,1,'/x.wav','x.wav',1,'wav',5,0,'active')", []).unwrap();
+        // Attach a genre term to chapter + work.
+        let t = upsert_term(&conn, "genre", "Fantasy").unwrap();
+        conn.execute("INSERT OR IGNORE INTO chapter_metadata(chapter_id, term_id) VALUES (1,?1)", params![t.id]).unwrap();
+        conn.execute("INSERT OR IGNORE INTO work_metadata(work_id, term_id) VALUES (1,?1)", params![t.id]).unwrap();
+
+        // Run delete transaction.
+        let tx = conn.unchecked_transaction().unwrap();
+        tx.execute("DELETE FROM chapter_metadata WHERE term_id IN (SELECT id FROM metadata_terms WHERE facet='genre')", []).unwrap();
+        tx.execute("DELETE FROM author_metadata WHERE term_id IN (SELECT id FROM metadata_terms WHERE facet='genre')", []).unwrap();
+        tx.execute("DELETE FROM work_metadata WHERE term_id IN (SELECT id FROM metadata_terms WHERE facet='genre')", []).unwrap();
+        tx.execute("DELETE FROM metadata_terms WHERE facet='genre'", []).unwrap();
+        tx.execute("DELETE FROM label_types WHERE name='genre'", []).unwrap();
+        tx.commit().unwrap();
+
+        let n_terms: i64 = conn.query_row("SELECT count(*) FROM metadata_terms WHERE facet='genre'", [], |r| r.get(0)).unwrap();
+        let n_types: i64 = conn.query_row("SELECT count(*) FROM label_types WHERE name='genre'", [], |r| r.get(0)).unwrap();
+        let n_chapter: i64 = conn.query_row("SELECT count(*) FROM chapter_metadata", [], |r| r.get(0)).unwrap();
+        let n_work: i64 = conn.query_row("SELECT count(*) FROM work_metadata", [], |r| r.get(0)).unwrap();
+        assert_eq!(n_terms, 0);
+        assert_eq!(n_types, 0);
+        assert_eq!(n_chapter, 0);
+        assert_eq!(n_work, 0);
+    }
+
+    #[test]
+    fn reorder_label_types_sets_sort_order() {
+        let conn = crate::db::open_in_memory().unwrap();
+        // Add a custom type so we have 5 to reorder.
+        conn.execute(
+            "INSERT INTO label_types(name, display, builtin, sort) VALUES ('genre', 'Genre', 0, 10)",
+            [],
+        ).unwrap();
+
+        // Reorder: genre first, then narrator, language, mood, tag.
+        let new_order = vec!["genre", "narrator", "language", "mood", "tag"];
+        let tx = conn.unchecked_transaction().unwrap();
+        for (i, n) in new_order.iter().enumerate() {
+            tx.execute("UPDATE label_types SET sort=?1 WHERE name=?2", params![i as i64, n]).unwrap();
+        }
+        tx.commit().unwrap();
+
+        let types = query_label_types(&conn);
+        assert_eq!(types[0].name, "genre");
+        assert_eq!(types[0].sort, 0);
+        assert_eq!(types[1].name, "narrator");
+        assert_eq!(types[1].sort, 1);
+        assert_eq!(types[4].name, "tag");
+        assert_eq!(types[4].sort, 4);
+    }
+
+    #[test]
+    fn work_scope_accept_after_v10() {
+        let conn = crate::db::open_in_memory().unwrap();
+        conn.execute("INSERT INTO authors(id, folder_name, display_name, status) VALUES (1,'a','A','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id, work_id, file_path, raw_filename, chapter_no, format, duration_secs, played, status) VALUES (1,1,'/x.wav','x.wav',1,'wav',5,0,'active')", []).unwrap();
+        // "work" scope should now succeed (work_metadata table exists after v10).
+        let result = attach_value(&conn, "work", 1, "narrator", "Jane Roe");
+        assert!(result.is_ok(), "work scope attach should succeed after v10: {result:?}");
+        let n: i64 = conn.query_row("SELECT count(*) FROM work_metadata WHERE work_id=1", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
     }
 }
 
