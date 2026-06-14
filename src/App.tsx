@@ -2277,6 +2277,15 @@ export default function App() {
                   await openAuthor(jane.id);
                   await settle();
                   await settle();
+                  // The journal affordance button lives inside a chapter <li> that may be
+                  // below the author header in a tall view. Scroll it into view so the
+                  // icon is in frame before the screenshot is captured.
+                  const journalBtn = document.querySelector<HTMLElement>(
+                    'button[aria-label="View your notes & bookmarks"]'
+                  );
+                  const chapterRow = journalBtn?.closest("li") ?? journalBtn;
+                  (chapterRow as HTMLElement | null)?.scrollIntoView({ block: "center" });
+                  await settle();
                 },
 
                 // Step 8: Journal view — back control is present at the top.
