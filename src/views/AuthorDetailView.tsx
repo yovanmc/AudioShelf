@@ -237,12 +237,31 @@ export function AuthorDetailView(props: {
   return (
     <main className="view author-detail">
       <Button variant="ghost" onClick={props.onBack}><Icon name="chevronLeft" /> Library</Button>
-      <section className="card view-section" style={{ display: "flex", gap: 24, alignItems: "center", padding: 24 }}>
-        <CreatorAvatar authorId={detail.id} name={detail.name} size={112} />
-        <div style={{ flex: 1 }}>
-          <div className="muted">Creator</div>
-          <h1 dir="auto">{detail.name}</h1>
-          <p className="muted">{works.length} works · {chapters.length} chapters · {formatLong(totalSecs)} · {progress}% played</p>
+      <section className="card view-section creator-header" style={{ padding: 24 }}>
+        {/* Row 1 — identity band: avatar + name/stats on left, primary CTA on right */}
+        <div className="creator-header__band">
+          <CreatorAvatar authorId={detail.id} name={detail.name} size={112} />
+          <div className="creator-header__band-text">
+            <div className="muted">Creator</div>
+            <h1 className="creator-header__name" dir="auto">{detail.name}</h1>
+            <p className="creator-header__stats">{works.length} works · {chapters.length} chapters · {formatLong(totalSecs)} · {progress}% played</p>
+          </div>
+          {firstUnplayed && (
+            <div className="creator-header__actions">
+              <Button variant="primary" onClick={() => props.onPlayChapter({
+                chapter: firstUnplayed.chapter,
+                authorId: detail.id,
+                authorName: detail.name,
+                workId: firstUnplayed.work.id,
+                workTitle: firstUnplayed.work.baseTitle,
+                workTotalChapters: firstUnplayed.work.chapters.length,
+                workPlayedChapters: firstUnplayed.work.chapters.filter((chapter) => chapter.played).length,
+              })}>{played === 0 ? "Start listening" : "Keep listening"}</Button>
+            </div>
+          )}
+        </div>
+        {/* Row 2 — tags + metadata, below a divider */}
+        <div className="creator-header__meta">
           <p className="muted field-hint">Tags — your own free-form labels (e.g. "cozy", "re-listen").</p>
           <TagEditor tags={detail.tags} allTags={props.allTags} onChange={props.onSetTags} />
           {props.onAddAuthorMeta && props.onRemoveAuthorMeta && (
@@ -256,15 +275,6 @@ export function AuthorDetailView(props: {
               />
             </>
           )}
-          {firstUnplayed && <Button variant="primary" onClick={() => props.onPlayChapter({
-            chapter: firstUnplayed.chapter,
-            authorId: detail.id,
-            authorName: detail.name,
-            workId: firstUnplayed.work.id,
-            workTitle: firstUnplayed.work.baseTitle,
-            workTotalChapters: firstUnplayed.work.chapters.length,
-            workPlayedChapters: firstUnplayed.work.chapters.filter((chapter) => chapter.played).length,
-          })}>{played === 0 ? "Start listening" : "Keep listening"}</Button>}
         </div>
       </section>
       <div className="work-controls toolbar">

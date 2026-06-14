@@ -232,6 +232,15 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 /* Bookmark / chapter list row separators */
 .now-playing__list-row + .now-playing__list-row { border-top: 1px solid var(--color-border); }
 
+/* ---- Creator/author header (M25 VIS-7) ---- */
+.creator-header { display: flex; flex-direction: column; gap: var(--space-4); }
+.creator-header__band { display: flex; align-items: center; gap: var(--space-4); }
+.creator-header__band-text { flex: 1 1 auto; min-width: 0; }
+.creator-header__name { margin: 0; }
+.creator-header__stats { color: var(--color-text-muted); font-size: .9rem; margin-top: 2px; }
+.creator-header__actions { flex: 0 0 auto; }
+.creator-header__meta { padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
+
 /* M24 — scrubber hit-area (PL-9) */
 .seek-range { height: 22px; cursor: pointer; }
 .seek-range::-webkit-slider-thumb { width: 14px; height: 14px; border-radius: 50%; opacity: 0; transition: opacity .12s; }

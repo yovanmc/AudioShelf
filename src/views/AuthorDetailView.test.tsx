@@ -514,6 +514,43 @@ describe("AuthorDetailView", () => {
     expect(screen.queryByRole("dialog", { name: "Edit grouping" })).not.toBeInTheDocument();
   });
 
+  // ---- M25 VIS-7: creator header structure tests ----
+
+  it("renders name as h1 inside the identity band", () => {
+    render(<AuthorDetailView detail={detail} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
+    const h1 = screen.getByRole("heading", { level: 1, name: "Jane Doe" });
+    expect(h1).toBeInTheDocument();
+    expect(h1.closest(".creator-header__band")).not.toBeNull();
+  });
+
+  it("renders stats line inside the identity band", () => {
+    const { container } = render(<AuthorDetailView detail={detail} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
+    const stats = container.querySelector(".creator-header__stats");
+    expect(stats).not.toBeNull();
+    expect(stats!.textContent).toContain("works");
+  });
+
+  it("renders tags and field-hint in the meta row below the divider", () => {
+    const withTags = { ...detail, tags: ["cozy"] };
+    const { container } = render(<AuthorDetailView detail={withTags} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={["cozy"]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
+    const meta = container.querySelector(".creator-header__meta");
+    expect(meta).not.toBeNull();
+    // field-hint microcopy is inside the meta section
+    expect(meta!.querySelector(".field-hint")).not.toBeNull();
+    // tag chip is inside the meta section
+    expect(within(meta as HTMLElement).getByText("cozy")).toBeInTheDocument();
+  });
+
+  it("renders primary CTA in the actions slot (top-right of band)", () => {
+    // firstUnplayed exists — detail has one unplayed chapter → button should appear
+    const { container } = render(<AuthorDetailView detail={detail} onTogglePlayed={noop} onPlayChapter={noop} onSetTags={noop} onSetGrouping={noop} onClearGrouping={noop} onSetWorkTags={noop} onSetChapterTags={noop} allTags={[]} onBack={noop} workSort="az" onWorkSortChange={vi.fn()} />);
+    const actions = container.querySelector(".creator-header__actions");
+    expect(actions).not.toBeNull();
+    // The CTA button is inside the actions slot
+    const btn = within(actions as HTMLElement).getByRole("button", { name: /start listening|keep listening/i });
+    expect(btn).toBeInTheDocument();
+  });
+
   // ---- series spine tests ----
 
   const seriesData: SeriesView[] = [
