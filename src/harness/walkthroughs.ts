@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26", "m27"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -460,5 +460,30 @@ export function m12Steps(nav: {
     { name: "player-expanded", run: nav.showPlayerExpanded },
     { name: "player-chapters", run: nav.showPlayerChapters },
     { name: "context-menu", run: nav.showContextMenu },
+  ];
+}
+
+/**
+ * Build the "m28" walkthrough: six surfaces that exercise the Visual Consistency II
+ * border/spacing/sizing pass — sidebar+search borders, the rename data-table dividers,
+ * a dialog's title+context spacing, a chip-row's rhythm, the work-card grid resting
+ * borders, and the expanded-player two-column layout. CSS-only milestone, so these
+ * just navigate to existing surfaces; no runtime data seeding beyond what each view needs.
+ */
+export function m28Steps(nav: {
+  showSearchAndSidebar: () => Promise<void>;
+  showDataTable: () => Promise<void>;
+  showDialogContext: () => Promise<void>;
+  showChipRow: () => Promise<void>;
+  showCardGrid: () => Promise<void>;
+  showExpandedPlayer: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "01-search-sidebar-borders", run: nav.showSearchAndSidebar },
+    { name: "02-data-table-dividers", run: nav.showDataTable },
+    { name: "03-dialog-context", run: nav.showDialogContext },
+    { name: "04-chip-row-rhythm", run: nav.showChipRow },
+    { name: "05-card-grid", run: nav.showCardGrid },
+    { name: "06-expanded-player", run: nav.showExpandedPlayer },
   ];
 }
