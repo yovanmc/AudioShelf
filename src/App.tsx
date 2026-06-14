@@ -2891,7 +2891,7 @@ export default function App() {
 
   function routedView() {
     if (route.kind === "loading") return <div>Loading…</div>;
-    if (route.kind === "scan") return <ScanView result={scan} />;
+    if (route.kind === "scan") return <ScanView result={scan} onOpenLibrary={() => setRoute({ kind: "library" })} onOpenHome={openHome} />;
     if (route.kind === "home") {
       return (
         <HomeView

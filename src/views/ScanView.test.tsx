@@ -17,4 +17,11 @@ describe("ScanView", () => {
     render(<ScanView result={null} />);
     expect(screen.getByText(/scanning/i)).toBeInTheDocument();
   });
+
+  it("shows next-steps CTAs when a scan completes", () => {
+    render(<ScanView result={{ authors: 3, works: 4, chapters: 7 }} onOpenLibrary={() => {}} onOpenHome={() => {}} />);
+    expect(screen.getByText(/Library scanned/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Browse library/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Go to Home/i })).toBeInTheDocument();
+  });
 });
