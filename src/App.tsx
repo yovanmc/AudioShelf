@@ -56,7 +56,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -2766,6 +2766,34 @@ export default function App() {
                   setPaletteResults(pr);
                   setPaletteOpen(true);
                   await settle();
+                  await settle();
+                },
+              })
+            : args.walkthrough === "m30"
+            ? m30Steps({
+                // Step 1: ScanView showing a normal scan summary (scan-diff + stats).
+                // The scan ran at startup; just navigate to the scan route with
+                // the existing scan result in state and no progress overlay.
+                showScanSummary: async () => {
+                  setScanProgress(null);
+                  setRoute({ kind: "scan" });
+                  await settle();
+                },
+                // Step 2: ScanView in-progress card — seed a deterministic ScanProgress
+                // so the progress bar + Cancel button are visible. The live fixture scan
+                // is instantaneous so this state is otherwise un-screenshotable.
+                showScanProgress: async () => {
+                  setScanProgress({ authorsDone: 18, authorsTotal: 43, current: "Sam Smith", added: 6, updated: 2, skipped: 10 });
+                  setScan(null);
+                  setRoute({ kind: "scan" });
+                  await settle();
+                },
+                // Step 3: ScanView summary with removed > 0 — seed a mock ScanResult
+                // that includes a removed count, reflecting a soft-deleted item.
+                showScanRemoved: async () => {
+                  setScanProgress(null);
+                  setScan({ authors: 42, works: 43, chapters: 46, added: 0, updated: 0, removed: 1, skipped: 46, errors: [] });
+                  setRoute({ kind: "scan" });
                   await settle();
                 },
               })

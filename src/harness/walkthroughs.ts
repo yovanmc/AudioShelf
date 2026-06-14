@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28", "m29"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28", "m29", "m30"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -528,5 +528,25 @@ export function m29Steps(nav: {
     { name: "09-settings-subnav", run: nav.showSettingsSubnav },
     { name: "10-sidebar-collapsed", run: nav.showSidebarCollapsed },
     { name: "11-palette-sections", run: nav.showPaletteSections },
+  ];
+}
+
+/**
+ * Build the "m30" walkthrough (v8 Real-Scale Hardening — robust incremental scan):
+ *  01 scan-summary   — ScanView after a normal scan (scan-diff line + stats)
+ *  02 scan-progress  — ScanView in-progress card (seeded progress + Cancel button)
+ *  03 scan-removed   — ScanView summary reflecting a soft-deleted item (removed > 0)
+ * Progress/removed states are seeded deterministically (the live scan of the tiny fixture is
+ * instantaneous, so these states are otherwise un-screenshotable).
+ */
+export function m30Steps(nav: {
+  showScanSummary: () => Promise<void>;
+  showScanProgress: () => Promise<void>;
+  showScanRemoved: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "01-scan-summary", run: nav.showScanSummary },
+    { name: "02-scan-progress", run: nav.showScanProgress },
+    { name: "03-scan-removed", run: nav.showScanRemoved },
   ];
 }

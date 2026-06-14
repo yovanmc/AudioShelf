@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -285,6 +285,21 @@ describe("m29Steps", () => {
       "09-settings-subnav",
       "10-sidebar-collapsed",
       "11-palette-sections",
+    ]);
+  });
+});
+
+describe("m30Steps", () => {
+  it("captures the three M30 robust-incremental-scan surfaces in order", () => {
+    const noop = async () => {};
+    expect(m30Steps({
+      showScanSummary: noop,
+      showScanProgress: noop,
+      showScanRemoved: noop,
+    }).map((s) => s.name)).toEqual([
+      "01-scan-summary",
+      "02-scan-progress",
+      "03-scan-removed",
     ]);
   });
 });
