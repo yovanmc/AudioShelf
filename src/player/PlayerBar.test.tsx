@@ -96,7 +96,7 @@ describe("PlayerBar", () => {
     const p = props();
     render(<PlayerBar {...p} />);
     await userEvent.selectOptions(screen.getByLabelText("Sleep timer"), "30");
-    expect(p.onSetSleep).toHaveBeenCalledWith(30);
+    expect(p.onSetSleep).toHaveBeenCalledWith(30, false);
   });
 
   it("clicking the time-label button calls onCycleTimeLabel", async () => {
