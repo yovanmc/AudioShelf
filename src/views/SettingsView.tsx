@@ -430,7 +430,7 @@ export function SettingsView(props: {
       {!firstRun && <h2 className="settings-group">Curation</h2>}
 
       {!firstRun && props.labelTypes !== undefined && props.onCreateLabelType && props.onRenameLabelType && props.onDeleteLabelType && props.onReorderLabelTypes && props.metaTerms !== undefined && props.onCreateMetaTerm && props.onRenameMetaTerm && props.onDeleteMetaTerm && props.onMergeMetaTerms && (
-        <Card style={{ padding: 24, marginTop: 16 }}>
+        <Card className="label-manager" style={{ padding: 24, marginTop: 16 }}>
           <h2>Types &amp; Labels</h2>
           <p className="muted">
             Manage label types and their values. Rename or merge labels across your library.

@@ -2129,6 +2129,8 @@ export default function App() {
                   }
                   // Also tag the author-level language for a richer LabelEditor display.
                   await addLabel("author", jane.id, "language", "English").catch(() => {});
+                  // Seed a tag on Jane so the Library tag-filter (step 6) yields a non-empty result.
+                  await addLabel("author", jane.id, "tag", "cozy").catch(() => {});
                   await loadMetaTerms();
                   await openAuthor(jane.id);
                 },
@@ -2178,13 +2180,16 @@ export default function App() {
                   openDiscovery();
                   await settle();
                 },
-                // Step 6: Library label-filter — filter by show_format / "Talk show" so the
-                // filtered author list shows only the labelled author.
+                // Step 6: Library label-filter — filter by Tag → "cozy" (seeded on Jane Doe
+                // at author level in step 1), so the filtered creators list is NON-EMPTY,
+                // proving the type/value filter wiring works end-to-end.
                 showLibraryLabelFilter: async () => {
-                  setLabelFilter({ facet: "show_format", value: "Talk show" });
+                  setLabelFilter({ facet: "tag", value: "cozy" });
                   setQuery("");
                   setResults(null);
                   setScopedResults(null);
+                  // Reload authors from the DB so Jane's seeded tag is in React state.
+                  await loadAuthors();
                   setRoute({ kind: "library" });
                   await settle();
                 },

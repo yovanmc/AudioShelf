@@ -4,6 +4,7 @@
 //! each facet are created by the user. No embedded-tag ingestion — values are entered manually.
 
 /// The three built-in facets shipped with the app (always present; used as guards).
+#[allow(dead_code)]
 pub const BUILTIN_FACETS: [&str; 3] = ["narrator", "language", "tag"];
 
 /// True iff `facet` is a known label type (DB-backed).

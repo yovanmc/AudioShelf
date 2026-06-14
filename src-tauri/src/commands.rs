@@ -3003,15 +3003,6 @@ pub(crate) fn chapter_metadata(conn: &rusqlite::Connection, chapter_id: i64) -> 
     labels_for(conn, "chapter_metadata", "chapter_id", chapter_id)
 }
 
-/// Read all metadata terms attached to a work (direct work-level attach only).
-pub(crate) fn work_metadata(conn: &rusqlite::Connection, work_id: i64) -> rusqlite::Result<Vec<MetaTag>> {
-    labels_for(conn, "work_metadata", "work_id", work_id)
-}
-
-/// Read all metadata terms attached to an author.
-pub(crate) fn author_metadata(conn: &rusqlite::Connection, author_id: i64) -> rusqlite::Result<Vec<MetaTag>> {
-    labels_for(conn, "author_metadata", "author_id", author_id)
-}
 
 /// Create-or-fetch the term, then attach it to `(scope, id)`. Idempotent.
 pub(crate) fn attach_value(conn: &rusqlite::Connection, scope: &str, id: i64, facet: &str, value: &str) -> rusqlite::Result<MetaTag> {
