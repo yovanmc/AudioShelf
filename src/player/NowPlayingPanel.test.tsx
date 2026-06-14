@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NowPlayingPanel } from "./NowPlayingPanel";
 
 const context = {
-  chapter: { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/audio.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+  chapter: { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/audio.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
   authorId: 1,
   authorName: "Jane Doe",
   workId: 3,
@@ -115,8 +115,8 @@ describe("NowPlayingPanel", () => {
 
   it("renders chapter list when given more than one chapter", () => {
     const chapters: import("../lib/api").ChapterRow[] = [
-      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
-      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
     ];
     render(<NowPlayingPanel {...props({ chapters })} />);
     expect(screen.getByText("In this work", { exact: false })).toBeInTheDocument();
@@ -129,8 +129,8 @@ describe("NowPlayingPanel", () => {
 
   it("shows 'Not played' visually-hidden label and state labels for chapters", () => {
     const chapters: import("../lib/api").ChapterRow[] = [
-      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
-      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
     ];
     render(<NowPlayingPanel {...props({ chapters })} />);
     // Unplayed current chapter has "Not played" SR label in the dot and "Now playing" state span
@@ -143,8 +143,8 @@ describe("NowPlayingPanel", () => {
 
   it("clicking a chapter calls onJumpToChapter with that chapter", async () => {
     const chapters: import("../lib/api").ChapterRow[] = [
-      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
-      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+      { id: 2, title: "Other Chapter", chapterNo: 3, format: "mp3", durationSecs: 90, filePath: "/b.mp3", played: true, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
     ];
     const onJumpToChapter = vi.fn();
     render(<NowPlayingPanel {...props({ chapters, onJumpToChapter })} />);
@@ -154,7 +154,7 @@ describe("NowPlayingPanel", () => {
 
   it("does not render chapter list for a single-chapter work", () => {
     const chapters: import("../lib/api").ChapterRow[] = [
-      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
+      { id: 1, title: "Chapter 2", chapterNo: 2, format: "mp3", durationSecs: 120, filePath: "/a.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0 },
     ];
     render(<NowPlayingPanel {...props({ chapters })} />);
     expect(screen.queryByText("In this work", { exact: false })).not.toBeInTheDocument();

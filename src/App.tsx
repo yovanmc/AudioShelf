@@ -25,7 +25,8 @@ import {
   openMiniPlayer,
   listMetadataTerms, createMetadataTerm, renameMetadataTerm, deleteMetadataTerm, mergeMetadataTerms,
   addMetadataValue, removeMetadataValue, getDiscoveryByMetadata,
-  listLabelTypes,
+  listLabelTypes, createLabelType, renameLabelType, deleteLabelType, reorderLabelTypes,
+  addLabel, removeLabel,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
@@ -73,6 +74,7 @@ import {
 } from "./lib/shelves";
 import { applyMediaSession, updatePosition, type NowPlayingMeta } from "./lib/mediaSession";
 import { emit, listen } from "@tauri-apps/api/event";
+import type { LabelFilter } from "./views/SortFilterBar";
 
 // Wait for React to commit and the browser to paint before a harness screenshot.
 function settle(): Promise<void> {
@@ -198,6 +200,9 @@ export default function App() {
 
   // ---- M26: label types (ordered) ----
   const [labelTypes, setLabelTypes] = useState<LabelType[]>([]);
+
+  // ---- M26: library label filter ----
+  const [labelFilter, setLabelFilter] = useState<LabelFilter | null>(null);
 
   // ---- M21: Discover facet picker state ----
   const [pickedFacet, setPickedFacet] = useState<{ facet: string; value: string } | null>(null);
@@ -405,6 +410,41 @@ export default function App() {
   const handleRenameMetaTerm = async (id: number, value: string) => { await renameMetadataTerm(id, value); await loadMetaTerms(); };
   const handleDeleteMetaTerm = async (id: number) => { await deleteMetadataTerm(id); await loadMetaTerms(); };
   const handleMergeMetaTerms = async (sourceIds: number[], targetId: number) => { await mergeMetadataTerms(sourceIds, targetId); await loadMetaTerms(); };
+
+  // ---- M26: label-type CRUD handlers ----
+  const handleCreateLabelType = async (name: string, display: string) => { await createLabelType(name, display); await loadMetaTerms(); };
+  const handleRenameLabelType = async (name: string, display: string) => { await renameLabelType(name, display); await loadMetaTerms(); };
+  const handleDeleteLabelType = async (name: string) => { await deleteLabelType(name); await loadMetaTerms(); };
+  const handleReorderLabelTypes = async (names: string[]) => { await reorderLabelTypes(names); await loadMetaTerms(); };
+
+  // ---- M26: unified label handlers for AuthorDetailView ----
+  const handleAddAuthorLabel = async (authorId: number, type: string, value: string) => {
+    await addLabel("author", authorId, type, value);
+    await loadMetaTerms();
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  };
+  const handleRemoveAuthorLabel = async (authorId: number, termId: number) => {
+    await removeLabel("author", authorId, termId);
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  };
+  const handleAddChapterLabel = async (chapterId: number, type: string, value: string) => {
+    await addLabel("chapter", chapterId, type, value);
+    await loadMetaTerms();
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  };
+  const handleRemoveChapterLabel = async (chapterId: number, termId: number) => {
+    await removeLabel("chapter", chapterId, termId);
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  };
+  const handleAddWorkLabel = async (workId: number, type: string, value: string) => {
+    await addLabel("work", workId, type, value);
+    await loadMetaTerms();
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  };
+  const handleRemoveWorkLabel = async (workId: number, termId: number) => {
+    await removeLabel("work", workId, termId);
+    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
+  };
 
   // Flat list of all known metadata values for the MetadataEditor datalist suggestions.
   const metaSuggestions = useMemo(() => Array.from(new Set(metaTerms.map((t) => t.value))).sort(), [metaTerms]);
@@ -2490,6 +2530,14 @@ export default function App() {
           onAddAuthorMeta={handleAddAuthorMeta}
           onRemoveAuthorMeta={handleRemoveAuthorMeta}
           openTagsForChapterId={harnessTagsChapterId ?? undefined}
+          labelTypes={labelTypes}
+          labelSuggestions={metaSuggestions}
+          onAddAuthorLabel={handleAddAuthorLabel}
+          onRemoveAuthorLabel={handleRemoveAuthorLabel}
+          onAddChapterLabel={handleAddChapterLabel}
+          onRemoveChapterLabel={handleRemoveChapterLabel}
+          onAddWorkLabel={handleAddWorkLabel}
+          onRemoveWorkLabel={handleRemoveWorkLabel}
         />
       );
     }
@@ -2573,6 +2621,11 @@ export default function App() {
           onRenameMetaTerm={handleRenameMetaTerm}
           onDeleteMetaTerm={handleDeleteMetaTerm}
           onMergeMetaTerms={handleMergeMetaTerms}
+          labelTypes={labelTypes}
+          onCreateLabelType={handleCreateLabelType}
+          onRenameLabelType={handleRenameLabelType}
+          onDeleteLabelType={handleDeleteLabelType}
+          onReorderLabelTypes={handleReorderLabelTypes}
           onOpenRename={openRename}
           onOpenMetadata={openMetadata}
         />
@@ -2638,6 +2691,10 @@ export default function App() {
           onSelectModeChange={(on) => { setSelectMode(on); if (!on) setSelectedWorkIds([]); }}
           selectedWorkIds={selectedWorkIds}
           onToggleWork={onToggleWork}
+          labelTypes={labelTypes}
+          termsByType={termsByType}
+          labelFilter={labelFilter}
+          onLabelFilterChange={setLabelFilter}
         />
         {selectMode && selectedWorkIds.length > 0 && (
           <div className="bulk-bar">
