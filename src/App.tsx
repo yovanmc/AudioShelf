@@ -805,6 +805,22 @@ export default function App() {
     });
   }
 
+  async function playAuthorNext(authorId: number) {
+    const d = await getAuthorDetail(authorId);
+    for (const w of d.works) {
+      const ch = w.chapters.find((c) => !c.played) ?? w.chapters[0];
+      if (ch) {
+        playChapter({
+          chapter: ch, authorId: d.id, authorName: d.name,
+          workId: w.id, workTitle: w.baseTitle,
+          workTotalChapters: w.chapters.length,
+          workPlayedChapters: w.chapters.filter((c) => c.played).length,
+        });
+        return;
+      }
+    }
+  }
+
   function jumpToChapter(chapter: ChapterRow) {
     const ctx = currentRef.current;
     if (!ctx) return;
@@ -2418,6 +2434,7 @@ export default function App() {
           onFilterStatusChange={setFilterStatus}
           allTags={allTags}
           onPlayNextOfWork={playNextChapterOfWork}
+          onPlayAuthor={(id) => void playAuthorNext(id)}
           selectMode={selectMode}
           onSelectModeChange={(on) => { setSelectMode(on); if (!on) setSelectedWorkIds([]); }}
           selectedWorkIds={selectedWorkIds}

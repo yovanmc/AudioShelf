@@ -3,7 +3,7 @@ import { FixedSizeList as List, type ListChildComponentProps } from "react-windo
 import type { AuthorRow, SearchResults, TranscriptHit, ScopedResults, SavedSearch } from "../lib/api";
 import { summarizeAuthor } from "../lib/library";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
-import { EmptyState, PageHeader, TagGroup } from "../components/ui";
+import { EmptyState, IconButton, PageHeader, TagGroup } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { WorkCard } from "../components/WorkCard";
 import { ScopedResults as ScopedResultsPanel } from "../components/ScopedResults";
@@ -21,6 +21,7 @@ export function LibraryView(props: {
   onQueryChange: (query: string) => void; onOpenAuthor: (id: number) => void;
   onOpenHome?: () => void; onOpenDiscovery?: () => void; onOpenRename?: () => void; onOpenSettings?: () => void;
   onPlayNextOfWork?: (workId: number, authorId: number) => void;
+  onPlayAuthor?: (authorId: number) => void;
   /** Transcript search hits to show in the search results panel (optional). */
   transcriptResults?: TranscriptHit[] | null;
   /** Advanced scoped-search results (tag/duration/status tokens). */
@@ -46,8 +47,8 @@ export function LibraryView(props: {
   const Row = ({ index, style }: ListChildComponentProps) => {
     const author = visible[index];
     return (
-      <div style={style}>
-        <button className="list-row card" style={{ width: "100%", height: ROW_HEIGHT - 6, textAlign: "left" }} onClick={() => props.onOpenAuthor(author.id)}>
+      <div style={{ ...style, display: "flex", alignItems: "center", gap: 4 }}>
+        <button className="list-row card" style={{ flex: 1, height: ROW_HEIGHT - 6, textAlign: "left" }} onClick={() => props.onOpenAuthor(author.id)}>
           <CreatorAvatar authorId={author.id} name={author.name} size={44} />
           <span style={{ minWidth: 0, flex: 1 }}>
             <strong className="author-name">{author.name}</strong>
@@ -56,6 +57,13 @@ export function LibraryView(props: {
           <TagGroup tags={author.tags} max={2} align="end" />
           <Icon name="chevronRight" />
         </button>
+        {props.onPlayAuthor && (
+          <IconButton
+            icon="play"
+            label={`Play next chapter for ${author.name}`}
+            onClick={() => props.onPlayAuthor!(author.id)}
+          />
+        )}
       </div>
     );
   };
