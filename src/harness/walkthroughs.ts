@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -360,6 +360,35 @@ export function m25Steps(nav: {
     { name: "01-library-sort-open", run: nav.showLibrarySortOpen },
     { name: "02-saved-searches", run: nav.showSavedSearches },
     { name: "03-cover-placeholders", run: nav.showCoverPlaceholders },
+  ];
+}
+
+/**
+ * Build the "m26" walkthrough: five surfaces introduced in M26 (Unified Types & Labels) —
+ * the Types & Labels manager in Settings (after creating a user type "show-format" / "Show
+ * format" and adding the value "Talk show"), the LabelEditor in an author's chapter "Edit
+ * tags" dialog showing Tag + Narrator + the new "Show format" type rows with chips, a plain
+ * Library search for "talk show" returning the labelled work, the unified Discover picker
+ * with "Talk show" selected and its work results, and a Library label-filter showing works
+ * filtered by type/value.
+ * All data is seeded at runtime (the "Talk show" label is attached to an UNPLAYED chapter
+ * so the Discover unplayed-only backend returns results) — on-disk fixtures stay 43/44/47.
+ */
+export function m26Steps(nav: {
+  seedLabels: () => Promise<void>;
+  showLabelManager: () => Promise<void>;
+  showLabelEditorOnChapter: () => Promise<void>;
+  showSearchByLabel: () => Promise<void>;
+  showDiscoverByLabel: () => Promise<void>;
+  showLibraryLabelFilter: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "01-seed", run: nav.seedLabels },
+    { name: "02-label-manager", run: nav.showLabelManager },
+    { name: "03-label-editor-chapter", run: nav.showLabelEditorOnChapter },
+    { name: "04-search-by-label", run: nav.showSearchByLabel },
+    { name: "05-discover-by-label", run: nav.showDiscoverByLabel },
+    { name: "06-library-label-filter", run: nav.showLibraryLabelFilter },
   ];
 }
 

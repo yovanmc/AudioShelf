@@ -55,7 +55,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -2103,6 +2103,89 @@ export default function App() {
                   setPlaybackSpeed(1);
                   setSleep(15);
                   setPlayerExpanded(false);
+                  await settle();
+                },
+              })
+            : args.walkthrough === "m26"
+            ? m26Steps({
+                // Step 1: seed — create user type "show-format" / "Show format", add the
+                // value "Talk show" on an UNPLAYED chapter of the first author so that the
+                // Discover backend (unplayed-only) will return results. Also seed narrator
+                // "Jane Roe" on the same chapter to demonstrate multi-type LabelEditor rows.
+                seedLabels: async () => {
+                  // Create the user type first (idempotent — backend ignores duplicates).
+                  await createLabelType("show_format", "Show format").catch(() => {});
+                  await loadMetaTerms();
+                  const authors = await getAuthors();
+                  const jane = authors.find((a) => a.name === "Jane Doe") ?? authors[0];
+                  if (!jane) return;
+                  const d = await getAuthorDetail(jane.id);
+                  // Find an unplayed chapter so Discover (unplayed-only) returns this work.
+                  const unplayedWork = d.works.find((w) => w.chapters.some((c) => !c.played));
+                  const unplayedChapter = unplayedWork?.chapters.find((c) => !c.played);
+                  if (unplayedChapter) {
+                    await addLabel("chapter", unplayedChapter.id, "show_format", "Talk show");
+                    await addLabel("chapter", unplayedChapter.id, "narrator", "Jane Roe");
+                  }
+                  // Also tag the author-level language for a richer LabelEditor display.
+                  await addLabel("author", jane.id, "language", "English").catch(() => {});
+                  await loadMetaTerms();
+                  await openAuthor(jane.id);
+                },
+                // Step 2: open Settings — LabelManagerView shows the unified Types & Labels
+                // card with the "Show format" user type and its "Talk show" term.
+                showLabelManager: async () => {
+                  await loadMetaTerms();
+                  openSettings();
+                  await settle();
+                  document.querySelector(".label-manager")?.scrollIntoView({ block: "start" });
+                  await settle();
+                },
+                // Step 3: open the first unplayed chapter's "Edit tags" dialog on Jane Doe,
+                // showing Tag + Narrator + "Show format" rows with chips (LabelEditor).
+                showLabelEditorOnChapter: async () => {
+                  const authors = await getAuthors();
+                  const jane = authors.find((a) => a.name === "Jane Doe") ?? authors[0];
+                  if (!jane) return;
+                  const d = await getAuthorDetail(jane.id);
+                  const unplayedWork = d.works.find((w) => w.chapters.some((c) => !c.played));
+                  const unplayedChapter = unplayedWork?.chapters.find((c) => !c.played);
+                  if (!unplayedChapter) return;
+                  setHarnessTagsChapterId(null);
+                  await openAuthor(jane.id);
+                  await settle();
+                  setHarnessTagsChapterId(unplayedChapter.id);
+                  await settle();
+                  await settle();
+                },
+                // Step 4: plain search "talk show" — the backend matches label values across
+                // all types so the work surfaces in the results list.
+                showSearchByLabel: async () => {
+                  setHarnessTagsChapterId(null);
+                  setRoute({ kind: "library" });
+                  const q = "talk show";
+                  setQuery(q);
+                  setResults(await searchLibrary(q));
+                  setScopedResults(null);
+                  setTranscriptResults(null);
+                  await settle();
+                },
+                // Step 5: Discover — pick "Talk show" in the unified picker so the work list
+                // is populated (unplayed chapters required; seeded in step 1).
+                showDiscoverByLabel: async () => {
+                  await loadMetaTerms();
+                  await pickFacet("show_format", "Talk show");
+                  openDiscovery();
+                  await settle();
+                },
+                // Step 6: Library label-filter — filter by show_format / "Talk show" so the
+                // filtered author list shows only the labelled author.
+                showLibraryLabelFilter: async () => {
+                  setLabelFilter({ facet: "show_format", value: "Talk show" });
+                  setQuery("");
+                  setResults(null);
+                  setScopedResults(null);
+                  setRoute({ kind: "library" });
                   await settle();
                 },
               })

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -183,6 +183,27 @@ describe("m25Steps", () => {
       "01-library-sort-open",
       "02-saved-searches",
       "03-cover-placeholders",
+    ]);
+  });
+});
+
+describe("m26Steps", () => {
+  it("captures the six M26 unified-types-&-labels surfaces in order", () => {
+    const noop = async () => {};
+    expect(m26Steps({
+      seedLabels: noop,
+      showLabelManager: noop,
+      showLabelEditorOnChapter: noop,
+      showSearchByLabel: noop,
+      showDiscoverByLabel: noop,
+      showLibraryLabelFilter: noop,
+    }).map((s) => s.name)).toEqual([
+      "01-seed",
+      "02-label-manager",
+      "03-label-editor-chapter",
+      "04-search-by-label",
+      "05-discover-by-label",
+      "06-library-label-filter",
     ]);
   });
 });
