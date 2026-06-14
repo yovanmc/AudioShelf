@@ -18,6 +18,7 @@ const nextChapter: ChapterRow = {
   takeaway: "",
   isFavorite: false,
   metadata: [],
+  playbackPositionSecs: 0,
 };
 
 const home: HomeData = {

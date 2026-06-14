@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clampSeek, formatTime, formatTimeLeft, formatPercent, timeLabel, SKIP_BACK_LARGE, SKIP_FWD_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL } from "./playback";
+import { clampSeek, formatTime, formatTimeLeft, formatPercent, timeLabel, SKIP_BACK_LARGE, SKIP_FWD_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, nextSpeed, formatSpeed, SPEEDS } from "./playback";
 
 describe("clampSeek", () => {
   it("adds the delta within bounds", () => {
@@ -42,8 +42,8 @@ describe("formatTimeLeft", () => {
   it("returns full duration when currentTime is 0", () => {
     expect(formatTimeLeft(0, 120)).toBe("-2:00");
   });
-  it("returns -0:00 when at end", () => {
-    expect(formatTimeLeft(120, 120)).toBe("-0:00");
+  it("returns 0:00 (not -0:00) when at end (PL-9 fix)", () => {
+    expect(formatTimeLeft(120, 120)).toBe("0:00");
   });
   it("returns 0:00 for zero duration", () => {
     expect(formatTimeLeft(10, 0)).toBe("0:00");
@@ -74,5 +74,27 @@ describe("timeLabel", () => {
   });
   it("percent mode returns formatPercent result", () => {
     expect(timeLabel("percent", 30, 120)).toBe("25%");
+  });
+});
+
+describe("formatTimeLeft (PL-9 no -0:00)", () => {
+  it("renders 0:00 (not -0:00) when at/after the end", () => {
+    expect(formatTimeLeft(60, 60)).toBe("0:00");
+    expect(formatTimeLeft(61, 60)).toBe("0:00");
+    expect(formatTimeLeft(59.6, 60)).toBe("0:00"); // <1s left
+  });
+  it("renders negative remaining mid-chapter", () => {
+    expect(formatTimeLeft(30, 90)).toBe("-1:00");
+  });
+});
+
+describe("speed helpers (PL-1)", () => {
+  it("cycles through SPEEDS and wraps", () => {
+    expect(nextSpeed(0.75)).toBe(1);
+    expect(nextSpeed(2)).toBe(SPEEDS[0]);
+    expect(nextSpeed(999)).toBe(SPEEDS[0]); // unknown → first
+  });
+  it("formats a multiplier", () => {
+    expect(formatSpeed(1.25)).toBe("1.25×");
   });
 });

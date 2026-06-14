@@ -10,6 +10,7 @@ export interface ChapterRow {
   id: number; title: string; chapterNo: number; format: string;
   durationSecs: number; filePath: string; played: boolean; tags: string[];
   userSummary: string; takeaway: string; isFavorite: boolean; metadata: MetaTag[];
+  playbackPositionSecs: number;
 }
 export interface WorkRow {
   id: number; baseTitle: string; tags: string[]; chapters: ChapterRow[];
@@ -219,6 +220,9 @@ export const setChapterPlayed = (chapterId: number, played: boolean) =>
   invoke("set_chapter_played", { chapterId, played });
 export const markChapterFinished = (chapterId: number, nowMs: number) =>
   invoke("mark_chapter_finished", { chapterId, nowMs });
+export async function savePlaybackPosition(chapterId: number, secs: number): Promise<void> {
+  await invoke("save_playback_position", { chapterId, secs });
+}
 export const setAuthorDisplayName = (authorId: number, name: string | null) =>
   invoke("set_author_display_name", { authorId, name });
 

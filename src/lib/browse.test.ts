@@ -50,6 +50,7 @@ function makeWork(
       takeaway: "",
       isFavorite: false,
       metadata: [],
+      playbackPositionSecs: 0,
       ...c,
     })),
   };
