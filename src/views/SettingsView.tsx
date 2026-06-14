@@ -235,12 +235,21 @@ export function SettingsView(props: {
           </p>
           <p className="muted">
             Next, we'll scan the folder and group chapters into works automatically. You can
-            fine-tune anything later.
+            change your library folder, switch themes, adjust text size, and manage labels here anytime.
           </p>
         </>
       )}
 
-      {!firstRun && <h2 className="settings-group">Library</h2>}
+      {!firstRun && (
+        <nav className="settings-subnav" aria-label="Settings sections">
+          <a href="#settings-library">Library</a>
+          <a href="#settings-display">Display</a>
+          <a href="#settings-curation">Curation</a>
+          <a href="#settings-maintenance">Maintenance</a>
+        </nav>
+      )}
+
+      {!firstRun && <h2 id="settings-library" className="settings-group">Library</h2>}
 
       <Card className="settings-root" style={{ padding: 24 }}>
         <h2>Library folder</h2>
@@ -284,7 +293,7 @@ export function SettingsView(props: {
         </Notice>
       )}
 
-      {!firstRun && <h2 className="settings-group">Display</h2>}
+      {!firstRun && <h2 id="settings-display" className="settings-group">Display</h2>}
 
       {!firstRun && props.onDensityChange && (
         <Card style={{ padding: 24, marginTop: 16 }}>
@@ -427,7 +436,7 @@ export function SettingsView(props: {
         </Card>
       )}
 
-      {!firstRun && <h2 className="settings-group">Curation</h2>}
+      {!firstRun && <h2 id="settings-curation" className="settings-group">Curation</h2>}
 
       {!firstRun && props.labelTypes !== undefined && props.onCreateLabelType && props.onRenameLabelType && props.onDeleteLabelType && props.onReorderLabelTypes && props.metaTerms !== undefined && props.onCreateMetaTerm && props.onRenameMetaTerm && props.onDeleteMetaTerm && props.onMergeMetaTerms && (
         <Card className="label-manager" style={{ padding: 24, marginTop: 16 }}>
@@ -465,7 +474,7 @@ export function SettingsView(props: {
         />
       )}
 
-      {!firstRun && <h2 className="settings-group">Maintenance</h2>}
+      {!firstRun && <h2 id="settings-maintenance" className="settings-group">Maintenance</h2>}
 
       {!firstRun && (props.onExportJson || props.onExportSnapshot || props.onImportJson || props.onRestoreSnapshot || props.onHealthScan) && (
         <Card className="backup-maintenance" style={{ padding: 24, marginTop: 16 }}>
