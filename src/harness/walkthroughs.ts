@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -341,6 +341,25 @@ export function m24Steps(nav: {
     { name: "05-last-action", run: nav.showLastAction },
     { name: "06-chapter-states", run: nav.showChapterStates },
     { name: "07-sleep-countdown", run: nav.showSleepCountdown },
+  ];
+}
+
+/**
+ * Build the "m25" walkthrough: three surfaces introduced in M25 (Visual Polish) that
+ * the m12 before/after matrix does not isolate — the styled Select trigger (Library sort
+ * control rendered by SortFilterBar), the saved-search overflow strip (several chips),
+ * and the Library grid showing large cover-art placeholders (glyph + initials tiles).
+ * Saved searches are seeded at runtime; fixtures stay 43/44/47.
+ */
+export function m25Steps(nav: {
+  showLibrarySortOpen: () => Promise<void>;
+  showSavedSearches: () => Promise<void>;
+  showCoverPlaceholders: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "01-library-sort-open", run: nav.showLibrarySortOpen },
+    { name: "02-saved-searches", run: nav.showSavedSearches },
+    { name: "03-cover-placeholders", run: nav.showCoverPlaceholders },
   ];
 }
 

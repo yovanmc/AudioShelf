@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -168,6 +168,21 @@ describe("m24Steps", () => {
       "05-last-action",
       "06-chapter-states",
       "07-sleep-countdown",
+    ]);
+  });
+});
+
+describe("m25Steps", () => {
+  it("captures the three M25 visual-polish surfaces in order", () => {
+    const noop = async () => {};
+    expect(m25Steps({
+      showLibrarySortOpen: noop,
+      showSavedSearches: noop,
+      showCoverPlaceholders: noop,
+    }).map((s) => s.name)).toEqual([
+      "01-library-sort-open",
+      "02-saved-searches",
+      "03-cover-placeholders",
     ]);
   });
 });
