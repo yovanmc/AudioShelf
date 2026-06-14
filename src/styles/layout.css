@@ -22,8 +22,9 @@
 }
 .app-shell--collapsed .sidebar__group-label { display: none; }
 .app-shell--collapsed .sidebar__group + .sidebar__group { margin-top: var(--space-3); }
-.app-shell--collapsed .sidebar__wordmark, .app-shell--collapsed .sidebar__label { display: none; }
-.app-shell--collapsed .sidebar__item { justify-content: center; }
+.app-shell--collapsed .sidebar__wordmark { display: none; }
+.app-shell--collapsed .sidebar__item { flex-direction: column; gap: 2px; height: auto; padding: 8px 0; justify-content: center; }
+.app-shell--collapsed .sidebar__label { display: block; font-size: .62rem; line-height: 1.1; color: var(--color-text-muted); }
 .sidebar__search {
   display: flex; width: 100%; align-items: center; gap: var(--space-3);
   border: 1px solid var(--color-divider); border-radius: var(--radius-sm);
