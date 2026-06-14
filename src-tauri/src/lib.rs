@@ -140,7 +140,8 @@ pub fn run() {
             commands::create_label_type,
             commands::rename_label_type,
             commands::delete_label_type,
-            commands::reorder_label_types
+            commands::reorder_label_types,
+            commands::query_played_in_range
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

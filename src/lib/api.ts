@@ -424,6 +424,10 @@ export const deleteLabelType = (name: string) =>
 export const reorderLabelTypes = (names: string[]) =>
   invoke<void>("reorder_label_types", { names });
 
+// M27 CUR-5 — "Played in range" drill-down
+export const queryPlayedInRange = (startMs: number, endMs: number) =>
+  invoke<ScopedResults>("query_played_in_range", { startMs, endMs });
+
 // M26 Unified Labels — convenience aliases for attaching/detaching labels
 /** Attach a label (facet/value pair) to an entity. Delegates to addMetadataValue. */
 export const addLabel = (scope: "chapter" | "author" | "work", id: number, type: string, value: string) =>
