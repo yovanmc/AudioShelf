@@ -319,6 +319,7 @@ pub struct PeriodSummary {
 #[serde(rename_all = "camelCase")]
 pub struct WeekPoint {
     pub week_start_day: i64, // local-day index of the week's Sunday
+    pub week_start_ms: i64,  // UTC epoch-ms of local midnight for that Sunday (CUR-5 drill-down)
     pub chapters: i64,
 }
 

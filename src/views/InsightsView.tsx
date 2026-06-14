@@ -3,11 +3,22 @@ import { Icon } from "../components/Icon";
 import { formatLong } from "../lib/time";
 import { heatColumns, heatLevel, maxCount } from "../lib/insights";
 import { buildRecapSvg } from "../lib/recap";
-import type { InsightsData, PeriodSummary } from "../lib/api";
+import type { InsightsData, PeriodSummary, WeekPoint, InsightTagStat } from "../lib/api";
 
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 
-function Heatmap({ data }: { data: InsightsData }) {
+/** Short human-readable day label from an epoch-ms value, e.g. "Tue, Jun 10". */
+function formatDayLabel(ms: number): string {
+  return new Date(ms).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+function Heatmap({
+  data,
+  onDrillRange,
+}: {
+  data: InsightsData;
+  onDrillRange?: (startMs: number, endMs: number, label: string) => void;
+}) {
   const max = maxCount(data.heatmap);
   const cols = heatColumns(data.heatmap);
   return (
@@ -19,11 +30,24 @@ function Heatmap({ data }: { data: InsightsData }) {
             {col.map((cell, ri) => {
               if (!cell) return <div className="heatmap__cell heatmap__cell--empty" key={ri} />;
               const lvl = heatLevel(cell.count, max);
+              const title = `${new Date(cell.dateMs).toISOString().slice(0, 10)}: ${cell.count} chapter${cell.count === 1 ? "" : "s"}`;
+              if (cell.count > 0 && onDrillRange) {
+                return (
+                  <button
+                    type="button"
+                    className={`heatmap__cell heatmap__cell--btn${lvl ? ` lvl-${lvl}` : ""}`}
+                    key={ri}
+                    title={title}
+                    aria-label={`${title} — click to see played works`}
+                    onClick={() => onDrillRange(cell.dateMs, cell.dateMs + 86_400_000, formatDayLabel(cell.dateMs))}
+                  />
+                );
+              }
               return (
                 <div
                   className={`heatmap__cell${lvl ? ` lvl-${lvl}` : ""}`}
                   key={ri}
-                  title={`${new Date(cell.dateMs).toISOString().slice(0, 10)}: ${cell.count} chapter${cell.count === 1 ? "" : "s"}`}
+                  title={title}
                 />
               );
             })}
@@ -61,6 +85,92 @@ function BarChart({ values, labels, ariaLabel }: { values: number[]; labels: str
   );
 }
 
+/** Rhythm bar chart — bars are clickable when onDrillRange is provided. */
+function RhythmChart({
+  rhythm,
+  onDrillRange,
+}: {
+  rhythm: WeekPoint[];
+  onDrillRange?: (startMs: number, endMs: number, label: string) => void;
+}) {
+  const max = Math.max(1, ...rhythm.map((w) => w.chapters));
+  return (
+    <div>
+      <div className="bar-chart" role="img" aria-label="Chapters finished per week over the last 16 weeks">
+        {rhythm.map((w, i) => {
+          const label = `Week of ${formatDayLabel(w.weekStartMs)}`;
+          const barTitle = `${label}: ${w.chapters}`;
+          if (onDrillRange) {
+            return (
+              <button
+                type="button"
+                key={i}
+                className="bar-chart__bar bar-chart__bar--btn"
+                title={barTitle}
+                aria-label={`${barTitle} — click to see played works`}
+                onClick={() => onDrillRange(w.weekStartMs, w.weekStartMs + 7 * 86_400_000, label)}
+              >
+                <div className="bar-chart__fill" style={{ height: `${(w.chapters / max) * 100}%` }} />
+              </button>
+            );
+          }
+          return (
+            <div className="bar-chart__bar" key={i} title={barTitle}>
+              <div className="bar-chart__fill" style={{ height: `${(w.chapters / max) * 100}%` }} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="bar-chart__labels">
+        {rhythm.map((_, i) => <span key={i} />)}
+      </div>
+    </div>
+  );
+}
+
+/** Top-tag breakdown rows — rows are clickable when onFilterTag is provided. */
+function TagBreakdown({
+  topTags,
+  tagMax,
+  onFilterTag,
+}: {
+  topTags: InsightTagStat[];
+  tagMax: number;
+  onFilterTag?: (tag: string) => void;
+}) {
+  if (topTags.length === 0) {
+    return <div className="muted">No tags yet — tag some works to see this.</div>;
+  }
+  return (
+    <>
+      {topTags.map((t) => {
+        if (onFilterTag) {
+          return (
+            <button
+              type="button"
+              key={t.tag}
+              className="breakdown-row breakdown-row--btn"
+              onClick={() => onFilterTag(t.tag)}
+              aria-label={`Filter library by tag "${t.tag}"`}
+            >
+              <span>{t.tag}</span>
+              <span className="breakdown-row__bar"><span className="breakdown-row__fill" style={{ width: `${(t.owned / tagMax) * 100}%` }} /></span>
+              <span className="muted">{t.finished}/{t.owned}</span>
+            </button>
+          );
+        }
+        return (
+          <div className="breakdown-row" key={t.tag}>
+            <span>{t.tag}</span>
+            <span className="breakdown-row__bar"><span className="breakdown-row__fill" style={{ width: `${(t.owned / tagMax) * 100}%` }} /></span>
+            <span className="muted">{t.finished}/{t.owned}</span>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function MonthCard({ summary }: { summary: PeriodSummary }) {
   return (
     <Card>
@@ -77,12 +187,16 @@ export function InsightsView({
   onExportRecap,
   recapStatus,
   onBack,
+  onDrillRange,
+  onFilterTag,
 }: {
   data: InsightsData | null;
   now: number;
   onExportRecap: () => void;
   recapStatus: string | null;
   onBack?: () => void;   // IA7-3
+  onDrillRange?: (startMs: number, endMs: number, label: string) => void; // CUR-5
+  onFilterTag?: (tag: string) => void;  // CUR-5 top-tag → library filter
 }) {
   void now;
   if (!data || data.totalChapters === 0) {
@@ -118,7 +232,7 @@ export function InsightsView({
         <StatCard label="Longest run" value={data.longestStreak} />
       </div>
 
-      <Heatmap data={data} />
+      <Heatmap data={data} onDrillRange={onDrillRange} />
 
       <Card>
         <SectionHeading eyebrow="Trends" title="This month vs last" />
@@ -140,11 +254,7 @@ export function InsightsView({
 
       <Card>
         <SectionHeading eyebrow="Rhythm" title="Chapters per week" />
-        <BarChart
-          values={data.rhythm.map((w) => w.chapters)}
-          labels={data.rhythm.map(() => "")}
-          ariaLabel="Chapters finished per week over the last 16 weeks"
-        />
+        <RhythmChart rhythm={data.rhythm} onDrillRange={onDrillRange} />
       </Card>
 
       <div className="month-compare">
@@ -163,17 +273,7 @@ export function InsightsView({
         <Card>
           <SectionHeading eyebrow="Tags" title="Owned vs finished" />
           <div className="breakdown-list">
-            {data.topTags.length === 0 ? (
-              <div className="muted">No tags yet — tag some works to see this.</div>
-            ) : (
-              data.topTags.map((t) => (
-                <div className="breakdown-row" key={t.tag}>
-                  <span>{t.tag}</span>
-                  <span className="breakdown-row__bar"><span className="breakdown-row__fill" style={{ width: `${(t.owned / tagMax) * 100}%` }} /></span>
-                  <span className="muted">{t.finished}/{t.owned}</span>
-                </div>
-              ))
-            )}
+            <TagBreakdown topTags={data.topTags} tagMax={tagMax} onFilterTag={onFilterTag} />
           </div>
         </Card>
       </div>

@@ -164,9 +164,13 @@ pub fn build_insights(
         *week_count.entry(week_of(local_day(e.played_at, tz))).or_insert(0) += 1;
     }
     let rhythm: Vec<WeekPoint> = ((this_week - (RHYTHM_WEEKS - 1))..=this_week)
-        .map(|w| WeekPoint {
-            week_start_day: w * 7 + 3,
-            chapters: *week_count.get(&w).unwrap_or(&0),
+        .map(|w| {
+            let start_day = w * 7 + 3;
+            WeekPoint {
+                week_start_day: start_day,
+                week_start_ms: day_to_utc_midnight_ms(start_day, tz),
+                chapters: *week_count.get(&w).unwrap_or(&0),
+            }
         })
         .collect();
 

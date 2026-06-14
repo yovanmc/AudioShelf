@@ -38,6 +38,7 @@ import { hasScopedTokens } from "./lib/query";
 import { buildRecapSvg } from "./lib/recap";
 import { HomeView } from "./views/HomeView";
 import { InsightsView } from "./views/InsightsView";
+import { PlayedRangeView } from "./views/PlayedRangeView";
 import { JournalView } from "./views/JournalView";
 import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
@@ -111,7 +112,8 @@ type Route =
   | { kind: "settings"; firstRun: boolean }
   | { kind: "journal" }
   | { kind: "insights" }
-  | { kind: "collections" };
+  | { kind: "collections" }
+  | { kind: "played-range"; startMs: number; endMs: number; label: string };
 
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
@@ -121,6 +123,7 @@ function shellRoute(route: Route): ShellRoute {
   if (route.kind === "settings") return "settings";
   if (route.kind === "journal") return "journal";
   if (route.kind === "insights") return "insights";
+  if (route.kind === "played-range") return "insights";
   if (route.kind === "collections") return "collections";
   return "library";
 }
@@ -2772,6 +2775,24 @@ export default function App() {
           onExportRecap={handleExportRecap}
           recapStatus={recapStatus}
           onBack={() => setRoute({ kind: "home" })}
+          onDrillRange={(startMs, endMs, label) =>
+            setRoute({ kind: "played-range", startMs, endMs, label })
+          }
+          onFilterTag={(tag) => {
+            setLabelFilter({ facet: "tag", value: tag });
+            setRoute({ kind: "library" });
+          }}
+        />
+      );
+    }
+    if (route.kind === "played-range") {
+      return (
+        <PlayedRangeView
+          startMs={route.startMs}
+          endMs={route.endMs}
+          label={route.label}
+          onOpenAuthor={(authorId) => { void openAuthor(authorId); }}
+          onBack={() => setRoute({ kind: "insights" })}
         />
       );
     }

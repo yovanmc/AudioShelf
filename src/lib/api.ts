@@ -98,7 +98,7 @@ export interface ListeningStats {
 
 export interface DayCell { day: number; dateMs: number; count: number; }
 export interface PeriodSummary { label: string; chapters: number; secs: number; activeDays: number; }
-export interface WeekPoint { weekStartDay: number; chapters: number; }
+export interface WeekPoint { weekStartDay: number; weekStartMs: number; chapters: number; }
 export interface CreatorStat { authorId: number; authorName: string; chapters: number; secs: number; }
 export interface InsightTagStat { tag: string; owned: number; finished: number; }
 export interface RecapData {
