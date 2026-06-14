@@ -58,11 +58,11 @@ pub fn scan_library(
     let mut emit = move |p: crate::model::ScanProgress| {
         let _ = app_for_progress.emit("scan:progress", p);
     };
-    let mut opts = crate::scan::ScanOpts {
+    let mut opts = scan::ScanOpts {
         cancel: Some(&cancel),
         progress: Some(&mut emit),
     };
-    let report = crate::scan::scan_into_with(&conn, std::path::Path::new(&root), &mut opts)
+    let report = scan::scan_into_with(&conn, std::path::Path::new(&root), &mut opts)
         .map_err(|e| e.to_string())?;
 
     // Allow the WebView <audio> element to read files under the library root only.
