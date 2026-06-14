@@ -36,6 +36,7 @@ export function JournalView(props: {
   exportStatus: string | null;
   onSearch: (query: string) => void;
   onExport: (format: "markdown" | "json") => void;
+  onPlayEntry?: (entry: JournalEntry) => void;   // CUR-2
 }) {
   const { journal, exportStatus, onSearch, onExport } = props;
 
@@ -208,6 +209,17 @@ export function JournalView(props: {
                           )}
                           {entry.body && <span>{entry.body}</span>}
                         </span>
+                        {entry.chapterId != null && entry.positionSecs != null && props.onPlayEntry && (
+                          <button
+                            type="button"
+                            className="button button--ghost journal-entry__play"
+                            onClick={() => props.onPlayEntry!(entry)}
+                            aria-label={`Play ${entry.chapterTitle ?? "chapter"} from ${fmtPos(entry.positionSecs!)}`}
+                            style={{ flexShrink: 0, fontSize: "0.8rem", color: "var(--color-accent)" }}
+                          >
+                            ▶ {fmtPos(entry.positionSecs)}
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>

@@ -662,6 +662,35 @@ export default function App() {
     }
   }
 
+  // Play a journal entry's chapter starting at its captured position (CUR-2).
+  async function playJournalEntry(chapterId: number, positionSecs: number) {
+    const allAuthors = await getAuthors();
+    for (const a of allAuthors) {
+      const d = await getAuthorDetail(a.id);
+      for (const w of d.works) {
+        const ch = w.chapters.find((c) => c.id === chapterId);
+        if (ch) {
+          // Give the note position precedence over the chapter's own resume point,
+          // exactly as a bookmark seek does (playChapter only seeds from
+          // playbackPositionSecs when pendingSeekRef is still null).
+          pendingSeekRef.current = Math.max(0, Math.floor(positionSecs));
+          playChapter({
+            chapter: ch,
+            authorId: d.id,
+            authorName: d.name,
+            workId: w.id,
+            workTitle: w.baseTitle,
+            workTotalChapters: w.chapters.length,
+            workPlayedChapters: w.chapters.filter((c) => c.played).length,
+          });
+          return;
+        }
+      }
+    }
+    // Chapter not in the loaded set (shouldn't happen — all authors load at startup).
+    // Fail safe: do nothing rather than throw.
+  }
+
   async function doRenameTag(from: string, to: string) {
     await renameTag(from, to);
     await refreshTags();
@@ -2726,6 +2755,11 @@ export default function App() {
           exportStatus={journalExportStatus}
           onSearch={loadJournal}
           onExport={handleExportJournal}
+          onPlayEntry={(entry) => {
+            if (entry.chapterId != null && entry.positionSecs != null) {
+              void playJournalEntry(entry.chapterId, entry.positionSecs);
+            }
+          }}
         />
       );
     }
