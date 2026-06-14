@@ -56,7 +56,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -2587,6 +2587,155 @@ export default function App() {
                   await settle();
                 },
               })
+            : args.walkthrough === "m29"
+            ? m29Steps({
+                // Step 1: player visible with always-on thumb at rest (PL7-1).
+                // Compact player bar — scrubber + thumb visible at rest, no interaction needed.
+                showScrubberRest: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  setRoute({ kind: "library" });
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(false);
+                  await settle();
+                },
+                // Step 2: resume cue tick — expand player; the chapter has a
+                // playbackPositionSecs > 0 from a prior playback (if any). If the
+                // pre-configured fixture has no prior position, this shows the expanded
+                // panel (closest reachable state) — SOURCE-CONFIRM: resume tick
+                // visibility depends on chapter.playbackPositionSecs > 0 in the DB.
+                showScrubberCue: async () => {
+                  setPlayerExpanded(true);
+                  await settle();
+                },
+                // Step 3: chapter-end panel with "Play next — <title> →" label (PL7-7).
+                // Navigate to a non-last chapter so canPlayNext=true, expand the panel.
+                showChapterEnd: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(true);
+                  await settle();
+                },
+                // Step 4: compact transport bar showing speed pill + mute-zeroed + mini-skip
+                // (PL7-4/5/6). Collapse the panel; compact bar is the subject.
+                showTransport: async () => {
+                  setPlayerExpanded(false);
+                  setPlaybackSpeed(1.25); // active speed → pill shows "1.25×"
+                  await settle();
+                },
+                // Step 5: keyboard-shortcuts dialog (PL7-9). The dialog is driven by
+                // internal component state in NowPlayingPanel (showShortcuts boolean)
+                // which is not accessible from App.tsx. Capture the closest reachable
+                // state: expanded player with the keyboard-shortcuts icon visible —
+                // SOURCE-CONFIRM: the dialog open state cannot be seeded externally.
+                showShortcuts: async () => {
+                  setPlaybackSpeed(1);
+                  setPlayerExpanded(true);
+                  await settle();
+                  // Click the keyboard-shortcuts IconButton to open the dialog.
+                  document.querySelector<HTMLElement>('[aria-label="Keyboard shortcuts"]')?.click?.();
+                  await settle();
+                },
+                // Step 6: home empty state (ON-1/ON-3) — reset play history so Home shows
+                // empty shelves + Browse-only sidebar. The pre-configured fixture is not
+                // first-run but resetPlayHistory drives an equivalent empty state.
+                // SOURCE-CONFIRM for first-run sidebar gating (ON-1): hasHistory=false
+                // removes "My listening" only when home data shows no history; after
+                // resetPlayHistory the home payload should yield hasHistory=false.
+                showHomeEmpty: async () => {
+                  setPlayerExpanded(false);
+                  setPlaybackSpeed(1);
+                  await resetPlayHistory();
+                  await loadHome();
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
+                // Step 7: populated Home with warmer shelf headings (ON-2/5).
+                // Seed a played chapter so "recently listened" + recommendations render.
+                showHomeShelves: async () => {
+                  const list = await getAuthors();
+                  if (list.length > 0) {
+                    const d = await getAuthorDetail(list[0].id);
+                    const chs = d.works[0]?.chapters ?? [];
+                    const DAY = 86_400_000;
+                    if (chs[0]) await markChapterFinished(chs[0].id, Date.now() - DAY);
+                    if (chs[1]) await markChapterFinished(chs[1].id, Date.now());
+                  }
+                  setAuthors(await getAuthors());
+                  await loadHome();
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
+                // Step 8: ScanView completion with Browse/Home CTAs (ON-8).
+                // The scan-complete state requires a ScanResult; seed a mock result and
+                // navigate to the scan route. A real scan is not triggered — this is the
+                // closest reachable state for SOURCE-CONFIRM of the first-run completion
+                // energy (a real first-scan is not replayable on the pre-configured fixture).
+                showScanComplete: async () => {
+                  setScan({ authors: 3, works: 7, chapters: 44 });
+                  setRoute({ kind: "scan" });
+                  await settle();
+                },
+                // Step 9: Settings with sticky section sub-nav visible (IA7-4).
+                showSettingsSubnav: async () => {
+                  setRoute({ kind: "settings", firstRun: false });
+                  await settle();
+                },
+                // Step 10: collapsed sidebar with caption labels under icons (IA7-5).
+                showSidebarCollapsed: async () => {
+                  setSidebarCollapsedState(true);
+                  setRoute({ kind: "home" });
+                  await settle();
+                },
+                // Step 11: Ctrl+K command palette with Authors/Works/Chapters section
+                // headers (IA7-9). Use a real searchLibrary query so all three result
+                // kinds are populated (same pattern as m19's showCommandPalette).
+                showPaletteSections: async () => {
+                  setSidebarCollapsedState(false);
+                  setPaletteOpen(false);
+                  setPaletteQuery("");
+                  setPaletteResults(null);
+                  setRoute({ kind: "library" });
+                  await settle();
+                  const pr = await searchLibrary("").catch(() => ({ authors: [], works: [], chapters: [] } as SearchResults));
+                  setPaletteQuery("");
+                  setPaletteResults(pr);
+                  setPaletteOpen(true);
+                  await settle();
+                  await settle();
+                },
+              })
             : browseSteps({
                 // Seed tags on a few authors + a played chapter so sort-by-length,
                 // played%, the tag filter, and the status filter all have signal.
@@ -2971,6 +3120,7 @@ export default function App() {
           byMetadata={byFacet}
           onOpenAuthor={openAuthor}
           onPlayNextOfWork={playNextChapterOfWork}
+          onOpenSettings={openSettings}
         />
       );
     }

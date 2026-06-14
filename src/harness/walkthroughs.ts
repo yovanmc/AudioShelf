@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28", "m29"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -485,5 +485,48 @@ export function m28Steps(nav: {
     { name: "04-chip-row-rhythm", run: nav.showChipRow },
     { name: "05-card-grid", run: nav.showCardGrid },
     { name: "06-expanded-player", run: nav.showExpandedPlayer },
+  ];
+}
+
+/**
+ * Build the "m29" walkthrough: eleven surfaces that exercise the Player &
+ * Onboarding Micro-Polish pass (M29) — always-visible scrubber thumb, resume-cue
+ * tick, chapter-end play-next label + cross-fade, speed-pill/mute/mini-skip compact
+ * transport, keyboard-shortcuts dialog, home empty/populated states, scan-complete
+ * CTA, Settings anchor sub-nav, collapsed-sidebar caption labels, and the Ctrl+K
+ * palette with Authors/Works/Chapters section headers.
+ *
+ * Steps 06-home-empty and 08-scan-complete represent first-run-only states that are
+ * not reachable via the pre-configured fixture; those steps drive the closest
+ * reachable state (populated library, or the scan view via direct route navigation)
+ * and are marked SOURCE-CONFIRM in the controller review — see Task 14 report.
+ *
+ * All runtime seeding is idempotent (DB persists across runs). Fixtures stay 43/44/47.
+ */
+export function m29Steps(nav: {
+  showScrubberRest: () => Promise<void>;
+  showScrubberCue: () => Promise<void>;
+  showChapterEnd: () => Promise<void>;
+  showTransport: () => Promise<void>;
+  showShortcuts: () => Promise<void>;
+  showHomeEmpty: () => Promise<void>;
+  showHomeShelves: () => Promise<void>;
+  showScanComplete: () => Promise<void>;
+  showSettingsSubnav: () => Promise<void>;
+  showSidebarCollapsed: () => Promise<void>;
+  showPaletteSections: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "01-scrubber-rest", run: nav.showScrubberRest },
+    { name: "02-scrubber-cue", run: nav.showScrubberCue },
+    { name: "03-chapter-end", run: nav.showChapterEnd },
+    { name: "04-transport", run: nav.showTransport },
+    { name: "05-shortcuts", run: nav.showShortcuts },
+    { name: "06-home-empty", run: nav.showHomeEmpty },
+    { name: "07-home-shelves", run: nav.showHomeShelves },
+    { name: "08-scan-complete", run: nav.showScanComplete },
+    { name: "09-settings-subnav", run: nav.showSettingsSubnav },
+    { name: "10-sidebar-collapsed", run: nav.showSidebarCollapsed },
+    { name: "11-palette-sections", run: nav.showPaletteSections },
   ];
 }
