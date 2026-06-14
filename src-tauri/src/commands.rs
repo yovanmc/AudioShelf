@@ -24,6 +24,8 @@ pub struct TagStat {
 
 pub struct DbState(pub Mutex<rusqlite::Connection>);
 
+pub struct ScanControl(pub std::sync::Arc<std::sync::atomic::AtomicBool>);
+
 /// Returns the resolved path of the live SQLite DB for this app instance.
 pub fn resolve_db_path(app: &tauri::AppHandle) -> String {
     use tauri::Manager;
@@ -38,13 +40,41 @@ pub fn init_db(app: &tauri::AppHandle) -> rusqlite::Connection {
 }
 
 #[tauri::command]
-pub fn scan_library(app: tauri::AppHandle, state: tauri::State<DbState>, root: String) -> Result<ScanResult, String> {
-    use tauri::Manager;
+pub fn scan_library(
+    app: tauri::AppHandle,
+    state: tauri::State<DbState>,
+    control: tauri::State<ScanControl>,
+    root: String,
+) -> Result<ScanResult, String> {
+    use std::sync::atomic::Ordering;
+    use tauri::{Emitter, Manager};
+
+    // Fresh scan: clear any stale cancel request.
+    control.0.store(false, Ordering::Relaxed);
+
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let report = scan::scan_into(&conn, std::path::Path::new(&root)).map_err(|e| e.to_string())?;
+    let cancel = control.0.clone();
+    let app_for_progress = app.clone();
+    let mut emit = move |p: crate::model::ScanProgress| {
+        let _ = app_for_progress.emit("scan:progress", p);
+    };
+    let mut opts = crate::scan::ScanOpts {
+        cancel: Some(&cancel),
+        progress: Some(&mut emit),
+    };
+    let report = crate::scan::scan_into_with(&conn, std::path::Path::new(&root), &mut opts)
+        .map_err(|e| e.to_string())?;
+
     // Allow the WebView <audio> element to read files under the library root only.
     let _ = app.asset_protocol_scope().allow_directory(&root, true);
     Ok(report)
+}
+
+/// Request cancellation of an in-progress scan. Touches ONLY the cancel flag (never the DB mutex),
+/// so it runs on a separate worker thread while `scan_library` holds `DbState`.
+#[tauri::command]
+pub fn cancel_scan(control: tauri::State<ScanControl>) {
+    control.0.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
 #[tauri::command]

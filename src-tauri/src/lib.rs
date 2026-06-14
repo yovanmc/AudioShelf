@@ -37,6 +37,7 @@ pub fn run() {
             let conn = commands::init_db(&handle);
             app.manage(DbState(Mutex::new(conn)));
             app.manage(DbPathState(db_path));
+            app.manage(commands::ScanControl(std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false))));
             // Cover thumbnails are cached here and served via the asset protocol.
             let covers_dir = handle
                 .path()
@@ -52,6 +53,7 @@ pub fn run() {
             capture::capture_window,
             capture::finish_walkthrough,
             commands::scan_library,
+            commands::cancel_scan,
             commands::get_setting,
             commands::set_setting,
             commands::get_authors,
