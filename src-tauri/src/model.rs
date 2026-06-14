@@ -39,6 +39,7 @@ pub struct ChapterRow {
     pub metadata: Vec<MetaTag>, // derived: labels where facet!="tag"
     pub labels: Vec<MetaTag>,   // all attached terms (every facet)
     pub playback_position_secs: i64,
+    pub has_journal: bool,      // computed: any note/bookmark/summary/takeaway/favorite for this chapter
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -318,6 +319,7 @@ pub struct PeriodSummary {
 #[serde(rename_all = "camelCase")]
 pub struct WeekPoint {
     pub week_start_day: i64, // local-day index of the week's Sunday
+    pub week_start_ms: i64,  // UTC epoch-ms of local midnight for that Sunday (CUR-5 drill-down)
     pub chapters: i64,
 }
 
@@ -373,6 +375,10 @@ pub struct InsightsData {
     pub top_creators: Vec<CreatorStat>, // ≤8
     pub top_tags: Vec<TagStat>,         // ≤8 by owned
     pub recap: RecapData,
+    /// CUR-10: count of active works with a non-empty completion_rating.
+    pub works_rated: i64,
+    /// CUR-10: count of active works with a non-empty re_entry_note.
+    pub works_re_entered: i64,
 }
 
 // Harness-only seeding payload (insights walkthrough). Deserialize from camelCase JS.

@@ -32,6 +32,7 @@ describe("Home progress", () => {
           isFavorite: false,
           metadata: [],
           playbackPositionSecs: 0,
+          hasJournal: false,
         },
         remainingUnplayed: 2,
         totalChapters: 4,

@@ -38,6 +38,7 @@ import { hasScopedTokens } from "./lib/query";
 import { buildRecapSvg } from "./lib/recap";
 import { HomeView } from "./views/HomeView";
 import { InsightsView } from "./views/InsightsView";
+import { PlayedRangeView } from "./views/PlayedRangeView";
 import { JournalView } from "./views/JournalView";
 import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
@@ -55,7 +56,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -111,7 +112,8 @@ type Route =
   | { kind: "settings"; firstRun: boolean }
   | { kind: "journal" }
   | { kind: "insights" }
-  | { kind: "collections" };
+  | { kind: "collections" }
+  | { kind: "played-range"; startMs: number; endMs: number; label: string };
 
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
@@ -121,6 +123,7 @@ function shellRoute(route: Route): ShellRoute {
   if (route.kind === "settings") return "settings";
   if (route.kind === "journal") return "journal";
   if (route.kind === "insights") return "insights";
+  if (route.kind === "played-range") return "insights";
   if (route.kind === "collections") return "collections";
   return "library";
 }
@@ -660,6 +663,35 @@ export default function App() {
         }
       }
     }
+  }
+
+  // Play a journal entry's chapter starting at its captured position (CUR-2).
+  async function playJournalEntry(chapterId: number, positionSecs: number) {
+    const allAuthors = await getAuthors();
+    for (const a of allAuthors) {
+      const d = await getAuthorDetail(a.id);
+      for (const w of d.works) {
+        const ch = w.chapters.find((c) => c.id === chapterId);
+        if (ch) {
+          // Give the note position precedence over the chapter's own resume point,
+          // exactly as a bookmark seek does (playChapter only seeds from
+          // playbackPositionSecs when pendingSeekRef is still null).
+          pendingSeekRef.current = Math.max(0, Math.floor(positionSecs));
+          playChapter({
+            chapter: ch,
+            authorId: d.id,
+            authorName: d.name,
+            workId: w.id,
+            workTitle: w.baseTitle,
+            workTotalChapters: w.chapters.length,
+            workPlayedChapters: w.chapters.filter((c) => c.played).length,
+          });
+          return;
+        }
+      }
+    }
+    // Chapter not in the loaded set (shouldn't happen — all authors load at startup).
+    // Fail safe: do nothing rather than throw.
   }
 
   async function doRenameTag(from: string, to: string) {
@@ -2106,6 +2138,209 @@ export default function App() {
                   await settle();
                 },
               })
+            : args.walkthrough === "m27"
+            ? m27Steps({
+                // Step 1 (seed): idempotently seed — for Jane Doe's first chapter — a note
+                // at 12 s, a bookmark at 30 s, a user_summary, a completion_rating, and a
+                // re_entry_note; then insert play_events at known timestamps anchored to
+                // 2026-06-12T18:00:00Z so the heatmap has a clickable day. Also seed a
+                // tag on Jane so the top-tag bar in Insights is populated for the tag-drill
+                // step. seedPlayEvents is insert-or-ignore so re-runs don't accumulate.
+                seedJournalAndEvents: async () => {
+                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0); // same anchor as insights walkthrough
+                  const DAY = 86_400_000;
+                  const list = await getAuthors();
+                  const jane = list.find((a) => a.name === "Jane Doe") ?? list[0];
+                  if (!jane) return;
+                  const d = await getAuthorDetail(jane.id);
+                  const work = d.works[0];
+                  const ch = work?.chapters[0];
+                  if (!work || !ch) return;
+                  // Journal data — idempotent: SET operations are upserts; notes/bookmarks
+                  // are append-only with no unique constraint, so clear any from prior runs
+                  // (the app-data DB persists across walkthrough runs) before adding exactly
+                  // one of each, so the journal doesn't accumulate duplicates and shift shots.
+                  await setChapterSummary(ch.id, "A compelling opening chapter that sets the tone.");
+                  const existingJournal = await getChapterJournal(ch.id);
+                  for (const n of existingJournal.notes) await deleteChapterNote(n.id);
+                  for (const b of existingJournal.bookmarks) await deleteBookmark(b.id);
+                  await addChapterNote(ch.id, 12, "The narrator's voice really draws you in here.");
+                  await addBookmark(ch.id, 30, "key idea");
+                  // Work-level meta — idempotent SET
+                  await setWorkRating(work.id, "captivating");
+                  await setWorkReEntryNote(work.id, "Resume from the chapter about the journey.");
+                  // Seed a tag on Jane so Insights top-tags list is populated.
+                  await setAuthorTags(jane.id, ["cozy"]);
+                  // Play events — seedPlayEvents is insert-or-ignore in the backend.
+                  // Seed events across the last 7 days relative to NOW so today+adjacent
+                  // days are clickable in the heatmap, plus seed enough to show rhythm.
+                  const chapterIds: number[] = [];
+                  for (const w of d.works) for (const c of w.chapters) chapterIds.push(c.id);
+                  const events: { chapterId: number; playedAt: number }[] = [];
+                  // 5 days of activity centred on NOW so the heatmap has hot cells.
+                  for (let dayOffset = 0; dayOffset < 5; dayOffset++) {
+                    const cid = chapterIds[dayOffset % chapterIds.length];
+                    events.push({ chapterId: cid, playedAt: NOW - dayOffset * DAY });
+                  }
+                  // Add a spread across the last 12 weeks so the rhythm chart has bars.
+                  for (let i = 0; i < 24; i++) {
+                    const dayOffset = (i * 4) % 84; // spread over ~12 weeks
+                    const cid = chapterIds[i % chapterIds.length];
+                    events.push({ chapterId: cid, playedAt: NOW - dayOffset * DAY - 3_600_000 });
+                  }
+                  await seedPlayEvents(events);
+                  // Also mark the chapter played so it shows has_journal properly.
+                  await setChapterPlayed(ch.id, true);
+                  await refreshTags();
+                },
+
+                // Step 2: Journal view — the seeded note at 12 s shows "▶ 0:12"
+                // (the play-from affordance). Capture before clicking.
+                showJournalPlayable: async () => {
+                  const results = await queryJournal("");
+                  setJournal(results);
+                  setJournalQuery("");
+                  setRoute({ kind: "journal" });
+                  await settle();
+                  await settle();
+                },
+
+                // Step 3: click the play affordance — PlayerBar should appear playing
+                // Jane Doe's first chapter from 12 s. We programmatically trigger the
+                // same path as clicking the button: playJournalEntry(chapterId, positionSecs).
+                showJournalPlay: async () => {
+                  const list = await getAuthors();
+                  const jane = list.find((a) => a.name === "Jane Doe") ?? list[0];
+                  if (!jane) return;
+                  const d = await getAuthorDetail(jane.id);
+                  const work = d.works[0];
+                  const ch = work?.chapters[0];
+                  if (!work || !ch) return;
+                  // Simulate clicking the journal play button: play from the seeded note position.
+                  await playJournalEntry(ch.id, 12);
+                  setRoute({ kind: "journal" });
+                  await settle();
+                  await settle();
+                },
+
+                // Step 4: Insights view — the Reflections stat row shows "N rated · M revisited".
+                // Use the same anchor as the insights walkthrough for a stable heatmap.
+                showInsightsReflections: async () => {
+                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0);
+                  await loadInsights(NOW);
+                  setRoute({ kind: "insights" });
+                  document.querySelector(".app-main")?.scrollTo({ top: 0 });
+                  await settle();
+                  await settle();
+                },
+
+                // Step 5: click a heatmap day with activity → played-range results.
+                // We know NOW is 2026-06-12; that day was seeded with play_events (dayOffset=0).
+                // Navigate directly to the played-range route with that day's window.
+                showPlayedRange: async () => {
+                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0);
+                  const DAY = 86_400_000;
+                  // Use the exact same dateMs the heatmap cell would pass for "today" (June 12).
+                  // Cell dateMs is computed from the day index; for June 12 UTC this is the
+                  // UTC midnight of that day: Date.UTC(2026, 5, 12, 0, 0, 0).
+                  const dayMs = Date.UTC(2026, 5, 12, 0, 0, 0);
+                  const label = new Date(dayMs).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                  setRoute({ kind: "played-range", startMs: dayMs, endMs: dayMs + DAY, label });
+                  await settle();
+                  await settle();
+                  void NOW; // suppress unused warning
+                },
+
+                // Step 6: go back to Insights, then click the top-tag bar for "cozy"
+                // (seeded on Jane in step 1) → Library filtered by that tag.
+                showInsightsTagToLibrary: async () => {
+                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0);
+                  await loadInsights(NOW);
+                  setRoute({ kind: "insights" });
+                  await settle();
+                  // Programmatically apply the Library label-filter and navigate, exactly
+                  // as InsightsView's onFilterTag callback does.
+                  setLabelFilter({ facet: "tag", value: "cozy" });
+                  await loadAuthors();
+                  setQuery("");
+                  setResults(null);
+                  setScopedResults(null);
+                  setRoute({ kind: "library" });
+                  await settle();
+                  await settle();
+                },
+
+                // Step 7: AuthorDetailView for Jane Doe — the seeded chapter (has note +
+                // bookmark + summary) should show the journal icon affordance.
+                showChapterJournalAffordance: async () => {
+                  const list = await getAuthors();
+                  const jane = list.find((a) => a.name === "Jane Doe") ?? list[0];
+                  if (!jane) return;
+                  setLabelFilter(null);
+                  setQuery("");
+                  setResults(null);
+                  setScopedResults(null);
+                  // Clear any lingering journal-dialog request so no modal overlays the
+                  // chapter rows in this capture.
+                  setJournalChapterId(null);
+                  setOpenJournal(null);
+                  await openAuthor(jane.id);
+                  await settle();
+                  await settle();
+                  // Works default to expanded; expand any a prior step left collapsed so the
+                  // seeded chapter row (and its journal icon) is rendered.
+                  for (const btn of Array.from(
+                    document.querySelectorAll<HTMLButtonElement>('button[aria-label^="Expand \'"]')
+                  )) {
+                    btn.click();
+                  }
+                  await settle();
+                  await settle();
+                  // The author header + labels editor is tall, so the seeded work's chapter
+                  // row sits below the fold (behind the fixed PlayerBar). Scroll the chapter
+                  // row that carries the journal affordance to the centre of the `.app-main`
+                  // scroll container so the icon is clearly in frame.
+                  const journalRow =
+                    (document
+                      .querySelector<HTMLElement>('button[aria-label="View your notes & bookmarks"]')
+                      ?.closest("li") as HTMLElement | null) ??
+                    document.querySelector<HTMLElement>("li.recent-row");
+                  journalRow?.scrollIntoView({ block: "center" });
+                  await settle();
+                },
+
+                // Step 8: Journal view — back control is present at the top.
+                showJournalBack: async () => {
+                  setJournalChapterId(null);
+                  setOpenJournal(null);
+                  const results = await queryJournal("");
+                  setJournal(results);
+                  setJournalQuery("");
+                  setRoute({ kind: "journal" });
+                  await settle();
+                  await settle();
+                },
+
+                // Step 9: Insights view — back control is present at the top.
+                showInsightsBack: async () => {
+                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0);
+                  await loadInsights(NOW);
+                  setRoute({ kind: "insights" });
+                  document.querySelector(".app-main")?.scrollTo({ top: 0 });
+                  await settle();
+                  await settle();
+                },
+
+                // Step 10: nav grouping — show the sidebar with Collections under Browse
+                // and Journal/Insights under My listening. Navigate home so the sidebar
+                // is in its default (non-collapsed) state.
+                showNavGroups: async () => {
+                  setSidebarCollapsedState(false);
+                  setRoute({ kind: "home" });
+                  await settle();
+                  await settle();
+                },
+              })
             : args.walkthrough === "m26"
             ? m26Steps({
                 // Step 1: seed — create user type "show-format" / "Show format", add the
@@ -2726,6 +2961,12 @@ export default function App() {
           exportStatus={journalExportStatus}
           onSearch={loadJournal}
           onExport={handleExportJournal}
+          onPlayEntry={(entry) => {
+            if (entry.chapterId != null && entry.positionSecs != null) {
+              void playJournalEntry(entry.chapterId, entry.positionSecs);
+            }
+          }}
+          onBack={() => setRoute({ kind: "home" })}
         />
       );
     }
@@ -2736,6 +2977,25 @@ export default function App() {
           now={insightsNow}
           onExportRecap={handleExportRecap}
           recapStatus={recapStatus}
+          onBack={() => setRoute({ kind: "home" })}
+          onDrillRange={(startMs, endMs, label) =>
+            setRoute({ kind: "played-range", startMs, endMs, label })
+          }
+          onFilterTag={(tag) => {
+            setLabelFilter({ facet: "tag", value: tag });
+            setRoute({ kind: "library" });
+          }}
+        />
+      );
+    }
+    if (route.kind === "played-range") {
+      return (
+        <PlayedRangeView
+          startMs={route.startMs}
+          endMs={route.endMs}
+          label={route.label}
+          onOpenAuthor={(authorId) => { void openAuthor(authorId); }}
+          onBack={() => setRoute({ kind: "insights" })}
         />
       );
     }

@@ -19,6 +19,7 @@ const context = {
     isFavorite: false,
     metadata: [],
     playbackPositionSecs: 0,
+    hasJournal: false,
   },
   authorId: 1,
   authorName: "Jane Doe",

@@ -53,6 +53,7 @@ function makeWork(
       isFavorite: false,
       metadata: [],
       playbackPositionSecs: 0,
+      hasJournal: false,
       ...c,
     })),
   };

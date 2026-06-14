@@ -11,6 +11,7 @@ export interface ChapterRow {
   durationSecs: number; filePath: string; played: boolean; tags: string[];
   userSummary: string; takeaway: string; isFavorite: boolean; metadata: MetaTag[];
   playbackPositionSecs: number; labels: MetaTag[];
+  hasJournal: boolean;
 }
 export interface WorkRow {
   id: number; baseTitle: string; tags: string[]; chapters: ChapterRow[];
@@ -97,7 +98,7 @@ export interface ListeningStats {
 
 export interface DayCell { day: number; dateMs: number; count: number; }
 export interface PeriodSummary { label: string; chapters: number; secs: number; activeDays: number; }
-export interface WeekPoint { weekStartDay: number; chapters: number; }
+export interface WeekPoint { weekStartDay: number; weekStartMs: number; chapters: number; }
 export interface CreatorStat { authorId: number; authorName: string; chapters: number; secs: number; }
 export interface InsightTagStat { tag: string; owned: number; finished: number; }
 export interface RecapData {
@@ -130,6 +131,10 @@ export interface InsightsData {
   topCreators: CreatorStat[];
   topTags: InsightTagStat[];
   recap: RecapData;
+  /** CUR-10: works with a non-empty completion_rating. */
+  worksRated: number;
+  /** CUR-10: works with a non-empty re_entry_note. */
+  worksReEntered: number;
 }
 export interface HomeData {
   keepListening: ContinueItem | null;
@@ -422,6 +427,10 @@ export const deleteLabelType = (name: string) =>
   invoke<void>("delete_label_type", { name });
 export const reorderLabelTypes = (names: string[]) =>
   invoke<void>("reorder_label_types", { names });
+
+// M27 CUR-5 — "Played in range" drill-down
+export const queryPlayedInRange = (startMs: number, endMs: number) =>
+  invoke<ScopedResults>("query_played_in_range", { startMs, endMs });
 
 // M26 Unified Labels — convenience aliases for attaching/detaching labels
 /** Attach a label (facet/value pair) to an entity. Delegates to addMetadataValue. */

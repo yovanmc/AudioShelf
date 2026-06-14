@@ -181,4 +181,50 @@ describe("JournalView", () => {
     render(<JournalView {...baseProps({ journal: null })} />);
     expect(screen.getByText("Loading…")).toBeInTheDocument();
   });
+
+  it("renders a play button for entries with chapterId and positionSecs, and calls onPlayEntry on click", async () => {
+    const onPlayEntry = vi.fn();
+    render(<JournalView {...baseProps({ onPlayEntry })} />);
+    // The note entry has chapterId=5, positionSecs=75 → aria-label contains "1:15"
+    const playBtn = screen.getAllByRole("button", { name: /Play.*1:15/i })[0];
+    expect(playBtn).toBeInTheDocument();
+    await userEvent.click(playBtn);
+    expect(onPlayEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "note", chapterId: 5, positionSecs: 75 })
+    );
+  });
+
+  it("does not render a play button for summary entries (positionSecs null)", () => {
+    const onPlayEntry = vi.fn();
+    render(<JournalView {...baseProps({ onPlayEntry })} />);
+    // Summary entry has positionSecs: null — no play button should exist for it
+    // The summary body is "This chapter covered X"; there should be no play button
+    // referencing that entry's chapter + null position
+    const allPlayBtns = screen.queryAllByRole("button", { name: /Play.*chapter/i });
+    // All play buttons that exist must have a time in the label (not from summary/favorite entries)
+    for (const btn of allPlayBtns) {
+      expect(btn.getAttribute("aria-label")).toMatch(/\d+:\d+/);
+    }
+    // Confirm onPlayEntry is NOT called for entries without positionSecs
+    expect(onPlayEntry).not.toHaveBeenCalled();
+  });
+
+  it("renders a back button when onBack is provided", () => {
+    const onBack = vi.fn();
+    render(<JournalView {...baseProps({ onBack })} />);
+    expect(screen.getByRole("button", { name: /Home/i })).toBeInTheDocument();
+  });
+
+  it("calls onBack when the back button is clicked", async () => {
+    const onBack = vi.fn();
+    render(<JournalView {...baseProps({ onBack })} />);
+    await userEvent.click(screen.getByRole("button", { name: /Home/i }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render a back button when onBack is not provided", () => {
+    render(<JournalView {...baseProps()} />);
+    // No "Home" ghost button present
+    expect(screen.queryByRole("button", { name: /chevronLeft|Home/i })).not.toBeInTheDocument();
+  });
 });

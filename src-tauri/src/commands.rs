@@ -341,9 +341,13 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
 
     for work in &mut works {
         let mut cstmt = conn.prepare(
-            "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played,
-                    user_summary, takeaway, is_favorite, playback_position_secs
-             FROM chapters WHERE work_id=?1 AND status='active'",
+            "SELECT c.id, c.raw_filename, c.chapter_no, c.format, c.duration_secs, c.file_path, c.played,
+                    c.user_summary, c.takeaway, c.is_favorite, c.playback_position_secs,
+                    (c.user_summary <> '' OR c.takeaway <> '' OR c.is_favorite = 1
+                     OR EXISTS (SELECT 1 FROM chapter_notes     n WHERE n.chapter_id = c.id)
+                     OR EXISTS (SELECT 1 FROM chapter_bookmarks b WHERE b.chapter_id = c.id)
+                    ) AS has_journal
+             FROM chapters c WHERE c.work_id=?1 AND c.status='active'",
         )?;
         let mut chapters: Vec<ChapterRow> = cstmt
             .query_map(params![work.id], |r| {
@@ -367,6 +371,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                     metadata: Vec::new(),
                     labels: Vec::new(),
                     playback_position_secs: r.get::<_, i64>(10).unwrap_or(0),
+                    has_journal: r.get::<_, i64>(11).unwrap_or(0) != 0,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -778,7 +783,124 @@ pub(crate) fn recent_authors(conn: &rusqlite::Connection, limit: usize) -> rusql
     Ok(ids.into_iter().take(limit).collect())
 }
 
+/// Pick a seed work from rated/re-entered works (CUR-10).
+/// Priority: re-entered-and-rated > rated-only > re-entered-only; tie-break by work id (ascending).
+/// Returns (work_id, base_title, signal) or None if no affection signal exists.
+fn pick_affection_seed(
+    conn: &rusqlite::Connection,
+) -> rusqlite::Result<Option<(i64, String, &'static str)>> {
+    // Fetch all active works that have any signal of affection.
+    let mut stmt = conn.prepare(
+        "SELECT id, base_title, completion_rating, re_entry_note
+         FROM works
+         WHERE status='active' AND (completion_rating <> '' OR re_entry_note <> '')",
+    )?;
+    let rows: Vec<(i64, String, String, String)> = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+
+    if rows.is_empty() {
+        return Ok(None);
+    }
+
+    // Rank: re-entered-and-rated (score 2) > rated-only (1) > re-entered-only (0).
+    // Tie-break: lower work id wins (deterministic).
+    let best = rows
+        .into_iter()
+        .map(|(id, title, rating, re_entry)| {
+            let score = match (!rating.is_empty(), !re_entry.is_empty()) {
+                (true, true) => 2u8,
+                (true, false) => 1u8,
+                (false, true) => 0u8,
+                (false, false) => unreachable!("query filters require at least one signal"),
+            };
+            let signal: &'static str = match (!rating.is_empty(), !re_entry.is_empty()) {
+                (_, true) if score == 2 => "rated_and_reentered",
+                (true, _) => "rated",
+                _ => "reentered",
+            };
+            (score, id, title, signal)
+        })
+        .max_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(&a.1)));
+
+    Ok(best.map(|(_, id, title, signal)| (id, title, signal)))
+}
+
 pub(crate) fn discovery_for_you(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<DiscoveryWork>> {
+    // CUR-10: if any rated/re-entered work exists, seed from it and annotate reason.
+    if let Some((seed_id, seed_title, signal)) = pick_affection_seed(conn)? {
+        // Collect tags of the seed work (author + work level, unified attach, facet='tag').
+        let seed_author_id: i64 = conn.query_row(
+            "SELECT author_id FROM works WHERE id=?1",
+            params![seed_id],
+            |r| r.get(0),
+        )?;
+        let mut tags: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        {
+            let mut astmt = conn.prepare(
+                "SELECT mt.value FROM author_metadata am
+                 JOIN metadata_terms mt ON am.term_id=mt.id
+                 WHERE am.author_id=?1 AND mt.facet='tag'",
+            )?;
+            for t in astmt.query_map(params![seed_author_id], |r| r.get::<_, String>(0))? {
+                tags.insert(t?);
+            }
+        }
+        {
+            let mut wstmt = conn.prepare(
+                "SELECT mt.value FROM work_metadata wm
+                 JOIN metadata_terms mt ON wm.term_id=mt.id
+                 WHERE wm.work_id=?1 AND mt.facet='tag'",
+            )?;
+            for t in wstmt.query_map(params![seed_id], |r| r.get::<_, String>(0))? {
+                tags.insert(t?);
+            }
+        }
+        let tag_vec: Vec<String> = tags.into_iter().collect();
+        // Build reason string reflecting the affection signal.
+        let reason_prefix = match signal {
+            "rated" | "rated_and_reentered" => format!("Because you rated {seed_title}"),
+            _ => format!("You came back to {seed_title}"),
+        };
+        // Drive discovery_for_tags, then stamp the reason on every returned item.
+        let mut results = if tag_vec.is_empty() {
+            // No tags on the seed work — fall back to recent-play path if available.
+            let recent = recent_authors(conn, 10)?;
+            if recent.is_empty() {
+                return Ok(Vec::new());
+            }
+            let mut fallback_tags: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            for id in &recent {
+                let mut astmt = conn.prepare(
+                    "SELECT mt.value FROM author_metadata am
+                     JOIN metadata_terms mt ON am.term_id=mt.id
+                     WHERE am.author_id=?1 AND mt.facet='tag'",
+                )?;
+                for t in astmt.query_map(params![id], |r| r.get::<_, String>(0))? {
+                    fallback_tags.insert(t?);
+                }
+                let mut wstmt = conn.prepare(
+                    "SELECT mt.value FROM work_metadata wm
+                     JOIN works w ON wm.work_id=w.id
+                     JOIN metadata_terms mt ON wm.term_id=mt.id
+                     WHERE w.author_id=?1 AND mt.facet='tag'",
+                )?;
+                for t in wstmt.query_map(params![id], |r| r.get::<_, String>(0))? {
+                    fallback_tags.insert(t?);
+                }
+            }
+            discovery_for_tags(conn, &fallback_tags.into_iter().collect::<Vec<_>>(), &recent, 20)?
+        } else {
+            discovery_for_tags(conn, &tag_vec, &[seed_author_id], 20)?
+        };
+        // Stamp the affection-seed reason on every result.
+        for w in &mut results {
+            w.reason = reason_prefix.clone();
+        }
+        return Ok(results);
+    }
+
+    // Cold-start fallback: current behavior (seed from recent play history).
     let recent = recent_authors(conn, 10)?;
     if recent.is_empty() {
         return Ok(Vec::new());
@@ -824,8 +946,12 @@ pub(crate) fn more_from_author(conn: &rusqlite::Connection, author_id: i64) -> r
 fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::Result<ChapterRow> {
     let mut row = conn.query_row(
         "SELECT id, raw_filename, chapter_no, format, duration_secs, file_path, played,
-                user_summary, takeaway, is_favorite, playback_position_secs
-         FROM chapters WHERE id=?1",
+                user_summary, takeaway, is_favorite, playback_position_secs,
+                (c.user_summary <> '' OR c.takeaway <> '' OR c.is_favorite = 1
+                 OR EXISTS (SELECT 1 FROM chapter_notes     n WHERE n.chapter_id = c.id)
+                 OR EXISTS (SELECT 1 FROM chapter_bookmarks b WHERE b.chapter_id = c.id)
+                ) AS has_journal
+         FROM chapters c WHERE c.id=?1",
         params![chapter_id],
         |r| {
             let raw: String = r.get(1)?;
@@ -848,6 +974,7 @@ fn load_chapter_row(conn: &rusqlite::Connection, chapter_id: i64) -> rusqlite::R
                 metadata: Vec::new(),
                 labels: Vec::new(),
                 playback_position_secs: r.get::<_, i64>(10).unwrap_or(0),
+                has_journal: r.get::<_, i64>(11).unwrap_or(0) != 0,
             })
         },
     )?;
@@ -3039,6 +3166,87 @@ pub fn remove_metadata_value(state: tauri::State<DbState>, scope: String, id: i6
     detach_value(&conn, &scope, id, term_id).map_err(|e| e.to_string())
 }
 
+// ── CUR-5: "works played in a time range" ────────────────────────────────────
+
+/// Inner read-only query: returns one ScopedWork per work that was played within
+/// [start_ms, end_ms), ordered by most-recent play in the range then title.
+/// Reuses the same per-work summary shape as `scoped::run_scoped_query`.
+pub(crate) fn played_in_range(
+    conn: &rusqlite::Connection,
+    start_ms: i64,
+    end_ms: i64,
+) -> rusqlite::Result<crate::model::ScopedResults> {
+    // 1. Distinct work-ids in the play window, ordered by last play DESC then title ASC.
+    let mut id_stmt = conn.prepare(
+        "SELECT w.id, w.base_title, a.id, COALESCE(a.display_name, a.folder_name),
+                MAX(pe.played_at) AS last_play
+         FROM play_events pe
+         JOIN chapters c ON c.id = pe.chapter_id
+         JOIN works w    ON w.id = c.work_id
+         JOIN authors a  ON a.id = w.author_id
+         WHERE pe.played_at >= ?1 AND pe.played_at < ?2
+           AND w.status = 'active'
+         GROUP BY w.id
+         ORDER BY last_play DESC, w.base_title",
+    )?;
+    let rows: Vec<(i64, String, i64, String)> = id_stmt
+        .query_map(rusqlite::params![start_ms, end_ms], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+
+    // 2. Per-work aggregates + legacy tags (same builder pattern as run_scoped_query).
+    let mut agg = conn.prepare(
+        "SELECT COUNT(*), COALESCE(SUM(duration_secs),0), COALESCE(SUM(played),0)
+         FROM chapters WHERE work_id=?1 AND status='active'",
+    )?;
+    let mut tagstmt =
+        conn.prepare("SELECT tag FROM work_tags WHERE work_id=?1 ORDER BY tag")?;
+
+    let mut works: Vec<crate::model::ScopedWork> = Vec::new();
+    for (work_id, base_title, author_id, author_name) in rows {
+        let (chapter_count, total_secs, played_count): (i64, i64, i64) =
+            agg.query_row(rusqlite::params![work_id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })?;
+        if chapter_count == 0 {
+            continue;
+        }
+        let tags: Vec<String> = tagstmt
+            .query_map(rusqlite::params![work_id], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        works.push(crate::model::ScopedWork {
+            work_id,
+            base_title,
+            author_id,
+            author_name,
+            total_secs,
+            chapter_count,
+            played_count,
+            tags,
+        });
+    }
+
+    Ok(crate::model::ScopedResults {
+        works,
+        tags: vec![],
+        text: String::new(),
+        duration_label: String::new(),
+        status_label: String::new(),
+    })
+}
+
+/// Tauri command: works played within [start_ms, end_ms). Read-only drill-down for Insights (CUR-5).
+#[tauri::command]
+pub fn query_played_in_range(
+    state: tauri::State<DbState>,
+    start_ms: i64,
+    end_ms: i64,
+) -> Result<crate::model::ScopedResults, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    played_in_range(&conn, start_ms, end_ms).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5140,6 +5348,221 @@ mod tests {
         let results = search(&conn, "Austen", SEARCH_CAP).unwrap();
         let chapter_ids: Vec<i64> = results.chapters.iter().map(|c| c.chapter_id).collect();
         assert!(chapter_ids.contains(&1), "chapter with label value 'Jane Austen' should appear in search for 'Austen'");
+    }
+
+    // ---- IA7-7: has_journal computed field tests ----------------------------------------
+
+    #[test]
+    fn has_journal_false_until_note_inserted() {
+        let conn = open_in_memory().unwrap();
+        conn.execute("INSERT INTO authors(id,folder_name,display_name,status) VALUES(1,'Auth','Auth','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES(1,1,'W','w','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status) VALUES(1,1,'/a.mp3','a.mp3',1,'mp3',100,0,'active')", []).unwrap();
+
+        // Initially no journal data → has_journal should be false.
+        let row = load_chapter_row(&conn, 1).unwrap();
+        assert!(!row.has_journal, "has_journal should be false when no notes/bookmarks/summary exist");
+
+        // Insert a chapter_notes row → has_journal should flip to true.
+        conn.execute(
+            "INSERT INTO chapter_notes(chapter_id, position_secs, body, created_at) VALUES (1, 42, 'test note', 1000)",
+            [],
+        ).unwrap();
+        let row2 = load_chapter_row(&conn, 1).unwrap();
+        assert!(row2.has_journal, "has_journal should be true after inserting a chapter_notes row");
+    }
+
+    #[test]
+    fn has_journal_true_when_user_summary_nonempty() {
+        let conn = open_in_memory().unwrap();
+        conn.execute("INSERT INTO authors(id,folder_name,display_name,status) VALUES(1,'Auth','Auth','active')", []).unwrap();
+        conn.execute("INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES(1,1,'W','w','active')", []).unwrap();
+        conn.execute("INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status,user_summary) VALUES(1,1,'/a.mp3','a.mp3',1,'mp3',100,0,'active','My thoughts')", []).unwrap();
+
+        let row = load_chapter_row(&conn, 1).unwrap();
+        assert!(row.has_journal, "has_journal should be true when user_summary is non-empty");
+    }
+
+    // ---- CUR-5: played_in_range --------------------------------------------------------
+
+    #[test]
+    fn played_in_range_returns_only_in_window_works_deduped() {
+        let conn = open_in_memory().unwrap();
+        // Seed: two authors, two works each, one chapter per work.
+        conn.execute_batch(
+            "INSERT INTO authors(id,folder_name,display_name,status) VALUES
+               (1,'AuthA','Author A','active'),
+               (2,'AuthB','Author B','active');
+             INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES
+               (1,1,'Alpha','alpha','active'),
+               (2,1,'Beta','beta','active'),
+               (3,2,'Gamma','gamma','active'),
+               (4,2,'Delta','delta','inactive');
+             INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status) VALUES
+               (1,1,'/a.mp3','a.mp3',1,'mp3',600,1,'active'),
+               (2,2,'/b.mp3','b.mp3',1,'mp3',1200,1,'active'),
+               (3,3,'/c.mp3','c.mp3',1,'mp3',300,1,'active'),
+               (4,4,'/d.mp3','d.mp3',1,'mp3',300,1,'active');",
+        ).unwrap();
+
+        // Window: [1000, 2000).
+        // Work 1 (Alpha): two play events — one in window, one outside. Should appear once.
+        // Work 2 (Beta): play event before window. Should NOT appear.
+        // Work 3 (Gamma): play event in window. Should appear.
+        // Work 4 (Delta): play event in window but work is inactive. Should NOT appear.
+        conn.execute_batch(
+            "INSERT INTO play_events(chapter_id, played_at) VALUES
+               (1, 1500),  -- Alpha, in window
+               (1, 500),   -- Alpha again, outside window (dedup: still just one ScopedWork)
+               (2, 800),   -- Beta, outside window
+               (3, 1800),  -- Gamma, in window
+               (4, 1600);  -- Delta (inactive work), in window",
+        ).unwrap();
+
+        let r = super::played_in_range(&conn, 1000, 2000).unwrap();
+
+        let ids: Vec<i64> = r.works.iter().map(|w| w.work_id).collect();
+        // Alpha (1) and Gamma (3) must appear; Beta (2) and Delta (4) must not.
+        assert!(ids.contains(&1), "Alpha should appear (in-window play)");
+        assert!(ids.contains(&3), "Gamma should appear (in-window play)");
+        assert!(!ids.contains(&2), "Beta should NOT appear (play outside window)");
+        assert!(!ids.contains(&4), "Delta should NOT appear (inactive work)");
+
+        // Dedup: Alpha appears exactly once even though it has 2 play_events (one in-window, one out).
+        assert_eq!(ids.iter().filter(|&&id| id == 1).count(), 1, "Alpha must be deduped to one ScopedWork");
+
+        // Ordering: Gamma's last in-window play (1800) > Alpha's (1500) → Gamma first.
+        assert_eq!(ids[0], 3, "Gamma should be first (most recent in-window play)");
+        assert_eq!(ids[1], 1, "Alpha should be second");
+
+        // Shape check: ScopedWork fields populated.
+        let alpha = r.works.iter().find(|w| w.work_id == 1).unwrap();
+        assert_eq!(alpha.base_title, "Alpha");
+        assert_eq!(alpha.author_name, "Author A");
+        assert_eq!(alpha.chapter_count, 1);
+        assert_eq!(alpha.total_secs, 600);
+
+        // Echo fields are empty (no query filter context for a range query).
+        assert!(r.tags.is_empty());
+        assert!(r.text.is_empty());
+        assert!(r.duration_label.is_empty());
+        assert!(r.status_label.is_empty());
+    }
+
+    #[test]
+    fn played_in_range_returns_empty_when_no_events_in_window() {
+        let conn = open_in_memory().unwrap();
+        conn.execute_batch(
+            "INSERT INTO authors(id,folder_name,display_name,status) VALUES (1,'A','A','active');
+             INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES (1,1,'W','w','active');
+             INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status)
+               VALUES (1,1,'/a.mp3','a.mp3',1,'mp3',100,1,'active');
+             INSERT INTO play_events(chapter_id, played_at) VALUES (1, 500);",
+        ).unwrap();
+
+        // Window starts after the only play event.
+        let r = super::played_in_range(&conn, 1000, 2000).unwrap();
+        assert!(r.works.is_empty(), "no works when all play events fall outside the window");
+    }
+
+    // ---- CUR-10: affection-seed discovery -----------------------------------------------
+
+    #[test]
+    fn discovery_for_you_uses_rated_work_as_seed_and_stamps_reason() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // Three authors: Alice (rated work, tagged "cozy"), Bob (cozy tag, no rating), Carol (no tags, no rating).
+        touch(&root.join("Alice").join("Tale.mp3"));
+        touch(&root.join("Bob").join("Saga.mp3"));
+        touch(&root.join("Carol").join("Quiet.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+
+        // Alice's work gets a completion_rating and a "cozy" tag.
+        let alice_detail = query_author_detail(&conn, ids["Alice"]).unwrap();
+        let alice_work_id = alice_detail.works[0].id;
+        conn.execute(
+            "UPDATE works SET completion_rating='loved it' WHERE id=?1",
+            params![alice_work_id],
+        ).unwrap();
+        attach_value(&conn, "work", alice_work_id, "tag", "cozy").unwrap();
+        // Bob's author also has "cozy" tag — should be discovered via Alice's seed.
+        attach_value(&conn, "author", ids["Bob"], "tag", "cozy").unwrap();
+
+        let results = super::discovery_for_you(&conn).unwrap();
+        // Results must not be empty.
+        assert!(!results.is_empty(), "should return discovery results seeded from rated work");
+        // Every result should carry the affection-seed reason.
+        for w in &results {
+            assert!(
+                w.reason.contains("Because you rated") || w.reason.contains("You came back to"),
+                "expected affection reason, got: {:?}", w.reason
+            );
+        }
+        // Bob should appear (shares "cozy" with Alice's rated seed).
+        assert!(
+            results.iter().any(|w| w.author_name == "Bob"),
+            "Bob (shares cozy tag with rated seed) should appear in results"
+        );
+    }
+
+    #[test]
+    fn discovery_for_you_cold_start_fallback_when_no_affection_signal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        touch(&root.join("Alice").join("Tale.mp3"));
+        touch(&root.join("Bob").join("Saga.mp3"));
+        let conn = open_in_memory().unwrap();
+        scan::scan_into(&conn, root).unwrap();
+
+        let ids: std::collections::HashMap<String, i64> =
+            query_authors(&conn).unwrap().into_iter().map(|a| (a.name, a.id)).collect();
+        // Seed play history for Alice so cold-start has a signal.
+        attach_value(&conn, "author", ids["Alice"], "tag", "cozy").unwrap();
+        attach_value(&conn, "author", ids["Bob"], "tag", "cozy").unwrap();
+        let alice_detail = query_author_detail(&conn, ids["Alice"]).unwrap();
+        mark_finished(&conn, alice_detail.works[0].chapters[0].id, 1_000).unwrap();
+
+        // No completion_rating or re_entry_note set on any work — cold-start path.
+        let results = super::discovery_for_you(&conn).unwrap();
+        // Bob shares "cozy" with Alice (recently played); should appear.
+        assert!(
+            results.iter().any(|w| w.author_name == "Bob"),
+            "cold-start fallback should still surface Bob via recent-play tags"
+        );
+        // No affection reason should be present in cold-start results.
+        for w in &results {
+            assert!(
+                !w.reason.contains("Because you rated") && !w.reason.contains("You came back to"),
+                "cold-start results must not carry affection reason, got: {:?}", w.reason
+            );
+        }
+    }
+
+    #[test]
+    fn compute_insights_counts_rated_and_reentered_works() {
+        let conn = open_in_memory().unwrap();
+        // Seed works: one rated, one re-entered, one both, one neither.
+        conn.execute_batch(
+            "INSERT INTO authors(id,folder_name,display_name,status) VALUES (1,'A','A','active');
+             INSERT INTO works(id,author_id,base_title,sort_key,status,completion_rating,re_entry_note) VALUES
+               (1,1,'Rated Only','rated','active','loved it',''),
+               (2,1,'ReEntered Only','reentered','active','','came back'),
+               (3,1,'Both','both','active','great','read again'),
+               (4,1,'Neither','neither','active','',''),
+               (5,1,'Inactive Rated','inactive_rated','inactive','great','');",
+        ).unwrap();
+
+        let now_ms = 30 * 86_400_000i64;
+        let data = crate::insights::compute_insights(&conn, now_ms, 0).unwrap();
+
+        // works_rated = works 1 + 3 (both active with non-empty completion_rating).
+        assert_eq!(data.works_rated, 2, "works_rated should count works with non-empty completion_rating (active only)");
+        // works_re_entered = works 2 + 3 (both active with non-empty re_entry_note).
+        assert_eq!(data.works_re_entered, 2, "works_re_entered should count works with non-empty re_entry_note (active only)");
     }
 }
 

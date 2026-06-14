@@ -20,6 +20,7 @@ const nextChapter: ChapterRow = {
   isFavorite: false,
   metadata: [],
   playbackPositionSecs: 0,
+  hasJournal: false,
 };
 
 const home: HomeData = {
