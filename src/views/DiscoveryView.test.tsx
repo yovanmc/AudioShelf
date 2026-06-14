@@ -2,56 +2,137 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DiscoveryView } from "./DiscoveryView";
-import type { MetaTerm, DiscoveryWork } from "../lib/api";
+import type { LabelType, DiscoveryWork } from "../lib/api";
 
 const forYou: DiscoveryWork[] = [
   { workId: 1, baseTitle: "Night Walk", authorId: 2, authorName: "Sam Smith", unplayedCount: 2, sharedTags: ["cozy"] },
 ];
 
-const byTagWork: DiscoveryWork[] = [
+const byMetadataWork: DiscoveryWork[] = [
   { workId: 5, baseTitle: "Area 51", authorId: 3, authorName: "Trap Author", unplayedCount: 1, sharedTags: ["cozy"] },
 ];
 
-// Stub values for the facet picker props so existing tests don't need to repeat them.
-const facetStubs = {
-  narratorTerms: [] as MetaTerm[],
-  languageTerms: [] as MetaTerm[],
-  moodTerms: [] as MetaTerm[],
-  pickedFacet: null as { facet: string; value: string } | null,
-  byFacet: [] as DiscoveryWork[],
-  onPickFacet: () => {},
+const labelTypes: LabelType[] = [
+  { name: "narrator", display: "Narrator", builtin: true, sort: 0 },
+  { name: "mood", display: "Mood", builtin: true, sort: 1 },
+];
+
+const termsByType: Record<string, { value: string; count: number }[]> = {
+  narrator: [
+    { value: "Jane Doe", count: 3 },
+    { value: "John Smith", count: 1 },
+  ],
+  mood: [
+    { value: "cozy", count: 2 },
+  ],
+};
+
+const baseProps = {
+  forYou,
+  labelTypes,
+  termsByType,
+  picked: null as { facet: string; value: string } | null,
+  onPickMetadata: () => {},
+  byMetadata: [] as DiscoveryWork[],
+  onOpenAuthor: () => {},
+  onBack: () => {},
+  onPlayNextOfWork: vi.fn(),
 };
 
 describe("DiscoveryView", () => {
   it("shows the For You suggestions", () => {
-    render(<DiscoveryView forYou={forYou} allTags={["cozy", "calm"]} byTags={[]} picked={[]} onPickTags={() => {}} onOpenAuthor={() => {}} onBack={() => {}} onPlayNextOfWork={vi.fn()} {...facetStubs} />);
+    render(<DiscoveryView {...baseProps} />);
     expect(screen.getByText("Night Walk")).toBeInTheDocument();
     expect(screen.getByText(/Sam Smith/)).toBeInTheDocument();
   });
 
-  it("requests by-tag discovery when tags are picked", async () => {
-    const onPick = vi.fn();
-    render(<DiscoveryView forYou={forYou} allTags={["cozy", "calm"]} byTags={[]} picked={[]} onPickTags={onPick} onOpenAuthor={() => {}} onBack={() => {}} onPlayNextOfWork={vi.fn()} {...facetStubs} />);
-    await userEvent.click(screen.getByRole("button", { name: "cozy", pressed: false }));
-    expect(onPick).toHaveBeenCalledWith(["cozy"]);
+  it("renders a row per label type that has terms", () => {
+    render(<DiscoveryView {...baseProps} />);
+    // Both type display names appear as row headings.
+    expect(screen.getByText("Narrator")).toBeInTheDocument();
+    expect(screen.getByText("Mood")).toBeInTheDocument();
   });
 
-  it("reflects the controlled picked state and renders by-tag results", () => {
-    render(<DiscoveryView forYou={forYou} allTags={["cozy", "calm"]} byTags={byTagWork} picked={["cozy"]} onPickTags={() => {}} onOpenAuthor={() => {}} onBack={() => {}} onPlayNextOfWork={vi.fn()} {...facetStubs} />);
-    expect((screen.getByRole("button", { name: "cozy", pressed: true }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+  it("renders chips with value and count for each term", () => {
+    render(<DiscoveryView {...baseProps} />);
+    // Chip text contains "Jane Doe · 3" (muted span may split but the textContent includes it).
+    expect(screen.getByRole("button", { name: /Jane Doe/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /John Smith/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /cozy/ })).toBeInTheDocument();
+    // Count is in the button text.
+    expect(screen.getByRole("button", { name: /Jane Doe/ }).textContent).toContain("3");
+  });
+
+  it("calls onPickMetadata with facet and value when a chip is clicked", async () => {
+    const onPick = vi.fn();
+    render(<DiscoveryView {...baseProps} onPickMetadata={onPick} />);
+    await userEvent.click(screen.getByRole("button", { name: /Jane Doe/, pressed: false }));
+    expect(onPick).toHaveBeenCalledWith("narrator", "Jane Doe");
+  });
+
+  it("calls onPickMetadata for a mood chip", async () => {
+    const onPick = vi.fn();
+    render(<DiscoveryView {...baseProps} onPickMetadata={onPick} />);
+    await userEvent.click(screen.getByRole("button", { name: /cozy/, pressed: false }));
+    expect(onPick).toHaveBeenCalledWith("mood", "cozy");
+  });
+
+  it("reflects controlled picked state — marks the active chip aria-pressed=true", () => {
+    render(
+      <DiscoveryView
+        {...baseProps}
+        picked={{ facet: "narrator", value: "Jane Doe" }}
+        byMetadata={byMetadataWork}
+      />,
+    );
+    const chip = screen.getByRole("button", { name: /Jane Doe/, pressed: true }) as HTMLButtonElement;
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("shows byMetadata results when a pick is active", () => {
+    render(
+      <DiscoveryView
+        {...baseProps}
+        picked={{ facet: "narrator", value: "Jane Doe" }}
+        byMetadata={byMetadataWork}
+      />,
+    );
     expect(screen.getByText("Area 51")).toBeInTheDocument();
   });
 
-  it("opens an author from a suggestion", async () => {
+  it("hides byMetadata result list when nothing is picked", () => {
+    render(<DiscoveryView {...baseProps} byMetadata={byMetadataWork} />);
+    // "Area 51" should NOT appear because picked is null.
+    expect(screen.queryByText("Area 51")).not.toBeInTheDocument();
+  });
+
+  it("skips types with no terms", () => {
+    render(
+      <DiscoveryView
+        {...baseProps}
+        termsByType={{ narrator: [{ value: "Jane Doe", count: 1 }], mood: [] }}
+      />,
+    );
+    expect(screen.getByText("Narrator")).toBeInTheDocument();
+    // Mood row should not be rendered since terms array is empty.
+    expect(screen.queryByText("Mood")).not.toBeInTheDocument();
+  });
+
+  it("shows empty state when no types have terms", () => {
+    render(<DiscoveryView {...baseProps} labelTypes={[]} termsByType={{}} />);
+    expect(screen.getByText("No labels yet")).toBeInTheDocument();
+  });
+
+  it("opens an author from a For You suggestion", async () => {
     const onOpen = vi.fn();
-    render(<DiscoveryView forYou={forYou} allTags={["cozy"]} byTags={[]} picked={[]} onPickTags={() => {}} onOpenAuthor={onOpen} onBack={() => {}} onPlayNextOfWork={vi.fn()} {...facetStubs} />);
+    render(<DiscoveryView {...baseProps} onOpenAuthor={onOpen} />);
     await userEvent.click(screen.getAllByRole("button", { name: "View creator" })[0]);
     expect(onOpen).toHaveBeenCalledWith(2);
   });
 
   it("triggers onPlayNextOfWork when Play is clicked on a For You card", async () => {
     const onPlayNext = vi.fn();
-    render(<DiscoveryView forYou={forYou} allTags={["cozy"]} byTags={[]} picked={[]} onPickTags={() => {}} onOpenAuthor={() => {}} onBack={() => {}} onPlayNextOfWork={onPlayNext} {...facetStubs} />);
+    render(<DiscoveryView {...baseProps} onPlayNextOfWork={onPlayNext} />);
     await userEvent.click(screen.getByRole("button", { name: "▶ Play" }));
     expect(onPlayNext).toHaveBeenCalledWith(1, 2);
   });
@@ -61,7 +142,7 @@ describe("DiscoveryView", () => {
     const withReason: DiscoveryWork[] = [
       { workId: 1, baseTitle: "Night Walk", authorId: 2, authorName: "Sam Smith", unplayedCount: 2, sharedTags: ["cozy"], reason: "Shares cozy" },
     ];
-    render(<DiscoveryView forYou={withReason} allTags={["cozy"]} byTags={[]} picked={[]} onPickTags={() => {}} onOpenAuthor={() => {}} onBack={() => {}} onPlayNextOfWork={vi.fn()} {...facetStubs} />);
+    render(<DiscoveryView {...baseProps} forYou={withReason} />);
     expect(screen.getByText("Shares cozy")).toBeInTheDocument();
   });
 
@@ -69,7 +150,7 @@ describe("DiscoveryView", () => {
     const noReason: DiscoveryWork[] = [
       { workId: 1, baseTitle: "Night Walk", authorId: 2, authorName: "Sam Smith", unplayedCount: 2, sharedTags: ["cozy"], reason: "" },
     ];
-    render(<DiscoveryView forYou={noReason} allTags={["cozy"]} byTags={[]} picked={[]} onPickTags={() => {}} onOpenAuthor={() => {}} onBack={() => {}} onPlayNextOfWork={vi.fn()} {...facetStubs} />);
+    render(<DiscoveryView {...baseProps} forYou={noReason} />);
     // Falls back to computed "Shares cozy" from sharedTags.
     expect(screen.getByText("Shares cozy")).toBeInTheDocument();
   });

@@ -25,12 +25,13 @@ import {
   openMiniPlayer,
   listMetadataTerms, createMetadataTerm, renameMetadataTerm, deleteMetadataTerm, mergeMetadataTerms,
   addMetadataValue, removeMetadataValue, getDiscoveryByMetadata,
+  listLabelTypes,
   type AuthorRow, type AuthorDetail, type ScanResult, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
   type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
   type InsightsData, type ScopedResults, type SavedSearch, type Collection,
-  type ImportReport, type HealthReport, type MetaTerm,
+  type ImportReport, type HealthReport, type MetaTerm, type LabelType,
 } from "./lib/api";
 import { hasScopedTokens } from "./lib/query";
 import { buildRecapSvg } from "./lib/recap";
@@ -156,8 +157,8 @@ export default function App() {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [tagStats, setTagStats] = useState<TagStat[]>([]);
   const [forYou, setForYou] = useState<DiscoveryWork[]>([]);
-  const [byTags, setByTags] = useState<DiscoveryWork[]>([]);
-  const [pickedTags, setPickedTags] = useState<string[]>([]);
+  const [_byTags, setByTags] = useState<DiscoveryWork[]>([]);
+  const [_pickedTags, setPickedTags] = useState<string[]>([]);
   const [libraryRoot, setLibraryRoot] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -194,6 +195,9 @@ export default function App() {
 
   // ---- M21: metadata vocabulary terms ----
   const [metaTerms, setMetaTerms] = useState<MetaTerm[]>([]);
+
+  // ---- M26: label types (ordered) ----
+  const [labelTypes, setLabelTypes] = useState<LabelType[]>([]);
 
   // ---- M21: Discover facet picker state ----
   const [pickedFacet, setPickedFacet] = useState<{ facet: string; value: string } | null>(null);
@@ -388,7 +392,14 @@ export default function App() {
     setTagStats(await listTagsWithCounts());
   }
 
-  const loadMetaTerms = async () => setMetaTerms(await listMetadataTerms().catch(() => [] as MetaTerm[]));
+  const loadMetaTerms = async () => {
+    const [terms, types] = await Promise.all([
+      listMetadataTerms().catch(() => [] as MetaTerm[]),
+      listLabelTypes().catch(() => [] as LabelType[]),
+    ]);
+    setMetaTerms(terms);
+    setLabelTypes(types);
+  };
 
   const handleCreateMetaTerm = async (facet: string, value: string) => { await createMetadataTerm(facet, value); await loadMetaTerms(); };
   const handleRenameMetaTerm = async (id: number, value: string) => { await renameMetadataTerm(id, value); await loadMetaTerms(); };
@@ -398,10 +409,15 @@ export default function App() {
   // Flat list of all known metadata values for the MetadataEditor datalist suggestions.
   const metaSuggestions = useMemo(() => Array.from(new Set(metaTerms.map((t) => t.value))).sort(), [metaTerms]);
 
-  // Facet term lists for the Discover facet picker.
-  const narratorTerms = useMemo(() => metaTerms.filter((t) => t.facet === "narrator"), [metaTerms]);
-  const languageTerms = useMemo(() => metaTerms.filter((t) => t.facet === "language"), [metaTerms]);
-  const moodTerms = useMemo(() => metaTerms.filter((t) => t.facet === "mood"), [metaTerms]);
+  // M26: termsByType — map from label-type name → [{value, count}] for the Discover picker.
+  const termsByType = useMemo<Record<string, { value: string; count: number }[]>>(() => {
+    const map: Record<string, { value: string; count: number }[]> = {};
+    for (const t of metaTerms) {
+      if (!map[t.facet]) map[t.facet] = [];
+      map[t.facet].push({ value: t.value, count: t.chapterCount });
+    }
+    return map;
+  }, [metaTerms]);
 
   const pickFacet = async (facet: string, value: string) => {
     setPickedFacet({ facet, value });
@@ -2481,18 +2497,13 @@ export default function App() {
       return (
         <DiscoveryView
           forYou={forYou}
-          allTags={allTags}
-          byTags={byTags}
-          picked={pickedTags}
-          onPickTags={pickTags}
+          labelTypes={labelTypes}
+          termsByType={termsByType}
+          picked={pickedFacet}
+          onPickMetadata={pickFacet}
+          byMetadata={byFacet}
           onOpenAuthor={openAuthor}
           onPlayNextOfWork={playNextChapterOfWork}
-          narratorTerms={narratorTerms}
-          languageTerms={languageTerms}
-          moodTerms={moodTerms}
-          pickedFacet={pickedFacet}
-          byFacet={byFacet}
-          onPickFacet={pickFacet}
         />
       );
     }

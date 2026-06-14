@@ -1,4 +1,4 @@
-import type { MetaTerm, DiscoveryWork } from "../lib/api";
+import type { LabelType, DiscoveryWork } from "../lib/api";
 import { WorkCard } from "../components/WorkCard";
 import { EmptyState, PageHeader, SectionHeading } from "../components/ui";
 
@@ -24,65 +24,86 @@ function WorkList({ works, onOpenAuthor, onPlayNext, emptyTitle = "Nothing to sh
   ))}</div>;
 }
 
-export function DiscoveryView(props: {
-  forYou: DiscoveryWork[]; allTags: string[]; byTags: DiscoveryWork[]; picked: string[];
-  onPickTags: (tags: string[]) => void; onOpenAuthor: (id: number) => void; onBack?: () => void;
+export interface DiscoveryViewProps {
+  /** Ordered list of label types (from listLabelTypes, sorted by sort field). */
+  labelTypes: LabelType[];
+  /**
+   * Terms keyed by label type name. Each entry is an array of value+count pairs.
+   * Values are displayed as toggle chips with "value · count".
+   */
+  termsByType: Record<string, { value: string; count: number }[]>;
+  /** Currently-selected label pick across ALL types. `null` when nothing is selected. */
+  picked: { facet: string; value: string } | null;
+  /** Called when the user toggles a chip. If the same chip is already picked, passes `null` to deselect. */
+  onPickMetadata: (facet: string, value: string) => void;
+  /** Results for the currently-picked facet/value, driven by getDiscoveryByMetadata. */
+  byMetadata: DiscoveryWork[];
+  /** "For You" personalised works, driven by getDiscovery / getDiscoveryForYou. */
+  forYou: DiscoveryWork[];
+  onOpenAuthor: (id: number) => void;
+  onBack?: () => void;
   onPlayNextOfWork?: (workId: number, authorId: number) => void;
-  narratorTerms: MetaTerm[]; languageTerms: MetaTerm[]; moodTerms: MetaTerm[];
-  pickedFacet: { facet: string; value: string } | null;
-  byFacet: DiscoveryWork[];
-  onPickFacet: (facet: string, value: string) => void;
-}) {
-  const toggleTag = (tag: string) => props.onPickTags(
-    props.picked.includes(tag) ? props.picked.filter((item) => item !== tag) : [...props.picked, tag],
-  );
+}
+
+export function DiscoveryView(props: DiscoveryViewProps) {
+  const { labelTypes, termsByType, picked, onPickMetadata } = props;
+
+  // Filter to types that have at least one term.
+  const activeTypes = labelTypes
+    .filter((lt) => (termsByType[lt.name] ?? []).length > 0)
+    .sort((a, b) => a.sort - b.sort);
+
   return (
     <main className="view discovery">
       <PageHeader eyebrow="Suggestions from your library" title="Discover" />
       <section className="view-section">
-        <SectionHeading title="Pick a tag" />
-        <div className="toolbar card" style={{ padding: 12 }}>
-          {props.allTags.map((tag) => {
-            const on = props.picked.includes(tag);
-            return (
-              <button
-                key={tag}
-                type="button"
-                className={`chip chip--toggle${on ? " chip--on" : ""}`}
-                aria-pressed={on}
-                onClick={() => toggleTag(tag)}
-              >{tag}</button>
-            );
-          })}
-        </div>
-        {props.picked.length > 0 && <WorkList works={props.byTags} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} emptyTitle="No works with those tags" emptyBody="Nothing in your library matches the tags you picked. Try a different tag." />}
-      </section>
-      <section className="view-section">
-        <SectionHeading title="By narrator, language, or mood" />
-        {([["narrator", props.narratorTerms], ["language", props.languageTerms], ["mood", props.moodTerms]] as const)
-          .filter(([, terms]) => terms.length > 0)
-          .map(([facet, terms]) => (
-            <div className="facet-row" key={facet}>
-              <span className="facet-row__label">{facet[0].toUpperCase() + facet.slice(1)}</span>
+        <SectionHeading title="Browse by label" />
+        {activeTypes.length === 0 && (
+          <EmptyState title="No labels yet">Add narrators, languages, moods, or other labels to your works to browse by them here.</EmptyState>
+        )}
+        {activeTypes.map((lt) => {
+          const terms = termsByType[lt.name] ?? [];
+          return (
+            <div className="facet-row" key={lt.name}>
+              <span className="facet-row__label">{lt.display}</span>
               <div className="toolbar card" style={{ padding: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {terms.map((t) => {
-                  const on = props.pickedFacet?.facet === facet && props.pickedFacet?.value === t.value;
+                  const on = picked?.facet === lt.name && picked?.value === t.value;
                   return (
-                    <button key={`${facet}:${t.value}`} type="button"
-                      className={`chip chip--toggle${on ? " chip--on" : ""}`} aria-pressed={on}
-                      onClick={() => props.onPickFacet(facet, t.value)}>
-                      {t.value} <span className="muted">· {t.chapterCount}</span>
+                    <button
+                      key={`${lt.name}:${t.value}`}
+                      type="button"
+                      className={`chip chip--toggle${on ? " chip--on" : ""}`}
+                      aria-pressed={on}
+                      onClick={() => onPickMetadata(lt.name, t.value)}
+                    >
+                      {t.value} <span className="muted">· {t.count}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
-          ))}
-        {props.pickedFacet && <WorkList works={props.byFacet} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} emptyTitle="No works for that pick" emptyBody="Nothing matches that narrator, language, or mood yet." />}
+          );
+        })}
+        {picked && (
+          <WorkList
+            works={props.byMetadata}
+            onOpenAuthor={props.onOpenAuthor}
+            onPlayNext={props.onPlayNextOfWork}
+            emptyTitle="No works for that label"
+            emptyBody="Nothing in your library matches that label yet."
+          />
+        )}
       </section>
       <section className="view-section">
         <SectionHeading title="For You" />
-        <WorkList works={props.forYou} onOpenAuthor={props.onOpenAuthor} onPlayNext={props.onPlayNextOfWork} emptyTitle="Recommendations grow as you listen" emptyBody="Finish a chapter or add tags to your works, and personalized picks will appear here." />
+        <WorkList
+          works={props.forYou}
+          onOpenAuthor={props.onOpenAuthor}
+          onPlayNext={props.onPlayNextOfWork}
+          emptyTitle="Recommendations grow as you listen"
+          emptyBody="Finish a chapter or add labels to your works, and personalised picks will appear here."
+        />
       </section>
     </main>
   );
