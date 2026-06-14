@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -204,6 +204,35 @@ describe("m26Steps", () => {
       "04-search-by-label",
       "05-discover-by-label",
       "06-library-label-filter",
+    ]);
+  });
+});
+
+describe("m27Steps", () => {
+  it("captures the ten M27 reflection-that-connects surfaces in order", () => {
+    const noop = async () => {};
+    expect(m27Steps({
+      seedJournalAndEvents: noop,
+      showJournalPlayable: noop,
+      showJournalPlay: noop,
+      showInsightsReflections: noop,
+      showPlayedRange: noop,
+      showInsightsTagToLibrary: noop,
+      showChapterJournalAffordance: noop,
+      showJournalBack: noop,
+      showInsightsBack: noop,
+      showNavGroups: noop,
+    }).map((s) => s.name)).toEqual([
+      "01-seed",
+      "02-journal-playable",
+      "03-journal-play",
+      "04-insights-reflections",
+      "05-played-range",
+      "06-insights-tag-to-library",
+      "07-chapter-journal-affordance",
+      "08-journal-back",
+      "09-insights-back",
+      "10-nav-groups",
     ]);
   });
 });
