@@ -3,6 +3,16 @@ import { CreatorIdentity } from "../components/CreatorIdentity";
 import { WorkArtwork } from "../components/Cover";
 import { IconButton } from "../components/ui";
 import { formatTime, formatSpeed, timeLabel, type TimeLabelMode, SKIP_BACK_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, SKIP_FWD_LARGE } from "./playback";
+import { Select } from "../components/Select";
+import type { SelectOption } from "../components/Select";
+
+const SLEEP_OPTIONS: SelectOption<string>[] = [
+  { value: "", label: "Sleep off" },
+  { value: "15", label: "15 min" },
+  { value: "30", label: "30 min" },
+  { value: "60", label: "60 min" },
+  { value: "chapter", label: "End of chapter" },
+];
 
 export interface PlayerControls {
   isPlaying: boolean;
@@ -78,13 +88,15 @@ export function PlayerBar(props: PlayerBarProps) {
           <IconButton icon={props.muted ? "mute" : "volume"} label={props.muted ? "Unmute" : "Mute"} onClick={props.onToggleMute} />
         )}
         <input className="volume-range" type="range" aria-label="Volume" min={0} max={1} step={.01} value={props.muted ? 0 : props.volume} onChange={(event) => props.onVolume(Number(event.target.value))} />
-        <select aria-label="Sleep timer" value={props.sleepAtChapterEnd ? "chapter" : (props.sleepMinutes ?? "")} onChange={(event) => {
-          const v = event.target.value;
-          if (v === "chapter") props.onSetSleep(null, true);
-          else props.onSetSleep(v ? Number(v) : null, false);
-        }}>
-          <option value="">Sleep off</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="chapter">End of chapter</option>
-        </select>
+        <Select<string>
+          label="Sleep timer"
+          value={props.sleepAtChapterEnd ? "chapter" : (props.sleepMinutes != null ? String(props.sleepMinutes) : "")}
+          options={SLEEP_OPTIONS}
+          onChange={(v) => {
+            if (v === "chapter") props.onSetSleep(null, true);
+            else props.onSetSleep(v ? Number(v) : null, false);
+          }}
+        />
         {(props.sleepRemaining != null || props.sleepAtChapterEnd) && (
           <span className="sleep-countdown muted" aria-live="polite">{props.sleepAtChapterEnd ? "until end" : formatTime(props.sleepRemaining ?? 0)}</span>
         )}

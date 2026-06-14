@@ -378,8 +378,9 @@ describe("AuthorDetailView", () => {
     expect(titlesBefore[0]).toBe("Alpha");
     expect(titlesBefore[1]).toBe("Bravo");
 
-    // Select "Length (longest)" — fires onWorkSortChange.
-    await userEvent.selectOptions(screen.getByLabelText("Sort works"), "length");
+    // Open the styled Select, then click "Length (longest)" — fires onWorkSortChange.
+    await userEvent.click(screen.getByRole("button", { name: "Sort works" }));
+    await userEvent.click(screen.getByRole("option", { name: "Length (longest)" }));
     expect(onWorkSortChange).toHaveBeenCalledWith("length");
 
     // Rerender with new sort to simulate parent updating the prop.

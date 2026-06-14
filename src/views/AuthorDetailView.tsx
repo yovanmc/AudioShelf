@@ -10,6 +10,23 @@ import { Icon } from "../components/Icon";
 import { formatDuration, formatLong } from "../lib/time";
 import { sortWorks, type WorkSort } from "../lib/browse";
 import { ChapterJournalDialog } from "./ChapterJournalDialog";
+import { Select } from "../components/Select";
+import type { SelectOption } from "../components/Select";
+
+const WORK_SORT_OPTIONS: SelectOption<string>[] = [
+  { value: "az", label: "A–Z" },
+  { value: "length", label: "Length (longest)" },
+  { value: "played", label: "Played %" },
+];
+
+const CHAPTER_SORT_OPTIONS: SelectOption<string>[] = [
+  { value: "", label: "Chapter order" },
+  { value: "number_desc", label: "Reverse order" },
+  { value: "title_asc", label: "Title A–Z" },
+  { value: "title_desc", label: "Title Z–A" },
+  { value: "duration_asc", label: "Shortest first" },
+  { value: "duration_desc", label: "Longest first" },
+];
 
 /** Compact inline "Where I left off" note field. */
 function WorkReEntryField(props: {
@@ -252,18 +269,12 @@ export function AuthorDetailView(props: {
       </section>
       <div className="work-controls toolbar">
         <span className="muted">Works ({detail.works.length})</span>
-        <label>
-          Sort works:{" "}
-          <select
-            aria-label="Sort works"
-            value={props.workSort}
-            onChange={(e) => props.onWorkSortChange(e.target.value as WorkSort)}
-          >
-            <option value="az">A–Z</option>
-            <option value="length">Length (longest)</option>
-            <option value="played">Played %</option>
-          </select>
-        </label>
+        <Select<string>
+          label="Sort works"
+          value={props.workSort}
+          options={WORK_SORT_OPTIONS}
+          onChange={(v) => props.onWorkSortChange(v as WorkSort)}
+        />
         <Button variant="secondary" onClick={allCollapsed ? expandAll : collapseAll}>
           {allCollapsed ? "Expand all" : "Collapse all"}
         </Button>
@@ -326,22 +337,14 @@ export function AuthorDetailView(props: {
             </div>
           )}
           {props.onChapterSortChange && (
-            <div style={{ marginTop: 8 }}>
-              <label style={{ fontSize: "0.85rem" }}>
-                <span className="muted" style={{ marginRight: 6 }}>Chapter order:</span>
-                <select
-                  aria-label={`Chapter sort for ${w.baseTitle}`}
-                  value={w.chapterSort}
-                  onChange={(e) => props.onChapterSortChange!(w.id, e.target.value)}
-                >
-                  <option value="">Chapter order</option>
-                  <option value="number_desc">Reverse order</option>
-                  <option value="title_asc">Title A–Z</option>
-                  <option value="title_desc">Title Z–A</option>
-                  <option value="duration_asc">Shortest first</option>
-                  <option value="duration_desc">Longest first</option>
-                </select>
-              </label>
+            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+              <span className="muted" style={{ fontSize: "0.85rem" }}>Chapter order:</span>
+              <Select<string>
+                label={`Chapter sort for ${w.baseTitle}`}
+                value={w.chapterSort}
+                options={CHAPTER_SORT_OPTIONS}
+                onChange={(v) => props.onChapterSortChange!(w.id, v)}
+              />
             </div>
           )}
           {!collapsed.has(w.id) && (

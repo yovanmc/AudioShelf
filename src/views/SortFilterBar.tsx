@@ -1,4 +1,12 @@
 import type { AuthorSort } from "../lib/browse";
+import { Select } from "../components/Select";
+import type { SelectOption } from "../components/Select";
+
+const SORT_OPTIONS: SelectOption<string>[] = [
+  { value: "az", label: "A–Z" },
+  { value: "length", label: "Length (longest)" },
+  { value: "played", label: "Played %" },
+];
 
 export function SortFilterBar(props: {
   sort: AuthorSort;
@@ -7,35 +15,25 @@ export function SortFilterBar(props: {
   onFilterTagChange: (t: string | null) => void;
   allTags: string[];
 }) {
+  const tagOptions: SelectOption<string>[] = [
+    { value: "", label: "All tags" },
+    ...props.allTags.map((t) => ({ value: t, label: t })),
+  ];
+
   return (
     <div className="sort-filter-bar toolbar card" style={{ padding: 12 }}>
-      <label>
-        Sort:{" "}
-        <select
-          aria-label="Sort authors"
-          value={props.sort}
-          onChange={(e) => props.onSortChange(e.target.value as AuthorSort)}
-        >
-          <option value="az">A–Z</option>
-          <option value="length">Length (longest)</option>
-          <option value="played">Played %</option>
-        </select>
-      </label>
-      <label>
-        Tag:{" "}
-        <select
-          aria-label="Filter by tag"
-          value={props.filterTag ?? ""}
-          onChange={(e) => props.onFilterTagChange(e.target.value === "" ? null : e.target.value)}
-        >
-          <option value="">All tags</option>
-          {props.allTags.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Select<string>
+        label="Sort authors"
+        value={props.sort}
+        options={SORT_OPTIONS}
+        onChange={(v) => props.onSortChange(v as AuthorSort)}
+      />
+      <Select<string>
+        label="Filter by tag"
+        value={props.filterTag ?? ""}
+        options={tagOptions}
+        onChange={(v) => props.onFilterTagChange(v === "" ? null : v)}
+      />
     </div>
   );
 }

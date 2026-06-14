@@ -5,6 +5,16 @@ import { Button, Dialog, IconButton, ProgressBar } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { formatTime, formatSpeed, timeLabel, type TimeLabelMode, SPEEDS } from "./playback";
 import { PlaybackButtons, type PlayerControls } from "./PlayerBar";
+import { Select } from "../components/Select";
+import type { SelectOption } from "../components/Select";
+
+const SLEEP_OPTIONS: SelectOption<string>[] = [
+  { value: "", label: "Off" },
+  { value: "15", label: "15 min" },
+  { value: "30", label: "30 min" },
+  { value: "60", label: "60 min" },
+  { value: "chapter", label: "End of chapter" },
+];
 
 /** Formats integer seconds as m:ss. */
 function fmtPos(secs: number): string {
@@ -100,13 +110,15 @@ export function NowPlayingPanel(props: PlayerControls & {
           </div>
           <div className="np-row">
             <span className="np-row__label">Sleep</span>
-            <select aria-label="Sleep timer" value={props.sleepAtChapterEnd ? "chapter" : (props.sleepMinutes ?? "")} onChange={(event) => {
-              const v = event.target.value;
-              if (v === "chapter") props.onSetSleep(null, true);
-              else props.onSetSleep(v ? Number(v) : null, false);
-            }}>
-              <option value="">Off</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="chapter">End of chapter</option>
-            </select>
+            <Select<string>
+              label="Sleep timer"
+              value={props.sleepAtChapterEnd ? "chapter" : (props.sleepMinutes != null ? String(props.sleepMinutes) : "")}
+              options={SLEEP_OPTIONS}
+              onChange={(v) => {
+                if (v === "chapter") props.onSetSleep(null, true);
+                else props.onSetSleep(v ? Number(v) : null, false);
+              }}
+            />
             {(props.sleepRemaining != null || props.sleepAtChapterEnd) && (
               <span className="sleep-countdown muted" aria-live="polite">{props.sleepAtChapterEnd ? "until end of chapter" : formatTime(props.sleepRemaining ?? 0)}</span>
             )}
