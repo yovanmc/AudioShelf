@@ -253,21 +253,20 @@ fn scan_author(
             let (mtime, size) = file_stats(file);
 
             let existing: Option<(i64, i64, i64)> = conn
-                .query_row(
-                    "SELECT id, file_mtime, file_size FROM chapters WHERE file_path=?1",
-                    params![path_str],
-                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-                )
+                .prepare_cached("SELECT id, file_mtime, file_size FROM chapters WHERE file_path=?1")
+                .and_then(|mut stmt| {
+                    stmt.query_row(params![path_str], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                })
                 .ok();
 
             let chapter_id: i64 = match existing {
                 Some((id, old_mtime, old_size))
                     if old_mtime == mtime && old_size == size && mtime != 0 =>
                 {
-                    conn.execute(
+                    conn.prepare_cached(
                         "UPDATE chapters SET last_seen_scan=?1, status='active' WHERE id=?2",
-                        params![generation, id],
-                    )?;
+                    )?
+                    .execute(params![generation, id])?;
                     *skipped += 1;
                     id
                 }
