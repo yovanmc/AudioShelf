@@ -2156,10 +2156,16 @@ export default function App() {
                   const work = d.works[0];
                   const ch = work?.chapters[0];
                   if (!work || !ch) return;
-                  // Journal data — idempotent: these are SET operations (upserts or no-ops)
+                  // Journal data — idempotent: SET operations are upserts; notes/bookmarks
+                  // are append-only with no unique constraint, so clear any from prior runs
+                  // (the app-data DB persists across walkthrough runs) before adding exactly
+                  // one of each, so the journal doesn't accumulate duplicates and shift shots.
                   await setChapterSummary(ch.id, "A compelling opening chapter that sets the tone.");
-                  await addChapterNote(ch.id, 12, "The narrator's voice really draws you in here.").catch(() => {});
-                  await addBookmark(ch.id, 30, "key idea").catch(() => {});
+                  const existingJournal = await getChapterJournal(ch.id);
+                  for (const n of existingJournal.notes) await deleteChapterNote(n.id);
+                  for (const b of existingJournal.bookmarks) await deleteBookmark(b.id);
+                  await addChapterNote(ch.id, 12, "The narrator's voice really draws you in here.");
+                  await addBookmark(ch.id, 30, "key idea");
                   // Work-level meta — idempotent SET
                   await setWorkRating(work.id, "captivating");
                   await setWorkReEntryNote(work.id, "Resume from the chapter about the journey.");
@@ -2274,30 +2280,32 @@ export default function App() {
                   setQuery("");
                   setResults(null);
                   setScopedResults(null);
+                  // Clear any lingering journal-dialog request so no modal overlays the
+                  // chapter rows in this capture.
+                  setJournalChapterId(null);
+                  setOpenJournal(null);
                   await openAuthor(jane.id);
                   await settle();
                   await settle();
-                  // Works default to expanded, but a prior walkthrough step may have
-                  // collapsed some of them. Expand EVERY collapsed work so we don't
-                  // accidentally leave "Another Standalone Tale" (the one with seeded
-                  // journal data) collapsed while expanding the wrong work.
-                  const expandBtns = Array.from(
+                  // Works default to expanded; expand any a prior step left collapsed so the
+                  // seeded chapter row (and its journal icon) is rendered.
+                  for (const btn of Array.from(
                     document.querySelectorAll<HTMLButtonElement>('button[aria-label^="Expand \'"]')
-                  );
-                  for (const btn of expandBtns) {
+                  )) {
                     btn.click();
                   }
-                  if (expandBtns.length > 0) {
-                    await settle();
-                    await settle();
-                  }
-                  // The journal affordance button lives inside a chapter <li>. Scroll it
-                  // into view (centred) so the icon is visible in the captured frame.
-                  const journalBtn = document.querySelector<HTMLElement>(
-                    'button[aria-label="View your notes & bookmarks"]'
-                  );
-                  const chapterRow = journalBtn?.closest("li") ?? journalBtn;
-                  (chapterRow as HTMLElement | null)?.scrollIntoView({ block: "center" });
+                  await settle();
+                  await settle();
+                  // The author header + labels editor is tall, so the seeded work's chapter
+                  // row sits below the fold (behind the fixed PlayerBar). Scroll the chapter
+                  // row that carries the journal affordance to the centre of the `.app-main`
+                  // scroll container so the icon is clearly in frame.
+                  const journalRow =
+                    (document
+                      .querySelector<HTMLElement>('button[aria-label="View your notes & bookmarks"]')
+                      ?.closest("li") as HTMLElement | null) ??
+                    document.querySelector<HTMLElement>("li.recent-row");
+                  journalRow?.scrollIntoView({ block: "center" });
                   await settle();
                 },
 
