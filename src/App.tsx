@@ -53,7 +53,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -1922,6 +1922,132 @@ export default function App() {
                   await loadMetaTerms();
                   await pickFacet("mood", "cozy");
                   openDiscovery();
+                },
+              })
+            : args.walkthrough === "m24"
+            ? m24Steps({
+                // Step 1: compact bar — force-reset speed/sleep, start playing the
+                // first chapter of the multi-chapter work, collapse the panel.
+                showCompactPlayer: async () => {
+                  setPlaybackSpeed(1);
+                  setSleep(null);
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  setDetail(creator);
+                  setRoute({ kind: "author" });
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(false);
+                  await settle();
+                },
+                // Step 2: cycle speed once (1 → 1.25×); compact bar still collapsed.
+                showSpeedCycled: async () => {
+                  setPlaybackSpeed(nextSpeed(playbackSpeed));
+                  setPlayerExpanded(false);
+                  await settle();
+                },
+                // Step 3: expanded Now Playing panel — reset speed to 1 to avoid
+                // carrying forward the cycled value, open the panel.
+                showNowPlaying: async () => {
+                  setPlaybackSpeed(1);
+                  setPlayerExpanded(true);
+                  await settle();
+                },
+                // Step 4: non-last chapter — pick the first chapter of the multi-chapter
+                // work so "Play next chapter →" is shown. Keep panel expanded.
+                showNextAction: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  // chapters[0] is not the last chapter (work has ≥2 chapters).
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(true);
+                  await settle(); // let currentWorkChapters fetch resolve
+                },
+                // Step 5: last chapter — drive playChapter to the final chapter of the
+                // same multi-chapter work so "Mark work complete" + "More by …" appear.
+                showLastAction: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  const lastChapter = work?.chapters[work.chapters.length - 1];
+                  if (!work || !lastChapter) return;
+                  playChapter({
+                    chapter: lastChapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(true);
+                  await settle(); // let currentWorkChapters fetch resolve
+                },
+                // Step 6: "In this work" chapter list — revert to chapter[0] (non-last)
+                // so the list has current + new states visible. Panel stays expanded.
+                showChapterStates: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  const work = creator.works.reduce(
+                    (best, w) => (w.chapters.length > best.chapters.length ? w : best),
+                    creator.works[0],
+                  );
+                  const chapter = work?.chapters[0];
+                  if (!work || !chapter) return;
+                  playChapter({
+                    chapter,
+                    authorId: creator.id,
+                    authorName: creator.name,
+                    workId: work.id,
+                    workTitle: work.baseTitle,
+                    workTotalChapters: work.chapters.length,
+                    workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                  });
+                  setPlayerExpanded(true);
+                  await settle();
+                },
+                // Step 7: set a 15-min sleep timer and capture the countdown label.
+                // Reset speed to 1 so no leftover state bleeds through. Collapse panel
+                // after so subsequent sessions start clean.
+                showSleepCountdown: async () => {
+                  setPlaybackSpeed(1);
+                  setSleep(15);
+                  setPlayerExpanded(false);
+                  await settle();
                 },
               })
             : browseSteps({
