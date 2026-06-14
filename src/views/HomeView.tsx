@@ -57,7 +57,7 @@ export function HomeView(props: {
             </div>
           }
         >
-          Your library is organized by creator → work → chapter. Pick something to start — it plays one chapter, then stops.
+          Pick something and press play — it plays one chapter, then stops so you choose what's next. Your shelves fill in as you listen.
         </EmptyState>
       )}
       {keepListening && context && (
@@ -106,7 +106,7 @@ export function HomeView(props: {
       )}
       {!noHistory && recommendations.length > 0 && (
         <section className="view-section">
-          <SectionHeading eyebrow={keepListening ? "Based on your library and listening" : "From your library"} title="You May Like" />
+          <SectionHeading eyebrow={keepListening ? "Picked from what you've enjoyed" : "A few places to start"} title="You might like" />
           <div className="card-grid">
             {recommendations.slice(0, 6).map((work) => (
               <WorkCard
@@ -132,7 +132,7 @@ export function HomeView(props: {
       )}
       {stats.recent.length > 0 && (
         <section className="view-section">
-          <h2>Recently listened</h2>
+          <SectionHeading title="Recently listened" />
           <ul className="recent-list card">
             {stats.recent.map((item, index) => (
               <li className="recent-row" key={`${item.chapterId}-${index}`}>
@@ -145,7 +145,7 @@ export function HomeView(props: {
       )}
       {!noHistory && (
         <section className="view-section">
-          <h2>Your listening</h2>
+          <SectionHeading title="Your listening" />
           <div className="stats-grid">
             <StatCard label="Total time" value={formatLong(stats.totalSecs)} />
             <StatCard label="Chapters finished" value={stats.chaptersFinished} />

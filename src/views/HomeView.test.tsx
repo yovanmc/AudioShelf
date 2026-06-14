@@ -86,7 +86,7 @@ describe("HomeView", () => {
     expect(container.querySelector("strong[dir='auto']")).toHaveTextContent("Tale 2");
     expect(screen.getByText("Total time")).toBeInTheDocument();
     expect(screen.getByText("2 days")).toBeInTheDocument();
-    expect(screen.getByText("You May Like")).toBeInTheDocument();
+    expect(screen.getByText("You might like")).toBeInTheDocument();
     expect(screen.getAllByText("Shares cozy")).toHaveLength(6);
   });
 
@@ -114,8 +114,7 @@ describe("HomeView", () => {
     };
     render(<HomeView {...baseProps({ home: empty })} />);
     expect(screen.getByText("Welcome to AudioShelf")).toBeInTheDocument();
-    expect(screen.getByText(/organized by creator/)).toBeInTheDocument();
-    expect(screen.queryByText("You May Like")).not.toBeInTheDocument();
+    expect(screen.queryByText("You might like")).not.toBeInTheDocument();
   });
 
   it("shows a loading state when home is null", () => {
@@ -175,6 +174,19 @@ describe("HomeView", () => {
   it("does not render the Forgotten shelf when dormantWorks prop is omitted", () => {
     render(<HomeView {...baseProps()} />);
     expect(screen.queryByRole("heading", { name: "Forgotten" })).not.toBeInTheDocument();
+  });
+
+  it("uses warm, jargon-free shelf headers and empty copy", () => {
+    // render empty-state Home (noHistory + no library, the first-run path)
+    const empty: HomeData = {
+      keepListening: null,
+      recommendations: [],
+      stats: { totalSecs: 0, chaptersFinished: 0, streakDays: 0, recent: [] },
+    };
+    render(<HomeView {...baseProps({ home: empty })} />);
+    expect(screen.getByText(/Welcome to AudioShelf/i)).toBeInTheDocument();
+    // ON-3: no "creator → work → chapter" jargon
+    expect(screen.queryByText(/creator → work → chapter/i)).not.toBeInTheDocument();
   });
 
   // CL-2: stats grid visibility tied to listening history
