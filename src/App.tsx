@@ -3321,6 +3321,14 @@ export default function App() {
             const idx = chs.findIndex((ch) => ch.id === c.chapter.id);
             return idx >= 0 && idx < chs.length - 1;
           })()}
+          nextChapterTitle={(() => {
+            const c = currentRef.current;
+            const chs = currentWorkChaptersRef.current;
+            if (!c || chs.length === 0) return undefined;
+            const idx = chs.findIndex((ch) => ch.id === c.chapter.id);
+            if (idx < 0 || idx >= chs.length - 1) return undefined;
+            return chs[idx + 1]?.title;
+          })()}
         />
       )}
     </div>

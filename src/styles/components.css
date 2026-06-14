@@ -292,9 +292,11 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .np-row__label { min-width: 64px; color: var(--color-text-muted, #aaa); font-size: .9rem; }
 .sleep-countdown { font-variant-numeric: tabular-nums; }
 
-/* M24 — chapter-end actions (PL-2) */
-.np-endactions { display: flex; gap: var(--space-2, 8px); flex-wrap: wrap; align-items: center; margin-top: var(--space-3, 12px); }
+/* M24 — chapter-end actions (PL-2); M29 PL7-3: cross-fade animation */
+.np-endactions { display: flex; gap: var(--space-2, 8px); flex-wrap: wrap; align-items: center; margin-top: var(--space-3, 12px); animation: np-endactions-in var(--transition-swap); }
 .np-endactions__note { flex-basis: 100%; font-size: .85rem; margin: 4px 0 0; }
+@keyframes np-endactions-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .np-endactions { animation: none; } }
 
 /* M24 — scannable chapter states (PL-4) */
 .chapter-jump__state { margin-left: auto; font-size: .8rem; }

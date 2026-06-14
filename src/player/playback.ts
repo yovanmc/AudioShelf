@@ -48,6 +48,12 @@ export function formatPercent(currentTime: number, duration: number): string {
   return `${pct}%`;
 }
 
+/** Play-next button label — includes the upcoming chapter title if known (PL7-7). */
+export function nextChapterLabel(nextTitle?: string): string {
+  const t = (nextTitle ?? "").trim();
+  return t ? `Play next — ${t}` : "Play next chapter";
+}
+
 /** Scrub-preview label: "elapsed / total" at a hovered position, clamped to [0, total] (PL7-2). */
 export function formatScrubPreview(posSecs: number, totalSecs: number): string {
   const clamped = Math.max(0, Math.min(posSecs, totalSecs));

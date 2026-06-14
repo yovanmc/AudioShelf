@@ -4,7 +4,7 @@ import { WorkArtwork } from "../components/Cover";
 import { Button, Dialog, IconButton, ProgressBar, SectionHeading } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { useState } from "react";
-import { formatTime, formatSpeed, formatScrubPreview, timeLabel, type TimeLabelMode, SPEEDS } from "./playback";
+import { formatTime, formatSpeed, formatScrubPreview, nextChapterLabel, timeLabel, type TimeLabelMode, SPEEDS } from "./playback";
 import { PlaybackButtons, type PlayerControls } from "./PlayerBar";
 import { Select } from "../components/Select";
 import type { SelectOption } from "../components/Select";
@@ -52,6 +52,8 @@ export function NowPlayingPanel(props: PlayerControls & {
   onPlayNextChapter?: () => void;
   onMarkComplete?: () => void;
   canPlayNext?: boolean;
+  /** Title of the next chapter, for the play-next button label (M29 PL7-7). */
+  nextChapterTitle?: string;
 }) {
   const { context } = props;
   const [scrubbing, setScrubbing] = useState(false);
@@ -145,10 +147,10 @@ export function NowPlayingPanel(props: PlayerControls & {
               <span className="sleep-countdown muted" aria-live="polite">{props.sleepAtChapterEnd ? "until end of chapter" : formatTime(props.sleepRemaining ?? 0)}</span>
             )}
           </div>
-          <div className="np-endactions">
+          <div className="np-endactions" key={props.canPlayNext ? "next" : "last"}>
             {props.canPlayNext && props.onPlayNextChapter ? (
               <>
-                <Button variant="primary" onClick={props.onPlayNextChapter}>Play next chapter →</Button>
+                <Button variant="primary" onClick={props.onPlayNextChapter}>{nextChapterLabel(props.nextChapterTitle)} →</Button>
                 <p className="muted np-endactions__note">Plays this chapter, then stops. Tap to continue when you're ready.</p>
               </>
             ) : (
