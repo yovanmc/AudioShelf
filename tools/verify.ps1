@@ -15,6 +15,8 @@ if ($Measure) {
 }
 
 $fixture = Join-Path $root ".fixture"
+$useRealMedia = ($Walkthrough -eq "m35")
+if ($useRealMedia) { $fixture = Join-Path $root "src-tauri\tests\media" }
 $output  = if ([System.IO.Path]::IsPathRooted($OutputRoot)) {
   $OutputRoot
 } else {
@@ -31,8 +33,10 @@ Remove-Item $shots -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $done -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $shots | Out-Null
 
-cmd /c "`"$devenv`" cargo run --quiet --manifest-path `"$root\tools\gen-fixture\Cargo.toml`" -- `"$fixture`""
-if ($LASTEXITCODE -ne 0) { Write-Host "FIXTURE GENERATION FAILED"; exit 1 }
+if (-not $useRealMedia) {
+  cmd /c "`"$devenv`" cargo run --quiet --manifest-path `"$root\tools\gen-fixture\Cargo.toml`" -- `"$fixture`""
+  if ($LASTEXITCODE -ne 0) { Write-Host "FIXTURE GENERATION FAILED"; exit 1 }
+}
 
 if (-not $SkipBuild) {
   cmd /c "`"$devenv`" cargo tauri build --debug --no-bundle"

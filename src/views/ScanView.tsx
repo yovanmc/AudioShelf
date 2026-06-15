@@ -28,13 +28,16 @@ export function ScanView(props: {
     );
   }
 
-  const { authors, works, chapters, added = 0, updated = 0, removed = 0, skipped = 0, errors = [], cancelled = false } = props.result;
+  const { authors, works, chapters, added = 0, updated = 0, removed = 0, skipped = 0, unknownDuration = 0, errors = [], cancelled = false } = props.result;
   return (
     <Card className="scan" style={{ padding: 24 }}>
       <h1>{cancelled ? "Scan cancelled" : "Library scanned"}</h1>
       {cancelled && <p className="muted">Stopped early — what was scanned so far is kept. Re-scan any time to finish.</p>}
       <div className="stats-grid"><StatCard label="Creators" value={authors} /><StatCard label="Works" value={works} /><StatCard label="Chapters" value={chapters} /></div>
-      <p className="muted scan-diff">{added} added · {updated} updated · {removed} removed · {skipped} unchanged</p>
+      <p className="muted scan-diff">
+        {added} added · {updated} updated · {removed} removed · {skipped} unchanged
+        {(unknownDuration ?? 0) > 0 ? ` · ${unknownDuration} unknown length` : ""}
+      </p>
       {errors.length > 0 && (
         <details className="scan-errors">
           <summary>{errors.length} item{errors.length === 1 ? "" : "s"} skipped (unreadable)</summary>

@@ -363,6 +363,13 @@ fn finish_result(
         updated,
         removed,
         skipped,
+        unknown_duration: conn
+            .query_row(
+                "SELECT COUNT(*) FROM chapters WHERE duration_secs = 0 AND status = 'active'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0),
         errors,
         cancelled,
     }

@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28", "m29", "m30", "m34"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28", "m29", "m30", "m34", "m35"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -545,6 +545,23 @@ export function m30Steps(nav: {
     { name: "01-scan-summary", run: nav.showScanSummary },
     { name: "02-scan-progress", run: nav.showScanProgress },
     { name: "03-scan-removed", run: nav.showScanRemoved },
+  ];
+}
+
+/**
+ * Build the "m35" walkthrough: open the first author in the real-media library,
+ * start playback of a real encoded chapter (proves decode + duration), then
+ * play the corrupt file so the inline error state fires.
+ */
+export function m35Steps(nav: {
+  openFirstAuthor: () => Promise<void>;
+  playRealChapter: () => Promise<void>;
+  playCorruptChapter: () => Promise<void>;
+}): Step[] {
+  return [
+    { name: "author-detail", run: nav.openFirstAuthor },
+    { name: "real-format-playing", run: nav.playRealChapter },
+    { name: "playback-error", run: nav.playCorruptChapter },
   ];
 }
 

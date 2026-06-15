@@ -95,6 +95,7 @@ button.creator-identity { border: 0; padding: 0; background: none; text-align: s
 .chip--on { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
 .player-bar__utility { gap: var(--space-3); border-inline-start: 1px solid var(--color-divider); padding-inline-start: var(--space-4); }
 .player-bar__chapter-pos { font-size: 0.82em; }
+.player-bar__error { color: var(--color-danger); font-size: 0.85rem; margin-top: 2px; }
 .now-playing__work-link h1 { cursor: pointer; }
 .now-playing__work-link h1:hover { color: var(--color-accent-hover); }
 .time-label { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0; }
