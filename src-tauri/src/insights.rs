@@ -373,9 +373,11 @@ pub fn compute_insights(
     {
         let mut s = conn.prepare(
             "SELECT w.id, w.author_id,
-                    (SELECT count(*) FROM chapters c WHERE c.work_id=w.id AND c.status='active'),
-                    (SELECT count(*) FROM chapters c WHERE c.work_id=w.id AND c.status='active' AND c.played=1)
-             FROM works w",
+                    COALESCE(SUM(CASE WHEN c.status = 'active' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN c.status = 'active' AND c.played = 1 THEN 1 ELSE 0 END), 0)
+             FROM works w
+             LEFT JOIN chapters c ON c.work_id = w.id
+             GROUP BY w.id",
         )?;
         let mut q = s.query([])?;
         while let Some(r) = q.next()? {
@@ -453,6 +455,43 @@ mod tests {
         let ms = 0 + 30 * 60_000; // 1970-01-01T00:30:00Z
         assert_eq!(local_hour(ms, 0), 0);
         assert_eq!(local_hour(ms, -120), 2); // UTC+2 ⇒ 02:30 local
+    }
+
+    #[test]
+    fn compute_insights_fully_played_flag_with_mixed_chapters() {
+        // Lock the Task 4 GROUP BY rewrite end-to-end: a work is `fully_played` only when
+        // EVERY active chapter is played=1. `fully_played` is observable via the per-tag
+        // `finished` count in `top_tags` (build_insights increments `finished` for a tag
+        // only when its owning work is fully_played) — so tagging both works with the same
+        // tag lets us assert owned=2 (both works own the tag) but finished=1 (only the
+        // fully-played work). This guards against the SQL aggregation miscounting.
+        use crate::db::open_in_memory;
+        let conn = open_in_memory().unwrap();
+        conn.execute_batch(
+            "INSERT INTO authors(id,folder_name,display_name,status) VALUES (1,'Auth','Auth','active');
+             INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES
+               (1,1,'Fully Played Work','fpw','active'),
+               (2,1,'Partially Played Work','ppw','active');
+             INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status) VALUES
+               (1,1,'/fp/ch1.mp3','ch1.mp3',1,'mp3',100,1,'active'),
+               (2,1,'/fp/ch2.mp3','ch2.mp3',2,'mp3',100,1,'active'),
+               (3,2,'/pp/ch1.mp3','ch1.mp3',1,'mp3',100,1,'active'),
+               (4,2,'/pp/ch2.mp3','ch2.mp3',2,'mp3',100,0,'active');
+             INSERT INTO work_tags(work_id,tag) VALUES (1,'mystery'),(2,'mystery');",
+        ).unwrap();
+
+        let now_ms = 30 * 86_400_000i64;
+        let data = compute_insights(&conn, now_ms, 0).unwrap();
+        let mystery = data
+            .top_tags
+            .iter()
+            .find(|t| t.tag == "mystery")
+            .expect("mystery tag should appear in top_tags");
+        assert_eq!(mystery.owned, 2, "both works own the 'mystery' tag");
+        assert_eq!(
+            mystery.finished, 1,
+            "only the fully-played work counts as finished (one chapter of the other is unplayed)"
+        );
     }
 
     #[test]

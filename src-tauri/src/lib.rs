@@ -152,7 +152,7 @@ pub fn run() {
 // Exposed for integration tests.
 pub mod testing {
     pub use crate::backup::{apply_curation_import, apply_pending_restore, build_curation_export, stage_db_restore};
-    pub use crate::commands::{apply_metadata_proposals, apply_series_proposals, build_metadata_proposals, detect_series_for_author, get_chapter_transcript_inner, query_author_detail, query_author_series, query_authors, query_dormant_works, more_like_this, suggest_tags_from, search_transcripts_inner, SeriesMemberProposal, SeriesProposal, SeriesView, TranscriptHit};
+    pub use crate::commands::{apply_metadata_proposals, apply_series_proposals, build_metadata_proposals, detect_series_for_author, get_chapter_transcript_inner, query_author_detail, query_author_series, query_authors, query_dormant_works, more_like_this, suggest_tags_from, search_library_for_test, search_transcripts_inner, SeriesMemberProposal, SeriesProposal, SeriesView, TranscriptHit};
     pub use crate::covers::{
         cover_cache_for_chapter, find_folder_image, make_thumbnail_png, read_embedded_picture,
         CoverPriority,

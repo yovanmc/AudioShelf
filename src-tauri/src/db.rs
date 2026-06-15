@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 "#;
 
 /// The current schema version. Bump this constant whenever a new migration step is added.
-pub(crate) const LATEST: i64 = 11;
+pub(crate) const LATEST: i64 = 12;
 
 /// Open a file-backed connection and ensure the schema exists (idempotent).
 pub fn open(path: &str) -> rusqlite::Result<Connection> {
@@ -69,7 +69,10 @@ pub fn open(path: &str) -> rusqlite::Result<Connection> {
         "PRAGMA foreign_keys = ON;
          PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
-         PRAGMA busy_timeout = 5000;",
+         PRAGMA busy_timeout = 5000;
+         PRAGMA cache_size = -16384;
+         PRAGMA temp_store = MEMORY;
+         PRAGMA mmap_size = 134217728;",
     )?;
     migrate(&conn)?;
     Ok(conn)
@@ -234,6 +237,23 @@ fn migration_v11_scan_tracking(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// v12 — query performance: the two genuinely-missing indices.
+/// `idx_chapters_work` is a COVERING index for the work-grouped aggregations in
+/// `query_authors` and `compute_insights` (work_id join + status/played/duration read
+/// entirely from the index → index-only scan). `idx_play_events_chapter` is the FK
+/// index for per-chapter event lookups. (works.author_id and metadata_terms(facet,value)
+/// are intentionally NOT added — already covered by their UNIQUE auto-indexes; see the
+/// M32 plan "Scope corrections" section.)
+fn migration_v12_query_indices(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_chapters_work
+             ON chapters(work_id, status, played, duration_secs);
+         CREATE INDEX IF NOT EXISTS idx_play_events_chapter
+             ON play_events(chapter_id);",
+    )?;
+    Ok(())
+}
+
 /// Add the metadata_terms vocabulary + chapter_metadata / author_metadata attach
 /// tables (migration v8). Faceted user-defined metadata (narrator / language / mood)
 /// applied to files and creators. Additive only — no existing table touched.
@@ -321,6 +341,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     if current < 9 { run_step(conn, 9, migration_v9_playback_position)?; }
     if current < 10 { run_step(conn, 10, migration_v10_label_types)?; }
     if current < 11 { run_step(conn, 11, migration_v11_scan_tracking)?; }
+    if current < 12 { run_step(conn, 12, migration_v12_query_indices)?; }
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES ('schema_version', ?1)",
         [LATEST.to_string()],
@@ -387,6 +408,7 @@ pub fn open_at_version(version: i64) -> rusqlite::Result<Connection> {
     if version >= 9 { run_step(&conn, 9, migration_v9_playback_position)?; }
     if version >= 10 { run_step(&conn, 10, migration_v10_label_types)?; }
     if version >= 11 { run_step(&conn, 11, migration_v11_scan_tracking)?; }
+    if version >= 12 { run_step(&conn, 12, migration_v12_query_indices)?; }
     Ok(conn)
 }
 
@@ -422,18 +444,18 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 11);
+        assert_eq!(ver, 12);
     }
 
     #[test]
     fn migrate_from_v1_is_noop_when_current() {
         let conn = open_in_memory().unwrap();
-        // Running migrate a second time must leave user_version at 11 without error.
+        // Running migrate a second time must leave user_version at 12 without error.
         super::migrate(&conn).unwrap();
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 11);
+        assert_eq!(ver, 12);
     }
 
     #[test]
@@ -452,7 +474,7 @@ mod tests {
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 11);
+        assert_eq!(post, 12);
     }
 
     #[test]
@@ -499,7 +521,7 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 11);
+        assert_eq!(ver, 12);
     }
 
     #[test]
@@ -510,12 +532,12 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(pre, 1);
-        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale, v8 metadata, v9 playback_position, v10 label_types, v11 scan_tracking.
+        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale, v8 metadata, v9 playback_position, v10 label_types, v11 scan_tracking, v12 query_indices.
         super::migrate(&conn).unwrap();
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 11);
+        assert_eq!(post, 12);
         let v2_count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table'
@@ -545,10 +567,10 @@ mod tests {
             .unwrap();
         assert_eq!(has_col, 0, "metadata_source must not exist before v3 migration");
 
-        // Run the full migration to reach v11.
+        // Run the full migration to reach latest.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 11);
+        assert_eq!(post, 12);
 
         // Now both tables must have the column.
         let works_col: i64 = conn
@@ -603,10 +625,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist before v4 migration");
 
-        // Run the full migration to reach v11.
+        // Run the full migration to reach latest.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 11);
+        assert_eq!(post, 12);
 
         // Both tables must now exist.
         let series_count: i64 = conn.query_row(
@@ -666,7 +688,7 @@ mod tests {
         // Run the full migration.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 11);
+        assert_eq!(post, 12);
 
         // transcripts must now exist.
         let has_transcripts: i64 = conn
@@ -727,11 +749,11 @@ mod tests {
 
     #[test]
     fn legacy_db_upgrades_through_v6() {
-        // Open at v1 (legacy), run full migrate(), expect LATEST (v11) and journal columns present.
+        // Open at v1 (legacy), run full migrate(), expect LATEST (v12) and journal columns present.
         let conn = open_at_version(1).unwrap();
         migrate(&conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 11);
+        assert_eq!(v, 12);
     }
 
     #[test]
@@ -758,9 +780,20 @@ mod tests {
 
     #[test]
     fn open_at_version_11_reaches_latest() {
+        // Opening at v11 then running full migrate reaches LATEST (v12).
         let conn = open_at_version(11).unwrap();
+        let v11: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v11, 11, "open_at_version(11) must leave user_version at 11");
+        migrate(&conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 11);
+        assert_eq!(v, LATEST, "migrating from v11 must reach LATEST");
+    }
+
+    #[test]
+    fn open_at_version_12_reaches_latest() {
+        let conn = open_at_version(12).unwrap();
+        let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, 12);
         assert_eq!(v, LATEST);
     }
 
@@ -823,10 +856,10 @@ mod tests {
             rusqlite::params![chapter_id],
         ).unwrap();
 
-        // Run migrate() to apply v10 + v11.
+        // Run migrate() to apply v10 + v11 + v12.
         super::migrate(&conn).unwrap();
         let v10: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v10, 11);
+        assert_eq!(v10, 12);
 
         // label_types has the 4 seeded built-in rows.
         let lt_count: i64 = conn
