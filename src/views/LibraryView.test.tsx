@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { LibraryView } from "./LibraryView";
-import type { AuthorRow, SearchResults, TranscriptHit, LabelType } from "../lib/api";
+import type { AuthorRow, SearchResults, LabelType } from "../lib/api";
 
 const authors: AuthorRow[] = [
   { id: 1, name: "Alice", workCount: 1, chapterCount: 2, unplayedCount: 1, totalSecs: 0, tags: [] },
@@ -192,70 +192,6 @@ describe("LibraryView", () => {
   it("Status select is not present in the sort/filter bar (moved to tab bar)", () => {
     render(<LibraryView {...baseProps()} />);
     expect(screen.queryByRole("combobox", { name: "Filter by status" })).not.toBeInTheDocument();
-  });
-
-  // ---- transcript search bucket tests ----
-
-  it("renders a Transcripts bucket when transcriptResults has hits", () => {
-    const hits: TranscriptHit[] = [
-      {
-        chapterId: 10,
-        chapterTitle: "Deep Chapter",
-        workId: 5,
-        workTitle: "Great Book",
-        authorId: 1,
-        authorName: "Alice",
-        snippet: "…here is the matching text around the term…",
-      },
-    ];
-    render(
-      <LibraryView
-        {...baseProps({ query: "term", results: { authors: [], works: [], chapters: [] }, transcriptResults: hits })}
-      />,
-    );
-    expect(screen.getByText("Transcripts")).toBeInTheDocument();
-    expect(screen.getByText("Deep Chapter")).toBeInTheDocument();
-    expect(screen.getByText(/here is the matching text/)).toBeInTheDocument();
-  });
-
-  it("does not render the Transcripts bucket when transcriptResults is empty", () => {
-    render(
-      <LibraryView
-        {...baseProps({ query: "x", results: { authors: [{ authorId: 1, authorName: "Alice" }], works: [], chapters: [] }, transcriptResults: [] })}
-      />,
-    );
-    expect(screen.queryByText("Transcripts")).not.toBeInTheDocument();
-  });
-
-  it("clicking a transcript hit opens the author", async () => {
-    const onOpenAuthor = vi.fn();
-    const hits: TranscriptHit[] = [
-      {
-        chapterId: 11,
-        chapterTitle: "My Chapter",
-        workId: 2,
-        workTitle: "My Book",
-        authorId: 42,
-        authorName: "Bob",
-        snippet: "some snippet",
-      },
-    ];
-    render(
-      <LibraryView
-        {...baseProps({ query: "snippet", results: { authors: [], works: [], chapters: [] }, transcriptResults: hits, onOpenAuthor })}
-      />,
-    );
-    await userEvent.click(screen.getByText("My Chapter"));
-    expect(onOpenAuthor).toHaveBeenCalledWith(42);
-  });
-
-  it("no-matches message still shown when results and transcriptResults are both empty", () => {
-    render(
-      <LibraryView
-        {...baseProps({ query: "zzz", results: { authors: [], works: [], chapters: [] }, transcriptResults: [] })}
-      />,
-    );
-    expect(screen.getByText("No matches for that search")).toBeInTheDocument();
   });
 
   it("inline save-search works without window.prompt", async () => {

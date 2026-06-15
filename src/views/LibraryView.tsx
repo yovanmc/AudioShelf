@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FixedSizeList as List, type ListChildComponentProps } from "react-window";
-import type { AuthorRow, SearchResults, TranscriptHit, ScopedResults, SavedSearch, LabelType } from "../lib/api";
+import type { AuthorRow, SearchResults, ScopedResults, SavedSearch, LabelType } from "../lib/api";
 import { summarizeAuthor } from "../lib/library";
 import { CreatorAvatar, WorkArtwork } from "../components/Cover";
 import { EmptyState, IconButton, PageHeader, TagGroup } from "../components/ui";
@@ -22,8 +22,6 @@ export function LibraryView(props: {
   onOpenHome?: () => void; onOpenDiscovery?: () => void; onOpenRename?: () => void; onOpenSettings?: () => void;
   onPlayNextOfWork?: (workId: number, authorId: number) => void;
   onPlayAuthor?: (authorId: number) => void;
-  /** Transcript search hits to show in the search results panel (optional). */
-  transcriptResults?: TranscriptHit[] | null;
   /** Advanced scoped-search results (tag/duration/status tokens). */
   scopedResults?: ScopedResults | null;
   /** True when the current query contains scoped tokens. */
@@ -179,7 +177,7 @@ export function LibraryView(props: {
           selectedWorkIds={props.selectedWorkIds}
           onToggleWork={props.onToggleWork}
         />
-      ) : searching ? <SearchResultsPanel results={props.results} transcriptHits={props.transcriptResults} onOpenAuthor={props.onOpenAuthor} onPlayNextOfWork={props.onPlayNextOfWork} /> : (
+      ) : searching ? <SearchResultsPanel results={props.results} onOpenAuthor={props.onOpenAuthor} onPlayNextOfWork={props.onPlayNextOfWork} /> : (
         <>
           <div className="tabs" role="tablist" aria-label="Played status">
             {([
@@ -226,18 +224,15 @@ export function LibraryView(props: {
 
 function SearchResultsPanel({
   results,
-  transcriptHits,
   onOpenAuthor,
   onPlayNextOfWork,
 }: {
   results: SearchResults | null;
-  transcriptHits?: TranscriptHit[] | null;
   onOpenAuthor: (id: number) => void;
   onPlayNextOfWork?: (workId: number, authorId: number) => void;
 }) {
-  const hasTranscripts = transcriptHits && transcriptHits.length > 0;
   if (!results) return <div className="card empty-state">Searching...</div>;
-  const hasAny = results.authors.length || results.works.length || results.chapters.length || hasTranscripts;
+  const hasAny = results.authors.length || results.works.length || results.chapters.length;
   if (!hasAny) return <EmptyState title="No matches for that search">Try another creator, title, chapter, or tag — or clear the search to browse everything.</EmptyState>;
   return (
     <div className="search-results">
@@ -273,28 +268,6 @@ function SearchResultsPanel({
           </button>
         ))}
       </div></section>}
-      {hasTranscripts && (
-        <section className="view-section">
-          <h2>Transcripts</h2>
-          <div className="card">
-            {transcriptHits!.map((hit) => (
-              <button
-                key={hit.chapterId}
-                className="list-row"
-                style={{ width: "100%", background: "none", border: 0, textAlign: "left" }}
-                onClick={() => onOpenAuthor(hit.authorId)}
-              >
-                <WorkArtwork workId={hit.workId} title={hit.workTitle} size={48} />
-                <span style={{ minWidth: 0, flex: 1 }}>
-                  <strong>{hit.chapterTitle}</strong>
-                  <span className="muted" style={{ display: "block" }}>{hit.workTitle} · {hit.authorName}</span>
-                  <span className="muted" style={{ display: "block", fontSize: "0.85em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hit.snippet}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

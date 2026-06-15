@@ -156,11 +156,10 @@ export function tagsSteps(nav: {
 }
 
 /**
- * Build the "m16" walkthrough: six new surfaces introduced in M16 — manage-tags
+ * Build the "m16" walkthrough: five surfaces introduced in M16 — manage-tags
  * (Settings tag manager with seeded tag stats), metadata diff-preview
  * (MetadataView in its empty/honest state), series spine (AuthorDetail — empty
- * when no numeric series detected in fixtures), transcript search (Library search
- * with a transcript bucket, empty because no sidecar fixtures), forgotten shelf
+ * when no numeric series detected in fixtures), forgotten shelf
  * (Home with a dormant work seeded via a far-past play event), and discover reasons
  * (DiscoveryView cards showing the reason string after seeding play history + tags).
  */
@@ -168,7 +167,6 @@ export function m16Steps(nav: {
   showManageTags: () => Promise<void>;
   showMetadataDiff: () => Promise<void>;
   showSeriesSpine: () => Promise<void>;
-  showTranscriptSearch: () => Promise<void>;
   showForgottenShelf: () => Promise<void>;
   showDiscoverReasons: () => Promise<void>;
 }): Step[] {
@@ -176,7 +174,6 @@ export function m16Steps(nav: {
     { name: "manage-tags", run: nav.showManageTags },
     { name: "metadata-diff", run: nav.showMetadataDiff },
     { name: "series-spine", run: nav.showSeriesSpine },
-    { name: "transcript-search", run: nav.showTranscriptSearch },
     { name: "forgotten-shelf", run: nav.showForgottenShelf },
     { name: "discover-reasons", run: nav.showDiscoverReasons },
   ];

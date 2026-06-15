@@ -42,20 +42,18 @@ describe("m12Steps", () => {
 });
 
 describe("m16Steps", () => {
-  it("captures the six new M16 surfaces in order", () => {
+  it("captures the five new M16 surfaces in order", () => {
     const noop = async () => {};
     expect(m16Steps({
       showManageTags: noop,
       showMetadataDiff: noop,
       showSeriesSpine: noop,
-      showTranscriptSearch: noop,
       showForgottenShelf: noop,
       showDiscoverReasons: noop,
     }).map((step) => step.name)).toEqual([
       "manage-tags",
       "metadata-diff",
       "series-spine",
-      "transcript-search",
       "forgotten-shelf",
       "discover-reasons",
     ]);
