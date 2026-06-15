@@ -55,7 +55,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, nextSpeed, type TimeLabelMode, playbackErrorText } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps, m34Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps, m34Steps, m35Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -2833,6 +2833,66 @@ export default function App() {
                 showLibrary: async () => {
                   setRoute({ kind: "library" });
                   await settle();
+                },
+              })
+            : args.walkthrough === "m35"
+            ? m35Steps({
+                // Step 1: open the first author in the real-media library so the
+                // author-detail screen is captured (proves files were scanned).
+                openFirstAuthor: async () => {
+                  const list = await getAuthors();
+                  if (list.length > 0) await openAuthor(list[0].id);
+                },
+                // Step 2: play a non-corrupt chapter to prove real decode + duration.
+                playRealChapter: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  for (const work of creator.works) {
+                    for (const chapter of work.chapters) {
+                      if (!/Corrupt/i.test(chapter.title ?? "")) {
+                        setDetail(creator);
+                        setRoute({ kind: "author" });
+                        playChapter({
+                          chapter,
+                          authorId: creator.id,
+                          authorName: creator.name,
+                          workId: work.id,
+                          workTitle: work.baseTitle,
+                          workTotalChapters: work.chapters.length,
+                          workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                        });
+                        await new Promise((r) => setTimeout(r, 1200)); // let it decode + advance
+                        return;
+                      }
+                    }
+                  }
+                },
+                // Step 3: play the corrupt chapter so onError fires and the inline
+                // "couldn't be played" message appears in the player bar.
+                playCorruptChapter: async () => {
+                  const list = await getAuthors();
+                  if (!list.length) return;
+                  const creator = await getAuthorDetail(list[0].id);
+                  for (const work of creator.works) {
+                    for (const chapter of work.chapters) {
+                      if (/Corrupt/i.test(chapter.title ?? "")) {
+                        setDetail(creator);
+                        setRoute({ kind: "author" });
+                        playChapter({
+                          chapter,
+                          authorId: creator.id,
+                          authorName: creator.name,
+                          workId: work.id,
+                          workTitle: work.baseTitle,
+                          workTotalChapters: work.chapters.length,
+                          workPlayedChapters: work.chapters.filter((c) => c.played).length,
+                        });
+                        await new Promise((r) => setTimeout(r, 800)); // let onError fire
+                        return;
+                      }
+                    }
+                  }
                 },
               })
             : browseSteps({
