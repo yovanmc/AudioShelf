@@ -38,8 +38,6 @@ export function NowPlayingPanel(props: PlayerControls & {
   onCycleTimeLabel?: () => void;
   chapters?: ChapterRow[];
   onJumpToChapter?: (c: ChapterRow) => void;
-  /** Plain-text transcript for the current chapter, if available. */
-  transcript?: string | null;
   /** Journal data for the currently playing chapter. */
   chapterJournal?: ChapterJournal | null;
   /** Called with Math.floor(currentTime) when user clicks "Add note here". */
@@ -265,17 +263,6 @@ export function NowPlayingPanel(props: PlayerControls & {
             )}
           </section>
 
-          {props.transcript && (
-            <section className="now-playing__transcript" aria-label="Transcript">
-              <SectionHeading title="Transcript" />
-              <div
-                className="muted"
-                style={{ fontSize: "0.85rem", whiteSpace: "pre-wrap", maxHeight: "200px", overflowY: "auto" }}
-              >
-                {props.transcript}
-              </div>
-            </section>
-          )}
         </div>
       </div>
     </Dialog>

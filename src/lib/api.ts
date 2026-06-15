@@ -220,16 +220,6 @@ export interface LaunchArgs {
   exitWhenDone: boolean;
 }
 
-export interface TranscriptHit {
-  chapterId: number;
-  chapterTitle: string;
-  workId: number;
-  workTitle: string;
-  authorId: number;
-  authorName: string;
-  snippet: string;
-}
-
 export const getLaunchArgs = () => invoke<LaunchArgs>("get_launch_args");
 export const scanLibrary = (root: string) => invoke<ScanResult>("scan_library", { root });
 export const cancelScan = () => invoke("cancel_scan");
@@ -322,11 +312,6 @@ export const finishWalkthrough = (doneSignal: string | null, exitWhenDone: boole
 
 /** Harness-only: wipe all play history so the empty-home shot is genuinely clean. */
 export const resetPlayHistory = () => invoke("reset_play_history");
-
-export const searchTranscripts = (query: string) =>
-  invoke<TranscriptHit[]>("search_transcripts", { query });
-export const getChapterTranscript = (chapterId: number) =>
-  invoke<string | null>("get_chapter_transcript", { chapterId });
 
 export const setChapterSummary = (chapterId: number, summary: string) =>
   invoke("set_chapter_summary", { chapterId, summary });

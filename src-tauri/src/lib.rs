@@ -14,7 +14,6 @@ mod regroup;
 mod scoped;
 mod rename;
 mod scan;
-mod transcripts;
 
 use commands::{DbPathState, DbState};
 use launch::LaunchArgs;
@@ -98,8 +97,6 @@ pub fn run() {
             commands::detect_series,
             commands::apply_series,
             commands::get_author_series,
-            commands::search_transcripts,
-            commands::get_chapter_transcript,
             commands::get_dormant_works,
             commands::get_more_like_this,
             commands::suggest_tags,
@@ -152,7 +149,7 @@ pub fn run() {
 // Exposed for integration tests.
 pub mod testing {
     pub use crate::backup::{apply_curation_import, apply_pending_restore, build_curation_export, stage_db_restore};
-    pub use crate::commands::{apply_metadata_proposals, apply_series_proposals, build_metadata_proposals, detect_series_for_author, get_chapter_transcript_inner, query_author_detail, query_author_series, query_authors, query_dormant_works, more_like_this, suggest_tags_from, search_library_for_test, search_transcripts_inner, SeriesMemberProposal, SeriesProposal, SeriesView, TranscriptHit};
+    pub use crate::commands::{apply_metadata_proposals, apply_series_proposals, build_metadata_proposals, detect_series_for_author, query_author_detail, query_author_series, query_authors, query_dormant_works, more_like_this, suggest_tags_from, search_library_for_test, SeriesMemberProposal, SeriesProposal, SeriesView};
     pub use crate::covers::{
         cover_cache_for_chapter, find_folder_image, make_thumbnail_png, read_embedded_picture,
         CoverPriority,
@@ -165,5 +162,4 @@ pub mod testing {
     pub use crate::query::{parse_query, CmpOp, DurationFilter, ParsedQuery, StatusFilter};
     pub use crate::scan::scan_into;
     pub use crate::scoped::run_scoped_query;
-    pub use crate::transcripts::parse_srt_vtt;
 }

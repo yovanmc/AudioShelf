@@ -11,7 +11,6 @@ import {
   getSetting, setSetting, pickFolder, searchLibrary, queryHome, resetPlayHistory,
   listTagsWithCounts, renameTag, mergeTags, setTagAlias, clearTagAlias,
   detectSeries, applySeries, getAuthorSeries,
-  searchTranscripts, getChapterTranscript,
   savePlaybackPosition,
   setChapterSummary, setChapterTakeaway, setChapterFavorite,
   setWorkReEntryNote, setWorkRating,
@@ -30,7 +29,7 @@ import {
   type AuthorRow, type AuthorDetail, type ScanResult, type ScanProgress, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
-  type SeriesView, type TranscriptHit, type ChapterJournal, type JournalResults, type ChapterBookmark,
+  type SeriesView, type ChapterJournal, type JournalResults, type ChapterBookmark,
   type InsightsData, type ScopedResults, type SavedSearch, type Collection,
   type ImportReport, type HealthReport, type MetaTerm, type LabelType,
 } from "./lib/api";
@@ -176,7 +175,6 @@ export default function App() {
   // ---- library search (controlled; spans authors/works/chapters) ----
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults | null>(null);
-  const [transcriptResults, setTranscriptResults] = useState<TranscriptHit[] | null>(null);
 
   // ---- M19 scoped search (tag/duration/status tokens) ----
   const [scopedResults, setScopedResults] = useState<ScopedResults | null>(null);
@@ -216,9 +214,6 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [paletteResults, setPaletteResults] = useState<SearchResults | null>(null);
-
-  // ---- now-playing transcript (fetched per chapter) ----
-  const [currentTranscript, setCurrentTranscript] = useState<string | null>(null);
 
   // ---- browse prefs (sort / filter / work sort) ----
   const [browsePrefs, setBrowsePrefs] = useState<BrowsePrefs>({
@@ -1438,18 +1433,7 @@ export default function App() {
                   const list = await getAuthors();
                   if (list.length > 0) await openAuthor(list[0].id);
                 },
-                // Surface 4: Transcript search bucket in Library — no sidecar .vtt
-                // fixtures exist so transcriptResults will be empty. Capture the search
-                // state (query entered, transcript section absent/empty) as the honest state.
-                showTranscriptSearch: async () => {
-                  const q = "cool";
-                  setRoute({ kind: "library" });
-                  setQuery(q);
-                  const [r, tr] = await Promise.all([searchLibrary(q), searchTranscripts(q)]);
-                  setResults(r);
-                  setTranscriptResults(tr);
-                },
-                // Surface 5: Forgotten shelf on Home — seed a play event far in the past
+                // Surface 4 (now surface 4): Forgotten shelf on Home — seed a play event far in the past
                 // (91 days ago) so getDormantWorks(now, 30) returns it, then open Home.
                 // Self-contained: reset first, then seed exactly one old event.
                 showForgottenShelf: async () => {
@@ -1690,7 +1674,6 @@ export default function App() {
                   const sr = await advancedSearch(q);
                   setScopedResults(sr);
                   setResults(null);
-                  setTranscriptResults(null);
                   setSelectMode(false);
                   setSelectedWorkIds([]);
                   setRoute({ kind: "library" });
@@ -1748,7 +1731,6 @@ export default function App() {
                   const sr = await advancedSearch(q);
                   setScopedResults(sr);
                   setResults(null);
-                  setTranscriptResults(null);
                   setRoute({ kind: "library" });
                   await settle();
                   setSelectMode(true);
@@ -1782,7 +1764,6 @@ export default function App() {
                   const sr = await advancedSearch(q);
                   setScopedResults(sr);
                   setResults(null);
-                  setTranscriptResults(null);
                   setRoute({ kind: "library" });
                   await settle();
                 },
@@ -2409,7 +2390,6 @@ export default function App() {
                   setQuery(q);
                   setResults(await searchLibrary(q));
                   setScopedResults(null);
-                  setTranscriptResults(null);
                   await settle();
                 },
                 // Step 5: Discover — pick "Talk show" in the unified picker so the work list
@@ -3059,12 +3039,11 @@ export default function App() {
 
   // Debounced backend search. Empty query clears results (list shows instead).
   // When the query contains scoped tokens (tag:/duration:/status:) → advancedSearch;
-  // otherwise → the existing searchLibrary + searchTranscripts path.
+  // otherwise → searchLibrary.
   useEffect(() => {
     const q = query.trim();
     if (q === "") {
       setResults(null);
-      setTranscriptResults(null);
       setScopedResults(null);
       return;
     }
@@ -3075,35 +3054,20 @@ export default function App() {
         if (!cancelled) {
           setScopedResults(sr);
           setResults(null);
-          setTranscriptResults(null);
         }
       }, 150);
       return () => { cancelled = true; clearTimeout(t); };
     }
     setScopedResults(null);
     const t = setTimeout(async () => {
-      const [r, tr] = await Promise.all([searchLibrary(q), searchTranscripts(q)]);
-      if (!cancelled) {
-        setResults(r);
-        setTranscriptResults(tr);
-      }
+      const r = await searchLibrary(q);
+      if (!cancelled) setResults(r);
     }, 150);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
   }, [query]);
-
-  // Fetch transcript for the currently playing chapter.
-  useEffect(() => {
-    const chapterId = current?.chapter.id;
-    if (!chapterId) { setCurrentTranscript(null); return; }
-    let cancelled = false;
-    void getChapterTranscript(chapterId).then((t) => {
-      if (!cancelled) setCurrentTranscript(t ?? null);
-    }).catch(() => { if (!cancelled) setCurrentTranscript(null); });
-    return () => { cancelled = true; };
-  }, [current?.chapter.id]);
 
   function routedView() {
     if (route.kind === "loading") return <div>Loading…</div>;
@@ -3330,7 +3294,6 @@ export default function App() {
           authors={authors}
           query={query}
           results={results}
-          transcriptResults={transcriptResults}
           scopedResults={scopedResults}
           scoped={isScoped}
           savedSearches={savedSearches}
@@ -3514,7 +3477,6 @@ export default function App() {
           onCycleTimeLabel={cycleTimeLabel}
           chapters={currentWorkChapters}
           onJumpToChapter={jumpToChapter}
-          transcript={currentTranscript}
           chapterJournal={currentChapterJournal}
           onAddNoteHere={handleAddNoteHere}
           onAddBookmarkHere={handleAddBookmarkHere}
