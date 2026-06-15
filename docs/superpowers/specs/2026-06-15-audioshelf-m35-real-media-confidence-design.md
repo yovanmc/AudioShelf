@@ -77,8 +77,11 @@ fixture, which stays byte-identical) holding tiny (< ~50 KB each) **real encoded
 
 New Rust **integration test** scanning this dir asserts: each real file is detected and stored;
 each probes a **nonzero** duration; the format string is stored; the art-bearing file yields a
-non-`None` thumbnail through `covers.rs`; the corrupt file is captured as an M30 `ScanError`
-(scan completes, no panic, no crash, other files still ingested).
+non-`None` thumbnail through `covers.rs`; the corrupt file is **ingested with duration 0** (so it
+stays browsable and playback fails honestly) — `probe_duration_secs` swallows the `lofty` error
+and returns 0 rather than emitting a `ScanError`, so the corrupt file surfaces via the new
+unknown-duration count (deliverable 4), and scan completes with no panic and other files still
+ingested. (A truly IO-unreadable file still becomes an M30 `ScanError`.)
 
 > **Execution risk (resolved in planning, not here):** producing real encoded samples in-env may
 > require `ffmpeg` or sourcing tiny known-good public-domain clips. The sourcing method is a
