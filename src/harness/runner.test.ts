@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps, m34Steps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -298,6 +298,23 @@ describe("m30Steps", () => {
       "01-scan-summary",
       "02-scan-progress",
       "03-scan-removed",
+    ]);
+  });
+});
+
+describe("m34Steps", () => {
+  it("captures the four M34 virtualized-journal-scale surfaces in order", () => {
+    const noop = async () => {};
+    expect(m34Steps({
+      seedJournal: noop,
+      showJournal: noop,
+      scrollJournalList: noop,
+      showLibrary: noop,
+    }).map((s) => s.name)).toEqual([
+      "seed-journal",
+      "journal-virtualized",
+      "journal-scrolled",
+      "library",
     ]);
   });
 });

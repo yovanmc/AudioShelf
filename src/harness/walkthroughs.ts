@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28", "m29", "m30"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28", "m29", "m30", "m34"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -545,5 +545,39 @@ export function m30Steps(nav: {
     { name: "01-scan-summary", run: nav.showScanSummary },
     { name: "02-scan-progress", run: nav.showScanProgress },
     { name: "03-scan-removed", run: nav.showScanRemoved },
+  ];
+}
+
+/**
+ * Build the "m34" walkthrough (M34 Rendering & Memory at Scale — virtualized journal proof):
+ *  seed-journal         — runtime-seed ≥60 journal entries across all available chapters
+ *                         (notes + bookmarks, idempotent: clear prior entries first) then
+ *                         navigate to the Journal view so the virtualized path engages.
+ *  journal-virtualized  — capture the top of the virtualized journal list.
+ *  journal-scrolled     — scroll the react-window inner scroller by ~1500 px, then capture
+ *                         (proves DOM windowing: different rows visible than the top shot).
+ *  library              — navigate to LibraryView for a continuity/regression shot.
+ *
+ * The m27 seeding precedent is replicated here at scale: addChapterNote / addBookmark /
+ * setChapterSummary across many chapters until ≥60 entries exist in queryJournal("").
+ * Default fixtures (43/44/47) are well below VIRTUALIZE_THRESHOLD = 40 on every surface,
+ * so existing walkthroughs stay on the below-threshold path unchanged.
+ */
+export function m34Steps(nav: {
+  seedJournal: () => Promise<void>;
+  showJournal: () => Promise<void>;
+  scrollJournalList: () => Promise<void>;
+  showLibrary: () => Promise<void>;
+}): Step[] {
+  return [
+    // Step 1: seed ≥60 journal entries, then navigate to Journal view (virtualized path engages).
+    { name: "seed-journal", run: async () => { await nav.seedJournal(); await nav.showJournal(); } },
+    // Step 2: no-op — Journal is already showing; capture the top of the virtualized list.
+    { name: "journal-virtualized", run: async () => {} },
+    // Step 3: scroll the react-window inner scroller by ~1500 px; different rows will be
+    //         visible in the windowed DOM, proving virtualization recycles rows.
+    { name: "journal-scrolled", run: nav.scrollJournalList },
+    // Step 4: navigate to LibraryView for a continuity/regression shot.
+    { name: "library", run: nav.showLibrary },
   ];
 }
