@@ -8,7 +8,6 @@ use crate::grouping::{group_author, Work};
 use crate::model::{ScanError, ScanProgress, ScanResult};
 use crate::natsort::natural_cmp;
 use crate::regroup::regroup_author;
-use crate::transcripts::parse_srt_vtt;
 use rusqlite::{params, Connection};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -298,8 +297,6 @@ fn scan_author(
                     id
                 }
             };
-
-            ingest_sidecar_transcript(conn, chapter_id, file)?;
         }
     }
 
@@ -369,43 +366,6 @@ fn finish_result(
         errors,
         cancelled,
     }
-}
-
-/// Check for a `.srt` or `.vtt` sidecar next to the audio file (same stem), parse it,
-/// and upsert the plain text into the `transcripts` table. READ-ONLY on disk.
-fn ingest_sidecar_transcript(
-    conn: &Connection,
-    chapter_id: i64,
-    audio_path: &Path,
-) -> rusqlite::Result<()> {
-    let stem = match audio_path.file_stem() {
-        Some(s) => s.to_string_lossy().to_string(),
-        None => return Ok(()),
-    };
-    let parent = match audio_path.parent() {
-        Some(p) => p,
-        None => return Ok(()),
-    };
-
-    for ext in &["srt", "vtt"] {
-        let candidate = parent.join(format!("{stem}.{ext}"));
-        if candidate.is_file() {
-            let raw = match std::fs::read_to_string(&candidate) {
-                Ok(s) => s,
-                Err(_) => continue, // skip unreadable sidecar
-            };
-            let content = parse_srt_vtt(&raw);
-            let source_path = candidate.to_string_lossy().to_string();
-            conn.prepare_cached(
-                "INSERT OR REPLACE INTO transcripts(chapter_id, source_path, content)
-                 VALUES (?1, ?2, ?3)",
-            )?
-            .execute(params![chapter_id, source_path, content])?;
-            // Use the first sidecar found (prefer .srt over .vtt).
-            break;
-        }
-    }
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -539,74 +499,6 @@ mod tests {
             fs::create_dir_all(p).unwrap();
         }
         std::fs::write(path, content).unwrap();
-    }
-
-    #[test]
-    fn sidecar_srt_is_ingested_and_audio_counts_unchanged() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let author = root.join("Author A");
-        // Audio file.
-        touch(&author.join("Chapter One.mp3"));
-        // Sidecar SRT next to it.
-        write_file(
-            &author.join("Chapter One.srt"),
-            "1\n00:00:01,000 --> 00:00:04,000\nHello from SRT.\n\n2\n00:00:05,000 --> 00:00:08,000\nSecond line.\n",
-        );
-
-        let conn = open_in_memory().unwrap();
-        let report = scan_into(&conn, root).unwrap();
-        // Counts must be unchanged (.srt must NOT be counted as a chapter).
-        assert_eq!(report.authors, 1, "authors");
-        assert_eq!(report.works, 1, "works");
-        assert_eq!(report.chapters, 1, "chapters — .srt must not add a chapter");
-
-        // Transcript row must exist.
-        let content: String = conn
-            .query_row("SELECT content FROM transcripts LIMIT 1", [], |r| r.get(0))
-            .unwrap();
-        assert!(content.contains("Hello from SRT."), "transcript content: {content}");
-        assert!(content.contains("Second line."), "transcript content: {content}");
-        // Timestamps must be stripped.
-        assert!(!content.contains("-->"), "timestamps must be stripped: {content}");
-    }
-
-    #[test]
-    fn sidecar_vtt_is_ingested() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let author = root.join("Author B");
-        touch(&author.join("Part One.mp3"));
-        write_file(
-            &author.join("Part One.vtt"),
-            "WEBVTT\n\n00:00.000 --> 00:04.000\nVTT cue text.\n",
-        );
-
-        let conn = open_in_memory().unwrap();
-        let report = scan_into(&conn, root).unwrap();
-        assert_eq!(report.chapters, 1, "chapters — .vtt must not add a chapter");
-
-        let content: String = conn
-            .query_row("SELECT content FROM transcripts LIMIT 1", [], |r| r.get(0))
-            .unwrap();
-        assert!(content.contains("VTT cue text."), "transcript content: {content}");
-    }
-
-    #[test]
-    fn no_sidecar_leaves_transcripts_empty() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let author = root.join("Author C");
-        touch(&author.join("Solo.mp3"));
-
-        let conn = open_in_memory().unwrap();
-        let report = scan_into(&conn, root).unwrap();
-        assert_eq!(report.chapters, 1);
-
-        let tc: i64 = conn
-            .query_row("SELECT count(*) FROM transcripts", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(tc, 0, "no transcript row when no sidecar exists");
     }
 
     #[test]

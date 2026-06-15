@@ -2139,125 +2139,6 @@ pub fn clear_grouping_override(
     query_author_detail(&conn, author_id).map_err(|e| e.to_string())
 }
 
-// ---- transcript search (M16 Task 8) ---------------------------------------------------
-
-/// A transcript search hit with surrounding context (snippet).
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TranscriptHit {
-    pub chapter_id: i64,
-    pub chapter_title: String,
-    pub work_id: i64,
-    pub work_title: String,
-    pub author_id: i64,
-    pub author_name: String,
-    pub snippet: String,
-}
-
-/// Extract a ~200-character window of text centred on the first occurrence of `query`
-/// in `content` (case-insensitive). Returns the whole content if no match is found.
-fn make_snippet(content: &str, query: &str) -> String {
-    let lower_content = content.to_lowercase();
-    let lower_query = query.to_lowercase();
-    const HALF: usize = 100;
-    const MAX: usize = 200;
-
-    if let Some(pos) = lower_content.find(&lower_query) {
-        let start = pos.saturating_sub(HALF);
-        let end = (pos + query.len() + HALF).min(content.len());
-        // Align to char boundaries.
-        let start = content.char_indices().map(|(i, _)| i).filter(|&i| i <= start).last().unwrap_or(0);
-        let end = content.char_indices().map(|(i, _)| i).filter(|&i| i >= end).next().unwrap_or(content.len());
-        let raw = &content[start..end];
-        let trimmed = raw.trim();
-        if start > 0 { format!("…{trimmed}") } else { trimmed.to_string() }
-    } else {
-        content.chars().take(MAX).collect()
-    }
-}
-
-/// Inner search implementation: LIKE '%query%' across transcript content, joined to
-/// chapters/works/authors. Returns up to `cap` hits.
-pub fn search_transcripts_inner(
-    conn: &rusqlite::Connection,
-    query: &str,
-    cap: usize,
-) -> rusqlite::Result<Vec<TranscriptHit>> {
-    let q = query.trim();
-    if q.is_empty() {
-        return Ok(Vec::new());
-    }
-    let like = like_contains(q);
-
-    let mut stmt = conn.prepare(
-        "SELECT t.chapter_id, c.raw_filename,
-                w.id, w.base_title,
-                a.id, COALESCE(a.display_name, a.folder_name),
-                t.content
-         FROM transcripts t
-         JOIN chapters c ON t.chapter_id = c.id
-         JOIN works w ON c.work_id = w.id
-         JOIN authors a ON w.author_id = a.id
-         WHERE c.status='active' AND w.status='active' AND a.status='active'
-               AND t.content LIKE ?1 ESCAPE '\\'
-         LIMIT ?2",
-    )?;
-
-    let hits = stmt
-        .query_map(params![like, cap as i64], |r| {
-            let raw: String = r.get(1)?;
-            let chapter_title = std::path::Path::new(&raw)
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or(raw);
-            let content: String = r.get(6)?;
-            Ok((r.get::<_, i64>(0)?, chapter_title, r.get::<_, i64>(2)?, r.get::<_, String>(3)?, r.get::<_, i64>(4)?, r.get::<_, String>(5)?, content))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-
-    let results = hits
-        .into_iter()
-        .map(|(chapter_id, chapter_title, work_id, work_title, author_id, author_name, content)| {
-            let snippet = make_snippet(&content, q);
-            TranscriptHit { chapter_id, chapter_title, work_id, work_title, author_id, author_name, snippet }
-        })
-        .collect();
-
-    Ok(results)
-}
-
-#[tauri::command]
-pub fn search_transcripts(
-    state: tauri::State<DbState>,
-    query: String,
-) -> Result<Vec<TranscriptHit>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    search_transcripts_inner(&conn, &query, SEARCH_CAP).map_err(|e| e.to_string())
-}
-
-/// Return the plain-text transcript content for a chapter, or None if absent.
-pub fn get_chapter_transcript_inner(
-    conn: &rusqlite::Connection,
-    chapter_id: i64,
-) -> rusqlite::Result<Option<String>> {
-    use rusqlite::OptionalExtension;
-    conn.query_row(
-        "SELECT content FROM transcripts WHERE chapter_id=?1",
-        params![chapter_id],
-        |r| r.get::<_, String>(0),
-    )
-    .optional()
-}
-
-#[tauri::command]
-pub fn get_chapter_transcript(
-    state: tauri::State<DbState>,
-    chapter_id: i64,
-) -> Result<Option<String>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    get_chapter_transcript_inner(&conn, chapter_id).map_err(|e| e.to_string())
-}
-
 // ---- M16 Task 10: intelligence backend -----------------------------------------------
 
 /// Returns works that had at least one chapter played but whose last play event is
@@ -3608,7 +3489,7 @@ mod tests {
         // The pre-seeded schema_version key reflects the latest migration version.
         assert_eq!(
             get_setting_value(&conn, "schema_version").unwrap(),
-            Some("12".to_string())
+            Some("13".to_string())
         );
     }
 
@@ -3977,7 +3858,7 @@ mod tests {
         ).unwrap();
         assert_eq!(full_count, 2, "full open must have both taxonomy tables");
         let ver: i64 = full_conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(ver, 12);
+        assert_eq!(ver, 13);
     }
 
     #[test]
@@ -4144,7 +4025,7 @@ mod tests {
         // Upgrade to latest via open_in_memory pattern (open_at_version then migrate).
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 12);
+        assert_eq!(full_ver, 13);
 
         let col3: i64 = full.query_row(
             "SELECT count(*) FROM pragma_table_info('works') WHERE name='metadata_source'",
@@ -4273,10 +4154,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist at v3");
 
-        // After a full open (which runs migrate), both tables must exist and version is 12.
+        // After a full open (which runs migrate), both tables must exist and version is 13.
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 12);
+        assert_eq!(full_ver, 13);
 
         let series_count: i64 = full.query_row(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
@@ -4316,77 +4197,6 @@ mod tests {
         assert_eq!(stats.recent.len(), 2);
         assert!(stats.recent[0].played_at >= stats.recent[1].played_at, "newest first");
         assert_eq!(stats.recent[0].chapter_id, ch2);
-    }
-
-    // ---- transcript search tests (M16 Task 8) ------------------------------------------
-
-    fn seed_transcript(conn: &rusqlite::Connection, chapter_id: i64, content: &str) {
-        conn.execute(
-            "INSERT OR REPLACE INTO transcripts(chapter_id, source_path, content) VALUES (?1, 'test.srt', ?2)",
-            rusqlite::params![chapter_id, content],
-        )
-        .unwrap();
-    }
-
-    #[test]
-    fn search_transcripts_finds_seeded_content() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        touch(&root.join("Author X").join("Chapter One.mp3"));
-        let conn = open_in_memory().unwrap();
-        scan::scan_into(&conn, root).unwrap();
-        let aid = query_authors(&conn).unwrap()[0].id;
-        let detail = query_author_detail(&conn, aid).unwrap();
-        let ch_id = detail.works[0].chapters[0].id;
-
-        seed_transcript(&conn, ch_id, "The quick brown fox jumps over the lazy dog.");
-
-        let hits = super::search_transcripts_inner(&conn, "brown fox", 50).unwrap();
-        assert_eq!(hits.len(), 1, "should find one hit");
-        assert_eq!(hits[0].chapter_id, ch_id);
-        assert_eq!(hits[0].author_name, "Author X");
-        assert!(hits[0].snippet.contains("brown fox"), "snippet: {}", hits[0].snippet);
-    }
-
-    #[test]
-    fn search_transcripts_returns_empty_for_no_match() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        touch(&root.join("Author Y").join("Story.mp3"));
-        let conn = open_in_memory().unwrap();
-        scan::scan_into(&conn, root).unwrap();
-        let aid = query_authors(&conn).unwrap()[0].id;
-        let detail = query_author_detail(&conn, aid).unwrap();
-        let ch_id = detail.works[0].chapters[0].id;
-
-        seed_transcript(&conn, ch_id, "Some other text here.");
-
-        let hits = super::search_transcripts_inner(&conn, "zzznomatch", 50).unwrap();
-        assert!(hits.is_empty(), "no hits expected");
-    }
-
-    #[test]
-    fn search_transcripts_returns_empty_for_blank_query() {
-        let conn = open_in_memory().unwrap();
-        let hits = super::search_transcripts_inner(&conn, "  ", 50).unwrap();
-        assert!(hits.is_empty());
-    }
-
-    #[test]
-    fn get_chapter_transcript_returns_content_when_present() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        touch(&root.join("Author Z").join("Solo.mp3"));
-        let conn = open_in_memory().unwrap();
-        scan::scan_into(&conn, root).unwrap();
-        let aid = query_authors(&conn).unwrap()[0].id;
-        let detail = query_author_detail(&conn, aid).unwrap();
-        let ch_id = detail.works[0].chapters[0].id;
-
-        seed_transcript(&conn, ch_id, "Transcript content here.");
-
-        let result = super::get_chapter_transcript_inner(&conn, ch_id).unwrap();
-        assert_eq!(result, Some("Transcript content here.".to_string()));
     }
 
     // ---- M26 T5: discovery + more-like-this over unified label attach -------------------
@@ -4479,30 +4289,6 @@ mod tests {
         assert!(results[0].shared_tags.len() == 2, "Bob shares 2 labels");
         // Source author (Alice) must not appear.
         assert!(results.iter().all(|w| w.author_id != 1), "source author must not appear");
-    }
-
-    #[test]
-    fn get_chapter_transcript_returns_none_when_absent() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        touch(&root.join("Author W").join("Solo.mp3"));
-        let conn = open_in_memory().unwrap();
-        scan::scan_into(&conn, root).unwrap();
-        let aid = query_authors(&conn).unwrap()[0].id;
-        let detail = query_author_detail(&conn, aid).unwrap();
-        let ch_id = detail.works[0].chapters[0].id;
-
-        let result = super::get_chapter_transcript_inner(&conn, ch_id).unwrap();
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn snippet_is_centered_on_match() {
-        let content = "a ".repeat(60) + "target word here" + &" b".repeat(60);
-        let snippet = super::make_snippet(&content, "target");
-        assert!(snippet.contains("target"), "snippet: {snippet}");
-        // Snippet should be significantly shorter than the full content.
-        assert!(snippet.len() < content.len(), "snippet should be truncated");
     }
 
     // ---- M16 Task 10 intelligence backend tests ----------------------------------------
