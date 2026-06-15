@@ -55,7 +55,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps, m34Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -2774,6 +2774,62 @@ export default function App() {
                   setScanProgress(null);
                   setScan({ authors: 42, works: 43, chapters: 46, added: 0, updated: 0, removed: 1, skipped: 46, errors: [] });
                   setRoute({ kind: "scan" });
+                  await settle();
+                },
+              })
+            : args.walkthrough === "m34"
+            ? m34Steps({
+                // Idempotently seed ≥60 journal entries across all available chapters.
+                // Mirrors the m27 pattern: clear any prior entries first (the app-data DB
+                // persists across runs) then add a note + bookmark to each chapter until
+                // the entry count exceeds VIRTUALIZE_THRESHOLD (40), crossing it with room
+                // to spare so the windowed render path is exercised.
+                seedJournal: async () => {
+                  const list = await getAuthors();
+                  let seeded = 0;
+                  const TARGET = 62; // well above VIRTUALIZE_THRESHOLD = 40
+                  for (const author of list) {
+                    if (seeded >= TARGET) break;
+                    const d = await getAuthorDetail(author.id);
+                    for (const work of d.works) {
+                      for (const ch of work.chapters) {
+                        if (seeded >= TARGET) break;
+                        // Clear any prior notes/bookmarks from this chapter to stay
+                        // idempotent across repeated walkthrough runs.
+                        const existing = await getChapterJournal(ch.id);
+                        for (const n of existing.notes) await deleteChapterNote(n.id);
+                        for (const b of existing.bookmarks) await deleteBookmark(b.id);
+                        await addChapterNote(ch.id, seeded * 10, `Scale-test note ${seeded + 1}: entry for ${ch.title ?? "chapter"}.`);
+                        await addBookmark(ch.id, seeded * 10 + 5, `bookmark-${seeded + 1}`);
+                        seeded += 2; // one note + one bookmark = 2 entries
+                      }
+                    }
+                  }
+                },
+                // Navigate to the Journal view so the virtualized path engages.
+                showJournal: async () => {
+                  const results = await queryJournal("");
+                  setJournal(results);
+                  setJournalQuery("");
+                  setRoute({ kind: "journal" });
+                  await settle();
+                  await settle();
+                },
+                // Scroll the react-window inner scroller (VariableSizeList outer div) by
+                // ~1500 px so the windowed DOM recycles rows — proving virtualization.
+                // The outer element of a react-window list is a div with overflow:auto;
+                // inside <main class="view journal"> it is the first such element.
+                scrollJournalList: async () => {
+                  const scroller = document.querySelector<HTMLElement>('.view.journal [style*="overflow: auto"]')
+                    ?? document.querySelector<HTMLElement>('.view.journal [style*="overflow:auto"]');
+                  if (scroller) {
+                    scroller.scrollTop = 1500;
+                  }
+                  await settle();
+                },
+                // Navigate to LibraryView for a continuity / regression shot.
+                showLibrary: async () => {
+                  setRoute({ kind: "library" });
                   await settle();
                 },
               })

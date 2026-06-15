@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { JournalResults, JournalEntry } from "../lib/api";
 import { Button, EmptyState, Notice, PageHeader } from "../components/ui";
 import { Icon } from "../components/Icon";
+import { VirtualList, VIRTUALIZE_THRESHOLD } from "../components/VirtualList";
+import { flattenJournal, ROW_H, type JournalRow } from "../lib/flattenRows";
 
 type KindFilter = "all" | "note" | "bookmark" | "summary" | "takeaway" | "favorite" | "rating";
 
@@ -30,6 +32,52 @@ function fmtPos(secs: number): string {
   const m = Math.floor(secs / 60);
   const s = secs % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** Maps a flattened journal row kind to its pixel height for VariableSizeList. */
+function heightFor(kind: JournalRow["kind"]): number {
+  if (kind === "author") return ROW_H.journalAuthor;
+  if (kind === "work") return ROW_H.journalWork;
+  return ROW_H.journalEntry;
+}
+
+/** Renders the visual content of a single journal entry `<li>` / virtual row. */
+function JournalEntryContent(props: {
+  entry: JournalEntry;
+  onPlayEntry?: (entry: JournalEntry) => void;
+}) {
+  const { entry, onPlayEntry } = props;
+  return (
+    <>
+      <span
+        className="chip"
+        style={{ flexShrink: 0, fontSize: "0.75rem" }}
+        aria-label={`Kind: ${KIND_CHIP_LABEL[entry.kind] ?? entry.kind}`}
+      >
+        {KIND_CHIP_LABEL[entry.kind] ?? entry.kind}
+      </span>
+      <span style={{ flex: 1, fontSize: "0.9rem" }}>
+        {entry.chapterTitle && (
+          <span className="muted" style={{ fontSize: "0.82rem", display: "block" }}>
+            {entry.chapterTitle}
+            {entry.positionSecs != null && <> @ {fmtPos(entry.positionSecs)}</>}
+          </span>
+        )}
+        {entry.body && <span className="journal-entry__text">{entry.body}</span>}
+      </span>
+      {entry.chapterId != null && entry.positionSecs != null && onPlayEntry && (
+        <button
+          type="button"
+          className="button button--ghost journal-entry__play"
+          onClick={() => onPlayEntry(entry)}
+          aria-label={`Play ${entry.chapterTitle ?? "chapter"} from ${fmtPos(entry.positionSecs!)}`}
+          style={{ flexShrink: 0, fontSize: "0.8rem", color: "var(--color-accent)" }}
+        >
+          ▶ {fmtPos(entry.positionSecs)}
+        </button>
+      )}
+    </>
+  );
 }
 
 export function JournalView(props: {
@@ -85,6 +133,9 @@ export function JournalView(props: {
   }
 
   const kindChips: KindFilter[] = ["all", "note", "bookmark", "summary", "takeaway", "favorite", "rating"];
+
+  // Flat rows for the virtualized path — recomputed when grouped changes.
+  const flatRows = useMemo(() => flattenJournal(grouped), [grouped]);
 
   return (
     <main className="view journal">
@@ -187,7 +238,40 @@ export function JournalView(props: {
             ? "While listening, open a chapter to jot a note, drop a bookmark, or save a takeaway — they'll collect here."
             : "No entries match the current filter. Clear the filter to see everything."}
         </EmptyState>
+      ) : filtered.length > VIRTUALIZE_THRESHOLD ? (
+        // Virtualized path — above threshold only. Identical visual output.
+        <VirtualList
+          items={flatRows}
+          height={600}
+          itemSize={(i) => heightFor(flatRows[i].kind)}
+          renderItem={(row) => {
+            if (row.kind === "author") {
+              return (
+                <h2 className="eyebrow muted" style={{ marginBottom: "var(--space-2)", padding: "var(--space-2) 0 0" }}>
+                  {row.label}
+                </h2>
+              );
+            }
+            if (row.kind === "work") {
+              return (
+                <div style={{ fontWeight: 600, fontSize: "0.95rem", padding: "var(--space-1) 0" }}>
+                  {row.label}
+                </div>
+              );
+            }
+            // kind === "entry"
+            return (
+              <div
+                data-testid="journal-entry"
+                style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)", padding: "var(--space-1) 0" }}
+              >
+                <JournalEntryContent entry={row.entry} onPlayEntry={props.onPlayEntry} />
+              </div>
+            );
+          }}
+        />
       ) : (
+        // Below-threshold path — existing markup, byte-for-byte unchanged.
         <div className="journal-groups" style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
           {Array.from(grouped.entries()).map(([authorName, workMap]) => (
             <section key={authorName}>
@@ -197,7 +281,7 @@ export function JournalView(props: {
                   <h3 style={{ margin: "0 0 var(--space-2)" }}>{workTitle}</h3>
                   <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                     {workEntries.map((entry, i) => (
-                      <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)" }}>
+                      <li key={i} data-testid="journal-entry" style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)" }}>
                         <span
                           className="chip"
                           style={{ flexShrink: 0, fontSize: "0.75rem" }}
@@ -212,7 +296,7 @@ export function JournalView(props: {
                               {entry.positionSecs != null && <> @ {fmtPos(entry.positionSecs)}</>}
                             </span>
                           )}
-                          {entry.body && <span>{entry.body}</span>}
+                          {entry.body && <span className="journal-entry__text">{entry.body}</span>}
                         </span>
                         {entry.chapterId != null && entry.positionSecs != null && props.onPlayEntry && (
                           <button

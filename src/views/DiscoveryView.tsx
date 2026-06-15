@@ -1,6 +1,9 @@
+import { useState } from "react";
 import type { LabelType, DiscoveryWork } from "../lib/api";
 import { WorkCard } from "../components/WorkCard";
 import { Button, EmptyState, PageHeader, SectionHeading } from "../components/ui";
+
+export const CAP_FACET_CHIPS = 24;
 
 function WorkList({ works, onOpenAuthor, onPlayNext, emptyTitle = "Nothing to show yet", emptyBody = "Play some audio or add tags to build recommendations." }: { works: DiscoveryWork[]; onOpenAuthor: (id: number) => void; onPlayNext?: (workId: number, authorId: number) => void; emptyTitle?: string; emptyBody?: string }) {
   if (!works.length) return <EmptyState title={emptyTitle}>{emptyBody}</EmptyState>;
@@ -49,6 +52,8 @@ export interface DiscoveryViewProps {
 
 export function DiscoveryView(props: DiscoveryViewProps) {
   const { labelTypes, termsByType, picked, onPickMetadata } = props;
+  // Per-type "show more" toggle: true = show all chips, false (default) = cap at CAP_FACET_CHIPS
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   // Filter to types that have at least one term.
   const activeTypes = labelTypes
@@ -78,11 +83,16 @@ export function DiscoveryView(props: DiscoveryViewProps) {
         )}
         {activeTypes.map((lt) => {
           const terms = termsByType[lt.name] ?? [];
+          const isExpanded = expanded[lt.name] ?? false;
+          const visibleTerms = terms.length > CAP_FACET_CHIPS && !isExpanded
+            ? terms.slice(0, CAP_FACET_CHIPS)
+            : terms;
+          const overflow = terms.length - CAP_FACET_CHIPS;
           return (
             <div className="facet-row" key={lt.name}>
               <span className="facet-row__label">{lt.display}</span>
               <div className="toolbar card" style={{ padding: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {terms.map((t) => {
+                {visibleTerms.map((t) => {
                   const on = picked?.facet === lt.name && picked?.value === t.value;
                   return (
                     <button
@@ -96,6 +106,16 @@ export function DiscoveryView(props: DiscoveryViewProps) {
                     </button>
                   );
                 })}
+                {terms.length > CAP_FACET_CHIPS && (
+                  <button
+                    type="button"
+                    className="chip chip--toggle"
+                    onClick={() => setExpanded((prev) => ({ ...prev, [lt.name]: !isExpanded }))}
+                    aria-label={isExpanded ? `Show fewer ${lt.display} chips` : `Show ${overflow} more ${lt.display} chips`}
+                  >
+                    {isExpanded ? "Show less" : `+${overflow} more`}
+                  </button>
+                )}
               </div>
             </div>
           );

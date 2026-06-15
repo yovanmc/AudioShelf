@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { LabelManagerView, type LabelManagerViewProps } from "./LabelManagerView";
+import { LabelManagerView, LABEL_TABLE_PAGE, type LabelManagerViewProps } from "./LabelManagerView";
 import type { LabelType, MetaTerm, TagStat } from "../lib/api";
 
 // ---------------------------------------------------------------------------
@@ -270,5 +270,100 @@ describe("LabelManagerView — Tag section", () => {
     // Tag section (the <section aria-label="Tag">) should not be in DOM
     // since tags prop is undefined
     expect(screen.queryByRole("region", { name: /^tag$/i })).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M34 Task 6d: LabelManagerView "show more" pagination
+// ---------------------------------------------------------------------------
+
+describe("LabelManagerView — M34 Task 6d: term table pagination", () => {
+  const NARRATOR_TYPE: LabelType = { name: "narrator", display: "Narrator", builtin: true, sort: 0 };
+
+  function makeTerms(count: number): MetaTerm[] {
+    return Array.from({ length: count }, (_, i) => ({
+      id: i + 1,
+      facet: "narrator",
+      value: `Narrator ${i + 1}`,
+      chapterCount: i,
+      authorCount: 0,
+    }));
+  }
+
+  it("renders all terms without a Show more button when count <= LABEL_TABLE_PAGE", () => {
+    const terms = makeTerms(LABEL_TABLE_PAGE);
+    render(
+      <LabelManagerView
+        {...{
+          labelTypes: [NARRATOR_TYPE],
+          onCreateType: vi.fn(),
+          onRenameType: vi.fn(),
+          onDeleteType: vi.fn(),
+          onReorderTypes: vi.fn(),
+          terms,
+          onCreateTerm: vi.fn(),
+          onRenameTerm: vi.fn(),
+          onDeleteTerm: vi.fn(),
+          onMergeTerms: vi.fn(),
+        }}
+      />,
+    );
+    expect(screen.getByText(`Narrator ${LABEL_TABLE_PAGE}`)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /show.*more/i })).toBeNull();
+  });
+
+  it("renders only LABEL_TABLE_PAGE rows and a Show more button when count > LABEL_TABLE_PAGE", () => {
+    const TOTAL = LABEL_TABLE_PAGE + 10;
+    const terms = makeTerms(TOTAL);
+    render(
+      <LabelManagerView
+        {...{
+          labelTypes: [NARRATOR_TYPE],
+          onCreateType: vi.fn(),
+          onRenameType: vi.fn(),
+          onDeleteType: vi.fn(),
+          onReorderTypes: vi.fn(),
+          terms,
+          onCreateTerm: vi.fn(),
+          onRenameTerm: vi.fn(),
+          onDeleteTerm: vi.fn(),
+          onMergeTerms: vi.fn(),
+        }}
+      />,
+    );
+    // First page items visible
+    expect(screen.getByText("Narrator 1")).toBeInTheDocument();
+    expect(screen.getByText(`Narrator ${LABEL_TABLE_PAGE}`)).toBeInTheDocument();
+    // Items beyond the first page are NOT yet visible
+    expect(screen.queryByText(`Narrator ${LABEL_TABLE_PAGE + 1}`)).toBeNull();
+    // "Show more" button is present
+    expect(screen.getByRole("button", { name: /show.*more/i })).toBeInTheDocument();
+  });
+
+  it("reveals the next page of rows after clicking Show more", async () => {
+    const TOTAL = LABEL_TABLE_PAGE + 10;
+    const terms = makeTerms(TOTAL);
+    render(
+      <LabelManagerView
+        {...{
+          labelTypes: [NARRATOR_TYPE],
+          onCreateType: vi.fn(),
+          onRenameType: vi.fn(),
+          onDeleteType: vi.fn(),
+          onReorderTypes: vi.fn(),
+          terms,
+          onCreateTerm: vi.fn(),
+          onRenameTerm: vi.fn(),
+          onDeleteTerm: vi.fn(),
+          onMergeTerms: vi.fn(),
+        }}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /show.*more/i }));
+    // After clicking, the overflow items should now be visible
+    expect(screen.getByText(`Narrator ${LABEL_TABLE_PAGE + 1}`)).toBeInTheDocument();
+    expect(screen.getByText(`Narrator ${TOTAL}`)).toBeInTheDocument();
+    // No more "Show more" button since all items are now revealed
+    expect(screen.queryByRole("button", { name: /show.*more/i })).toBeNull();
   });
 });

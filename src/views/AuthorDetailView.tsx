@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { AuthorDetail, ChapterRow, ChapterJournal, DiscoveryWork, LabelType, PlaybackContext, SeriesView, WorkRow } from "../lib/api";
 import { TagEditor } from "./TagEditor";
 import { MetadataEditor } from "../components/MetadataEditor";
@@ -10,6 +10,8 @@ import { Menu } from "../components/Menu";
 import { Icon } from "../components/Icon";
 import { formatDuration, formatLong } from "../lib/time";
 import { sortWorks, type WorkSort } from "../lib/browse";
+import { VirtualList, VIRTUALIZE_THRESHOLD } from "../components/VirtualList";
+import { flattenAuthorDetail, ROW_H } from "../lib/flattenRows";
 import { ChapterJournalDialog } from "./ChapterJournalDialog";
 import { Select } from "../components/Select";
 import type { SelectOption } from "../components/Select";
@@ -242,6 +244,11 @@ export function AuthorDetailView(props: {
     .flatMap((work) => work.chapters.map((chapter) => ({ work, chapter })))
     .find(({ chapter }) => !chapter.played);
 
+  // Flat rows for the virtualized works+chapters list.
+  const adRows = useMemo(() => flattenAuthorDetail(works, collapsed), [works, collapsed]);
+  // Total chapter count across this author — used for the virtualization gate.
+  const totalChapterCount = chapters.length;
+
   // Find the chapter and work for the currently open dialog
   const editChapterInfo = editState
     ? (() => {
@@ -321,96 +328,112 @@ export function AuthorDetailView(props: {
         </Button>
       </div>
       <div role="tree" aria-label="Works and chapters">
-      {works.map((w) => (
-        <section key={w.id} className="work card view-section" style={{ padding: 20 }} role="treeitem" aria-expanded={!collapsed.has(w.id)} aria-level={1}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <button
-              aria-label={`${collapsed.has(w.id) ? "Expand" : "Collapse"} '${w.baseTitle}'`}
-              onClick={() => toggleWork(w.id)}
-              className="icon-button"
-            >
-              <Icon name={collapsed.has(w.id) ? "chevronRight" : "collapse"} />
-            </button>
-            <WorkArtwork workId={w.id} title={w.baseTitle} size={72} />
-            <div style={{ flex: 1 }}>
-              <h2 className="work-title" dir="auto">{w.baseTitle} ({w.chapters.length})</h2>
-              <div className="muted">{w.chapters.length} chapters · {w.chapters.filter((chapter) => !chapter.played).length} unplayed · {formatLong(w.chapters.reduce((s, c) => s + c.durationSecs, 0))}</div>
-              <ProgressBar value={w.chapters.length ? Math.round((w.chapters.filter((chapter) => chapter.played).length / w.chapters.length) * 100) : 0} label={`${w.baseTitle} progress`} />
-            </div>
-          </div>
-          <div className="work-tags">
-            <span className="work-tags-label">Tags:</span>
-            <TagEditor
-              tags={w.tags}
-              allTags={props.allTags}
-              onChange={(t) => props.onSetWorkTags(w.id, t)}
-              suggestions={workTagSuggestions[w.id]}
-            />
-            {w.metadata.map((m) => (
-              <span key={`m-${m.termId}`} className="chip chip--meta" title={m.facet}>{m.value}</span>
-            ))}
-            {props.onRequestMoreLikeThis && (
-              <button
-                type="button"
-                className="chip chip--toggle"
-                style={{ marginLeft: 8 }}
-                aria-label={`More like ${w.baseTitle}`}
-                onClick={() => { props.onRequestMoreLikeThis!(w.id); setMoreLikeThisWorkId(w.id); }}
-              >More like this</button>
-            )}
-          </div>
-          {props.labelTypes && props.onAddWorkLabel && props.onRemoveWorkLabel && (
-            <div className="work-labels">
-              <LabelEditor
-                applied={w.labels}
-                labelTypes={props.labelTypes}
-                suggestions={props.labelSuggestions}
-                onAdd={(type, value) => props.onAddWorkLabel!(w.id, type, value)}
-                onRemove={(termId) => props.onRemoveWorkLabel!(w.id, termId)}
-              />
-            </div>
-          )}
-          {(props.onSetWorkReEntryNote || props.onSetWorkRating) && (
-            <div className="work-journal-meta" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginTop: 8 }}>
-              {props.onSetWorkReEntryNote && (
-                <WorkReEntryField
-                  workId={w.id}
-                  value={w.reEntryNote}
-                  onSave={props.onSetWorkReEntryNote}
-                />
-              )}
-              {props.onSetWorkRating && (
-                <WorkRatingField
-                  workId={w.id}
-                  value={w.completionRating}
-                  onSave={props.onSetWorkRating}
-                />
-              )}
-            </div>
-          )}
-          {props.onChapterSortChange && (
-            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
-              <span className="muted" style={{ fontSize: "0.85rem" }}>Chapter order:</span>
-              <Select<string>
-                label={`Chapter sort for ${w.baseTitle}`}
-                value={w.chapterSort}
-                options={CHAPTER_SORT_OPTIONS}
-                onChange={(v) => props.onChapterSortChange!(w.id, v)}
-              />
-            </div>
-          )}
-          {!collapsed.has(w.id) && (
-          <ul className="recent-list" role="group">
-            {w.chapters.map((c) => (
-              <li className="recent-row" key={c.id} data-played={c.played ? "true" : "false"} role="treeitem" aria-level={2}>
-                <button className="icon-button" aria-label={`Play '${c.title}'`} onClick={() => props.onPlayChapter({
+      {totalChapterCount > VIRTUALIZE_THRESHOLD ? (
+        // Virtualized path — above threshold only.
+        // VirtualList wraps each row in a positioned <div>; chapter rows use <div className="recent-row">
+        // so the same .recent-row styles apply (display:flex, border-bottom, padding).
+        <VirtualList
+          items={adRows}
+          height={600}
+          itemSize={(i) => adRows[i].kind === "work" ? ROW_H.adWork : ROW_H.adChapter}
+          renderItem={(row) => {
+            if (row.kind === "work") {
+              const w = row.work;
+              return (
+                <div className="work card view-section" style={{ padding: 20 }} role="treeitem" aria-expanded={!row.collapsed} aria-level={1}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <button
+                      aria-label={`${row.collapsed ? "Expand" : "Collapse"} '${w.baseTitle}'`}
+                      onClick={() => toggleWork(w.id)}
+                      className="icon-button"
+                    >
+                      <Icon name={row.collapsed ? "chevronRight" : "collapse"} />
+                    </button>
+                    <WorkArtwork workId={w.id} title={w.baseTitle} size={72} />
+                    <div style={{ flex: 1 }}>
+                      <h2 className="work-title" dir="auto">{w.baseTitle} ({w.chapters.length})</h2>
+                      <div className="muted">{w.chapters.length} chapters · {w.chapters.filter((chapter) => !chapter.played).length} unplayed · {formatLong(w.chapters.reduce((s, c) => s + c.durationSecs, 0))}</div>
+                      <ProgressBar value={w.chapters.length ? Math.round((w.chapters.filter((chapter) => chapter.played).length / w.chapters.length) * 100) : 0} label={`${w.baseTitle} progress`} />
+                    </div>
+                  </div>
+                  <div className="work-tags">
+                    <span className="work-tags-label">Tags:</span>
+                    <TagEditor
+                      tags={w.tags}
+                      allTags={props.allTags}
+                      onChange={(t) => props.onSetWorkTags(w.id, t)}
+                      suggestions={workTagSuggestions[w.id]}
+                    />
+                    {w.metadata.map((m) => (
+                      <span key={`m-${m.termId}`} className="chip chip--meta" title={m.facet}>{m.value}</span>
+                    ))}
+                    {props.onRequestMoreLikeThis && (
+                      <button
+                        type="button"
+                        className="chip chip--toggle"
+                        style={{ marginLeft: 8 }}
+                        aria-label={`More like ${w.baseTitle}`}
+                        onClick={() => { props.onRequestMoreLikeThis!(w.id); setMoreLikeThisWorkId(w.id); }}
+                      >More like this</button>
+                    )}
+                  </div>
+                  {props.labelTypes && props.onAddWorkLabel && props.onRemoveWorkLabel && (
+                    <div className="work-labels">
+                      <LabelEditor
+                        applied={w.labels}
+                        labelTypes={props.labelTypes}
+                        suggestions={props.labelSuggestions}
+                        onAdd={(type, value) => props.onAddWorkLabel!(w.id, type, value)}
+                        onRemove={(termId) => props.onRemoveWorkLabel!(w.id, termId)}
+                      />
+                    </div>
+                  )}
+                  {(props.onSetWorkReEntryNote || props.onSetWorkRating) && (
+                    <div className="work-journal-meta" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginTop: 8 }}>
+                      {props.onSetWorkReEntryNote && (
+                        <WorkReEntryField
+                          workId={w.id}
+                          value={w.reEntryNote}
+                          onSave={props.onSetWorkReEntryNote}
+                        />
+                      )}
+                      {props.onSetWorkRating && (
+                        <WorkRatingField
+                          workId={w.id}
+                          value={w.completionRating}
+                          onSave={props.onSetWorkRating}
+                        />
+                      )}
+                    </div>
+                  )}
+                  {props.onChapterSortChange && (
+                    <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span className="muted" style={{ fontSize: "0.85rem" }}>Chapter order:</span>
+                      <Select<string>
+                        label={`Chapter sort for ${w.baseTitle}`}
+                        value={w.chapterSort}
+                        options={CHAPTER_SORT_OPTIONS}
+                        onChange={(v) => props.onChapterSortChange!(w.id, v)}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            // kind === "chapter"
+            const c = row.chapter;
+            // Find the parent work for playback context — look up from works array.
+            const parentWork = works.find((w) => w.chapters.some((ch) => ch.id === c.id));
+            return (
+              <div className="recent-row" data-testid="ad-chapter-row" data-played={c.played ? "true" : "false"} role="treeitem" aria-level={2}>
+                <button className="icon-button" aria-label={`Play '${c.title}'`} onClick={() => parentWork && props.onPlayChapter({
                   chapter: c,
                   authorId: detail.id,
                   authorName: detail.name,
-                  workId: w.id,
-                  workTitle: w.baseTitle,
-                  workTotalChapters: w.chapters.length,
-                  workPlayedChapters: w.chapters.filter((chapter) => chapter.played).length,
+                  workId: parentWork.id,
+                  workTitle: parentWork.baseTitle,
+                  workTotalChapters: parentWork.chapters.length,
+                  workPlayedChapters: parentWork.chapters.filter((chapter) => chapter.played).length,
                 })}><Icon name="play" /></button>
                 <label aria-label={`Mark '${c.title}' played`}>
                   <input
@@ -438,12 +461,136 @@ export function AuthorDetailView(props: {
                     { label: "Journal", onSelect: () => { setEditState({ chapterId: c.id, mode: "journal" }); props.onOpenJournal?.(c.id); } },
                   ]}
                 />
-              </li>
-            ))}
-          </ul>
-          )}
-        </section>
-      ))}
+              </div>
+            );
+          }}
+        />
+      ) : (
+        // Below-threshold path — existing markup, byte-for-byte unchanged.
+        works.map((w) => (
+          <section key={w.id} className="work card view-section" style={{ padding: 20 }} role="treeitem" aria-expanded={!collapsed.has(w.id)} aria-level={1}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <button
+                aria-label={`${collapsed.has(w.id) ? "Expand" : "Collapse"} '${w.baseTitle}'`}
+                onClick={() => toggleWork(w.id)}
+                className="icon-button"
+              >
+                <Icon name={collapsed.has(w.id) ? "chevronRight" : "collapse"} />
+              </button>
+              <WorkArtwork workId={w.id} title={w.baseTitle} size={72} />
+              <div style={{ flex: 1 }}>
+                <h2 className="work-title" dir="auto">{w.baseTitle} ({w.chapters.length})</h2>
+                <div className="muted">{w.chapters.length} chapters · {w.chapters.filter((chapter) => !chapter.played).length} unplayed · {formatLong(w.chapters.reduce((s, c) => s + c.durationSecs, 0))}</div>
+                <ProgressBar value={w.chapters.length ? Math.round((w.chapters.filter((chapter) => chapter.played).length / w.chapters.length) * 100) : 0} label={`${w.baseTitle} progress`} />
+              </div>
+            </div>
+            <div className="work-tags">
+              <span className="work-tags-label">Tags:</span>
+              <TagEditor
+                tags={w.tags}
+                allTags={props.allTags}
+                onChange={(t) => props.onSetWorkTags(w.id, t)}
+                suggestions={workTagSuggestions[w.id]}
+              />
+              {w.metadata.map((m) => (
+                <span key={`m-${m.termId}`} className="chip chip--meta" title={m.facet}>{m.value}</span>
+              ))}
+              {props.onRequestMoreLikeThis && (
+                <button
+                  type="button"
+                  className="chip chip--toggle"
+                  style={{ marginLeft: 8 }}
+                  aria-label={`More like ${w.baseTitle}`}
+                  onClick={() => { props.onRequestMoreLikeThis!(w.id); setMoreLikeThisWorkId(w.id); }}
+                >More like this</button>
+              )}
+            </div>
+            {props.labelTypes && props.onAddWorkLabel && props.onRemoveWorkLabel && (
+              <div className="work-labels">
+                <LabelEditor
+                  applied={w.labels}
+                  labelTypes={props.labelTypes}
+                  suggestions={props.labelSuggestions}
+                  onAdd={(type, value) => props.onAddWorkLabel!(w.id, type, value)}
+                  onRemove={(termId) => props.onRemoveWorkLabel!(w.id, termId)}
+                />
+              </div>
+            )}
+            {(props.onSetWorkReEntryNote || props.onSetWorkRating) && (
+              <div className="work-journal-meta" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginTop: 8 }}>
+                {props.onSetWorkReEntryNote && (
+                  <WorkReEntryField
+                    workId={w.id}
+                    value={w.reEntryNote}
+                    onSave={props.onSetWorkReEntryNote}
+                  />
+                )}
+                {props.onSetWorkRating && (
+                  <WorkRatingField
+                    workId={w.id}
+                    value={w.completionRating}
+                    onSave={props.onSetWorkRating}
+                  />
+                )}
+              </div>
+            )}
+            {props.onChapterSortChange && (
+              <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                <span className="muted" style={{ fontSize: "0.85rem" }}>Chapter order:</span>
+                <Select<string>
+                  label={`Chapter sort for ${w.baseTitle}`}
+                  value={w.chapterSort}
+                  options={CHAPTER_SORT_OPTIONS}
+                  onChange={(v) => props.onChapterSortChange!(w.id, v)}
+                />
+              </div>
+            )}
+            {!collapsed.has(w.id) && (
+            <ul className="recent-list" role="group">
+              {w.chapters.map((c) => (
+                <li className="recent-row" key={c.id} data-played={c.played ? "true" : "false"} role="treeitem" aria-level={2}>
+                  <button className="icon-button" aria-label={`Play '${c.title}'`} onClick={() => props.onPlayChapter({
+                    chapter: c,
+                    authorId: detail.id,
+                    authorName: detail.name,
+                    workId: w.id,
+                    workTitle: w.baseTitle,
+                    workTotalChapters: w.chapters.length,
+                    workPlayedChapters: w.chapters.filter((chapter) => chapter.played).length,
+                  })}><Icon name="play" /></button>
+                  <label aria-label={`Mark '${c.title}' played`}>
+                    <input
+                      type="checkbox"
+                      checked={c.played}
+                      onChange={(e) => props.onTogglePlayed(c.id, e.target.checked)}
+                    />
+                  </label>
+                  <span style={{ minWidth: 0, flex: 1 }}><span className="chapter-title" dir="auto">{c.title}</span><span className="chapter-duration muted" style={{ display: "block" }}>Chapter {c.chapterNo} · {formatDuration(c.durationSecs)}</span></span>
+                  <TagGroup tags={c.tags} />
+                  {c.hasJournal && (
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label="View your notes & bookmarks"
+                      title="View your notes & bookmarks"
+                      onClick={() => { setEditState({ chapterId: c.id, mode: "journal" }); props.onOpenJournal?.(c.id); }}
+                    ><Icon name="journal" /></button>
+                  )}
+                  <Menu
+                    label={`More options for '${c.title}'`}
+                    items={[
+                      { label: "Edit grouping", onSelect: () => setEditState({ chapterId: c.id, mode: "grouping" }) },
+                      { label: "Edit tags", onSelect: () => setEditState({ chapterId: c.id, mode: "tags" }) },
+                      { label: "Journal", onSelect: () => { setEditState({ chapterId: c.id, mode: "journal" }); props.onOpenJournal?.(c.id); } },
+                    ]}
+                  />
+                </li>
+              ))}
+            </ul>
+            )}
+          </section>
+        ))
+      )}
       </div>
       {editState && editChapterInfo && editState.mode === "grouping" && (
         <Dialog label="Edit grouping" title="Edit grouping" context={`Chapter ${editChapterInfo.chapter.chapterNo ?? ""} — change which work this chapter belongs to`} onClose={() => setEditState(null)}>
