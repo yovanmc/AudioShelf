@@ -230,17 +230,19 @@ fn scan_author(
     let works: Vec<Work> = group_author(&stems);
 
     for work in works {
-        conn.execute(
-            "INSERT INTO works(author_id, base_title, sort_key, status)
-             VALUES (?1, ?2, ?3, 'active')
-             ON CONFLICT(author_id, base_title) DO UPDATE SET status='active'",
-            params![author_id, work.base_title, work.base_title.to_lowercase()],
-        )?;
-        let work_id: i64 = conn.query_row(
-            "SELECT id FROM works WHERE author_id=?1 AND base_title=?2",
-            params![author_id, work.base_title],
-            |r| r.get(0),
-        )?;
+        // Single cached round-trip: ON CONFLICT DO UPDATE always runs the update, so
+        // RETURNING id yields the row id whether the work was just inserted or already existed.
+        let work_id: i64 = conn
+            .prepare_cached(
+                "INSERT INTO works(author_id, base_title, sort_key, status)
+                 VALUES (?1, ?2, ?3, 'active')
+                 ON CONFLICT(author_id, base_title) DO UPDATE SET status='active'
+                 RETURNING id",
+            )?
+            .query_row(
+                params![author_id, work.base_title, work.base_title.to_lowercase()],
+                |r| r.get(0),
+            )?;
 
         for chapter in work.chapters {
             let Some(file) = by_stem.get(chapter.original_stem.as_str()).copied() else {
@@ -251,21 +253,20 @@ fn scan_author(
             let (mtime, size) = file_stats(file);
 
             let existing: Option<(i64, i64, i64)> = conn
-                .query_row(
-                    "SELECT id, file_mtime, file_size FROM chapters WHERE file_path=?1",
-                    params![path_str],
-                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-                )
+                .prepare_cached("SELECT id, file_mtime, file_size FROM chapters WHERE file_path=?1")
+                .and_then(|mut stmt| {
+                    stmt.query_row(params![path_str], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                })
                 .ok();
 
             let chapter_id: i64 = match existing {
                 Some((id, old_mtime, old_size))
                     if old_mtime == mtime && old_size == size && mtime != 0 =>
                 {
-                    conn.execute(
+                    conn.prepare_cached(
                         "UPDATE chapters SET last_seen_scan=?1, status='active' WHERE id=?2",
-                        params![generation, id],
-                    )?;
+                    )?
+                    .execute(params![generation, id])?;
                     *skipped += 1;
                     id
                 }
@@ -275,8 +276,9 @@ fn scan_author(
                         .extension()
                         .map(|x| x.to_string_lossy().to_ascii_lowercase())
                         .unwrap_or_default();
+                    // M31: parallelism deferred (see ROADMAP M32+); the probe stays single-threaded.
                     let duration = probe_duration_secs(file);
-                    upsert_chapter(
+                    let id = upsert_chapter(
                         conn,
                         work_id,
                         &path_str,
@@ -293,11 +295,7 @@ fn scan_author(
                     } else {
                         *added += 1;
                     }
-                    conn.query_row(
-                        "SELECT id FROM chapters WHERE file_path=?1",
-                        params![path_str],
-                        |r| r.get(0),
-                    )?
+                    id
                 }
             };
 
@@ -398,11 +396,11 @@ fn ingest_sidecar_transcript(
             };
             let content = parse_srt_vtt(&raw);
             let source_path = candidate.to_string_lossy().to_string();
-            conn.execute(
+            conn.prepare_cached(
                 "INSERT OR REPLACE INTO transcripts(chapter_id, source_path, content)
                  VALUES (?1, ?2, ?3)",
-                params![chapter_id, source_path, content],
-            )?;
+            )?
+            .execute(params![chapter_id, source_path, content])?;
             // Use the first sidecar found (prefer .srt over .vtt).
             break;
         }
@@ -422,10 +420,11 @@ fn upsert_chapter(
     mtime: i64,
     size: i64,
     generation: i64,
-) -> rusqlite::Result<()> {
-    // The UPSERT below is self-sufficient: on conflict it updates every column
-    // EXCEPT `played`, so re-scanning preserves listening progress.
-    conn.execute(
+) -> rusqlite::Result<i64> {
+    // The UPSERT updates every column EXCEPT `played`, so re-scanning preserves listening
+    // progress. RETURNING id hands back the row id for both INSERT and UPDATE, so callers no
+    // longer need a follow-up `SELECT id`. prepare_cached compiles this SQL once per connection.
+    conn.prepare_cached(
         "INSERT INTO chapters(work_id, file_path, raw_filename, chapter_no, format, duration_secs,
                               status, file_mtime, file_size, last_seen_scan)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', ?7, ?8, ?9)
@@ -438,10 +437,13 @@ fn upsert_chapter(
            status='active',
            file_mtime=excluded.file_mtime,
            file_size=excluded.file_size,
-           last_seen_scan=excluded.last_seen_scan",
+           last_seen_scan=excluded.last_seen_scan
+         RETURNING id",
+    )?
+    .query_row(
         params![work_id, path, raw, chapter_no as i64, format, duration, mtime, size, generation],
-    )?;
-    Ok(())
+        |r| r.get(0),
+    )
 }
 
 fn count(conn: &Connection, table: &str) -> usize {
@@ -676,6 +678,50 @@ mod tests {
         assert_eq!(second.added, 0);
         assert_eq!(second.updated, 0);
         assert_eq!(second.skipped, 1);
+    }
+
+    #[test]
+    fn changed_file_counts_as_update_and_preserves_chapter_identity() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let author = root.join("Author X");
+        touch(&author.join("Tale.mp3"));
+        touch(&author.join("Tale 2.mp3"));
+
+        let conn = open_in_memory().unwrap();
+        let first = scan_into(&conn, root).unwrap();
+        assert_eq!(first.chapters, 2);
+        assert_eq!(first.added, 2);
+
+        // Capture the row id of Tale.mp3 so we can prove the update path reuses it.
+        let path1 = author.join("Tale.mp3").to_string_lossy().to_string();
+        let id_before: i64 = conn
+            .query_row(
+                "SELECT id FROM chapters WHERE file_path=?1",
+                params![path1],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        // Change Tale.mp3's content so its size differs -> detected as UPDATED, not skipped.
+        // Tale 2.mp3 is unchanged -> must be skipped.
+        std::fs::write(author.join("Tale.mp3"), b"xxxxxxxxxx").unwrap();
+        let second = scan_into(&conn, root).unwrap();
+        assert_eq!(second.added, 0, "no new files");
+        assert_eq!(second.updated, 1, "Tale.mp3 changed size -> updated");
+        assert_eq!(second.skipped, 1, "Tale 2.mp3 unchanged -> skipped");
+
+        let id_after: i64 = conn
+            .query_row(
+                "SELECT id FROM chapters WHERE file_path=?1",
+                params![path1],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            id_before, id_after,
+            "the upsert update path must preserve chapter identity (same row id)"
+        );
     }
 
     #[test]
