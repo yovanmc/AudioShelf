@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { DiscoveryView } from "./DiscoveryView";
+import { DiscoveryView, CAP_FACET_CHIPS } from "./DiscoveryView";
 import type { LabelType, DiscoveryWork } from "../lib/api";
 
 const forYou: DiscoveryWork[] = [
@@ -163,5 +163,65 @@ describe("DiscoveryView", () => {
     render(<DiscoveryView {...baseProps} forYou={noReason} />);
     // Falls back to computed "Shares cozy" from sharedTags.
     expect(screen.getByText("Shares cozy")).toBeInTheDocument();
+  });
+
+  // ---- M34 Task 6e: facet chip cap + toggle ----
+  it("shows all chips when count is at or below CAP_FACET_CHIPS", () => {
+    const TOTAL = CAP_FACET_CHIPS;
+    const manyTerms = Array.from({ length: TOTAL }, (_, i) => ({ value: `Narrator${i}`, count: i + 1 }));
+    render(
+      <DiscoveryView
+        {...baseProps}
+        termsByType={{ narrator: manyTerms, mood: [] }}
+      />,
+    );
+    // All chips should render; no "more" toggle
+    expect(screen.getByRole("button", { name: /Narrator0/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Narrator23/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /more/i })).toBeNull();
+  });
+
+  it("caps chips at CAP_FACET_CHIPS and shows a '+N more' toggle when over the cap", () => {
+    const TOTAL = CAP_FACET_CHIPS + 5;
+    const manyTerms = Array.from({ length: TOTAL }, (_, i) => ({ value: `Mood${i}`, count: i + 1 }));
+    render(
+      <DiscoveryView
+        {...baseProps}
+        termsByType={{ narrator: [], mood: manyTerms }}
+      />,
+    );
+    // First CAP_FACET_CHIPS chips visible
+    expect(screen.getByRole("button", { name: /Mood0/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Mood23/ })).toBeInTheDocument();
+    // Chip beyond cap NOT visible
+    expect(screen.queryByRole("button", { name: /Mood24/ })).toBeNull();
+    // The overflow toggle button exists (aria-label: "Show N more Mood chips")
+    const overflow = TOTAL - CAP_FACET_CHIPS;
+    expect(screen.getByRole("button", { name: new RegExp(`Show ${overflow} more`) })).toBeInTheDocument();
+  });
+
+  it("reveals all chips when the 'show more' toggle is clicked (show more/less)", async () => {
+    const TOTAL = CAP_FACET_CHIPS + 3;
+    const manyTerms = Array.from({ length: TOTAL }, (_, i) => ({ value: `Lang${i}`, count: 1 }));
+    const langType: LabelType = { name: "language", display: "Language", builtin: true, sort: 2 };
+    render(
+      <DiscoveryView
+        {...baseProps}
+        labelTypes={[langType]}
+        termsByType={{ language: manyTerms }}
+      />,
+    );
+    const overflow = TOTAL - CAP_FACET_CHIPS;
+    // Click the "show more" toggle (aria-label: "Show N more Language chips")
+    await userEvent.click(screen.getByRole("button", { name: new RegExp(`Show ${overflow} more`) }));
+    // All chips should now render
+    expect(screen.getByRole("button", { name: /Lang0/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: new RegExp(`Lang${TOTAL - 1}`) })).toBeInTheDocument();
+    // Toggle now shows "Show less" (aria-label: "Show fewer Language chips")
+    expect(screen.getByRole("button", { name: /show fewer/i })).toBeInTheDocument();
+    // Click "Show less" to collapse
+    await userEvent.click(screen.getByRole("button", { name: /show fewer/i }));
+    // Overflow chip hidden again
+    expect(screen.queryByRole("button", { name: new RegExp(`Lang${CAP_FACET_CHIPS}`) })).toBeNull();
   });
 });

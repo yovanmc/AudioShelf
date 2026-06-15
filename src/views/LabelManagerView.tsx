@@ -2,6 +2,9 @@ import { useState } from "react";
 import type { LabelType, MetaTerm, TagStat } from "../lib/api";
 import { Button, Dialog, Notice, SectionHeading, TagGroup } from "../components/ui";
 
+/** Number of rows shown per page in the terms/tags tables. "Show more" reveals the next page. */
+export const LABEL_TABLE_PAGE = 100;
+
 // ---------------------------------------------------------------------------
 // Props interface — reported to T11
 // ---------------------------------------------------------------------------
@@ -396,6 +399,7 @@ function FacetGroup({
   const [draft, setDraft] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showMerge, setShowMerge] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(LABEL_TABLE_PAGE);
 
   function toggle(id: number) {
     setSelected((prev) => {
@@ -412,6 +416,9 @@ function FacetGroup({
     onCreateTerm(facet, v);
     setDraft("");
   }
+
+  const visibleTerms = terms.slice(0, visibleCount);
+  const hiddenCount = terms.length - visibleTerms.length;
 
   return (
     <section
@@ -459,7 +466,7 @@ function FacetGroup({
             </tr>
           </thead>
           <tbody>
-            {terms.map((t) => (
+            {visibleTerms.map((t) => (
               <TermRow
                 key={t.id}
                 term={t}
@@ -471,6 +478,17 @@ function FacetGroup({
             ))}
           </tbody>
         </table>
+      )}
+
+      {hiddenCount > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <Button
+            variant="ghost"
+            onClick={() => setVisibleCount((v) => v + LABEL_TABLE_PAGE)}
+          >
+            Show {Math.min(hiddenCount, LABEL_TABLE_PAGE)} more ({hiddenCount} remaining)
+          </Button>
+        </div>
       )}
 
       {showMerge && (
@@ -668,6 +686,7 @@ function TagSection({
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showMerge, setShowMerge] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(LABEL_TABLE_PAGE);
 
   function toggleSelect(tag: string) {
     setSelected((prev) => {
@@ -680,6 +699,8 @@ function TagSection({
 
   const selectedArray = Array.from(selected);
   const allTagNames = tags.map((t) => t.tag);
+  const visibleTags = tags.slice(0, visibleCount);
+  const hiddenCount = tags.length - visibleTags.length;
 
   if (tags.length === 0) {
     return <p className="muted">No tags yet. Add tags to authors, works, or chapters to see them here.</p>;
@@ -709,7 +730,7 @@ function TagSection({
           </tr>
         </thead>
         <tbody>
-          {tags.map((stat) => (
+          {visibleTags.map((stat) => (
             <tr
               key={stat.tag}
               style={{ borderTop: "1px solid var(--border, #e0e0e0)" }}
@@ -734,6 +755,17 @@ function TagSection({
           ))}
         </tbody>
       </table>
+
+      {hiddenCount > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <Button
+            variant="ghost"
+            onClick={() => setVisibleCount((v) => v + LABEL_TABLE_PAGE)}
+          >
+            Show {Math.min(hiddenCount, LABEL_TABLE_PAGE)} more ({hiddenCount} remaining)
+          </Button>
+        </div>
+      )}
 
       {showMerge && (
         <TagMergeDialog

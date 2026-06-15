@@ -23,6 +23,11 @@ export function ScopedResults({
         {results.statusLabel && <span className="chip">{results.statusLabel}</span>}
         {results.text && <span className="chip chip--text">"{results.text}"</span>}
         <span className="scoped-count">{results.works.length} works</span>
+        {results.works.length >= 50 && (
+          <span className="muted scoped-cap-note" style={{ fontSize: "0.85em" }}>
+            Showing first 50 results — refine your search to see more.
+          </span>
+        )}
       </div>
       <div className="card-grid">
         {results.works.map((w: ScopedWork) => (

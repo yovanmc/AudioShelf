@@ -9,6 +9,12 @@ import { WorkCard } from "../components/WorkCard";
 import { ScopedResults as ScopedResultsPanel } from "../components/ScopedResults";
 import { SortFilterBar, type LabelFilter } from "./SortFilterBar";
 import { filterAuthors, sortAuthors, type AuthorSort, type PlayedStatus } from "../lib/browse";
+import { VirtualList, VIRTUALIZE_THRESHOLD } from "../components/VirtualList";
+
+const SEARCH_AUTHOR_ROW_HEIGHT = 56;
+const SEARCH_WORK_ROW_HEIGHT = 80;
+const SEARCH_CHAPTER_ROW_HEIGHT = 64;
+const SEARCH_BUCKET_HEIGHT = 400;
 
 const ROW_HEIGHT = 72;
 const LIST_HEIGHT = 600;
@@ -237,36 +243,103 @@ function SearchResultsPanel({
   return (
     <div className="search-results">
       {results.authors.length > 0 && <section className="view-section"><h2>Authors</h2><div className="card">
-        {results.authors.map((author) => <button className="list-row" style={{ width: "100%", background: "none", border: 0 }} key={author.authorId} onClick={() => onOpenAuthor(author.authorId)}><CreatorAvatar authorId={author.authorId} name={author.authorName} size={40} /><strong>{author.authorName}</strong></button>)}
-      </div></section>}
-      {results.works.length > 0 && <section className="view-section"><h2>Works</h2><div className="card-grid">
-        {results.works.map((work) => (
-          <WorkCard
-            key={work.workId}
-            workId={work.workId}
-            title={work.baseTitle}
-            authorId={work.authorId}
-            authorName={work.authorName}
-            actionLabel="View creator"
-            onAction={() => onOpenAuthor(work.authorId)}
-            onOpenAuthor={() => onOpenAuthor(work.authorId)}
-            onPlay={onPlayNextOfWork ? () => onPlayNextOfWork(work.workId, work.authorId) : undefined}
+        {results.authors.length > VIRTUALIZE_THRESHOLD ? (
+          <VirtualList
+            items={results.authors}
+            itemSize={SEARCH_AUTHOR_ROW_HEIGHT}
+            height={SEARCH_BUCKET_HEIGHT}
+            renderItem={(author) => (
+              <div
+                className="list-row"
+                style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+                onClick={() => onOpenAuthor(author.authorId)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onOpenAuthor(author.authorId); }}
+              >
+                <CreatorAvatar authorId={author.authorId} name={author.authorName} size={40} />
+                <strong>{author.authorName}</strong>
+              </div>
+            )}
           />
-        ))}
+        ) : (
+          results.authors.map((author) => <button className="list-row" style={{ width: "100%", background: "none", border: 0 }} key={author.authorId} onClick={() => onOpenAuthor(author.authorId)}><CreatorAvatar authorId={author.authorId} name={author.authorName} size={40} /><strong>{author.authorName}</strong></button>)
+        )}
       </div></section>}
+      {results.works.length > 0 && <section className="view-section"><h2>Works</h2>
+        {results.works.length > VIRTUALIZE_THRESHOLD ? (
+          <VirtualList
+            items={results.works}
+            itemSize={SEARCH_WORK_ROW_HEIGHT}
+            height={SEARCH_BUCKET_HEIGHT}
+            renderItem={(work) => (
+              <div style={{ padding: "4px 0" }}>
+                <WorkCard
+                  workId={work.workId}
+                  title={work.baseTitle}
+                  authorId={work.authorId}
+                  authorName={work.authorName}
+                  actionLabel="View creator"
+                  onAction={() => onOpenAuthor(work.authorId)}
+                  onOpenAuthor={() => onOpenAuthor(work.authorId)}
+                  onPlay={onPlayNextOfWork ? () => onPlayNextOfWork(work.workId, work.authorId) : undefined}
+                />
+              </div>
+            )}
+          />
+        ) : (
+          <div className="card-grid">
+            {results.works.map((work) => (
+              <WorkCard
+                key={work.workId}
+                workId={work.workId}
+                title={work.baseTitle}
+                authorId={work.authorId}
+                authorName={work.authorName}
+                actionLabel="View creator"
+                onAction={() => onOpenAuthor(work.authorId)}
+                onOpenAuthor={() => onOpenAuthor(work.authorId)}
+                onPlay={onPlayNextOfWork ? () => onPlayNextOfWork(work.workId, work.authorId) : undefined}
+              />
+            ))}
+          </div>
+        )}
+      </section>}
       {results.chapters.length > 0 && <section className="view-section"><h2>Chapters</h2><div className="card">
-        {results.chapters.map((chapter) => (
-          <button
-            className="list-row"
-            style={{ width: "100%", background: "none", border: 0, textAlign: "left" }}
-            key={chapter.chapterId}
-            onClick={() => onPlayNextOfWork ? onPlayNextOfWork(chapter.workId, chapter.authorId) : onOpenAuthor(chapter.authorId)}
-          >
-            <Icon name="play" />
-            <WorkArtwork workId={chapter.workId} title={chapter.baseTitle} size={48} />
-            <span><strong>{chapter.title}</strong><span className="muted" style={{ display: "block" }}>{chapter.baseTitle} · {chapter.authorName}</span></span>
-          </button>
-        ))}
+        {results.chapters.length > VIRTUALIZE_THRESHOLD ? (
+          <VirtualList
+            items={results.chapters}
+            itemSize={SEARCH_CHAPTER_ROW_HEIGHT}
+            height={SEARCH_BUCKET_HEIGHT}
+            renderItem={(chapter) => (
+              <div
+                className="list-row"
+                style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", textAlign: "left" }}
+                onClick={() => onPlayNextOfWork ? onPlayNextOfWork(chapter.workId, chapter.authorId) : onOpenAuthor(chapter.authorId)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { onPlayNextOfWork ? onPlayNextOfWork(chapter.workId, chapter.authorId) : onOpenAuthor(chapter.authorId); } }}
+              >
+                <Icon name="play" />
+                <WorkArtwork workId={chapter.workId} title={chapter.baseTitle} size={48} />
+                <span><strong>{chapter.title}</strong><span className="muted" style={{ display: "block" }}>{chapter.baseTitle} · {chapter.authorName}</span></span>
+              </div>
+            )}
+          />
+        ) : (
+          results.chapters.map((chapter) => (
+            <button
+              className="list-row"
+              style={{ width: "100%", background: "none", border: 0, textAlign: "left" }}
+              key={chapter.chapterId}
+              onClick={() => onPlayNextOfWork ? onPlayNextOfWork(chapter.workId, chapter.authorId) : onOpenAuthor(chapter.authorId)}
+            >
+              <Icon name="play" />
+              <WorkArtwork workId={chapter.workId} title={chapter.baseTitle} size={48} />
+              <span><strong>{chapter.title}</strong><span className="muted" style={{ display: "block" }}>{chapter.baseTitle} · {chapter.authorName}</span></span>
+            </button>
+          ))
+        )}
       </div></section>}
     </div>
   );

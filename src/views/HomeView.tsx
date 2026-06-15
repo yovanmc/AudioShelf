@@ -3,9 +3,14 @@ import { WorkCard, type WorkPlayStatus } from "../components/WorkCard";
 import { Button, EmptyState, PageHeader, SectionHeading, StatCard } from "../components/ui";
 import { CreatorIdentity } from "../components/CreatorIdentity";
 import { Shelf } from "../components/Shelf";
+import { VirtualList, VIRTUALIZE_THRESHOLD } from "../components/VirtualList";
 import { keepListeningPercent, recommendationPercent } from "../lib/home";
 import { formatLong, formatRelative } from "../lib/time";
 import type { HomeShelf, ShelfItem } from "../lib/shelves";
+
+/** Fixed height for a single shelf row (header ~40px + one capped card-row ~220px).
+ *  Chosen to accommodate a row of WorkCards without clipping or overlap. */
+const SHELF_ROW_HEIGHT = 280;
 
 function workPlayStatus(totalChapters: number, unplayedCount: number): WorkPlayStatus {
   if (unplayedCount === 0) return "done";
@@ -80,15 +85,39 @@ export function HomeView(props: {
           />
         </section>
       )}
-      {(props.shelves ?? []).map((shelf) => (
-        <Shelf
-          key={shelf.id}
-          shelf={shelf}
-          items={props.shelfItems?.[shelf.id] ?? []}
-          onOpenAuthor={props.onOpenAuthor}
-          onPlayNextOfWork={props.onPlayNextOfWork}
-        />
-      ))}
+      {(() => {
+        const shelves = props.shelves ?? [];
+        if (shelves.length > VIRTUALIZE_THRESHOLD) {
+          return (
+            <VirtualList
+              items={shelves}
+              itemSize={SHELF_ROW_HEIGHT}
+              height={SHELF_ROW_HEIGHT * Math.min(shelves.length, 4)}
+              renderItem={(shelf) => (
+                <Shelf
+                  shelf={shelf}
+                  items={props.shelfItems?.[shelf.id] ?? []}
+                  onOpenAuthor={props.onOpenAuthor}
+                  onPlayNextOfWork={props.onPlayNextOfWork}
+                />
+              )}
+            />
+          );
+        }
+        return (
+          <>
+            {shelves.map((shelf) => (
+              <Shelf
+                key={shelf.id}
+                shelf={shelf}
+                items={props.shelfItems?.[shelf.id] ?? []}
+                onOpenAuthor={props.onOpenAuthor}
+                onPlayNextOfWork={props.onPlayNextOfWork}
+              />
+            ))}
+          </>
+        );
+      })()}
       {(props.dormantWorks ?? []).length > 0 && (
         <Shelf
           shelf={{ id: "__forgotten__", title: "Forgotten", kind: "dormant" }}
