@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clampSeek, formatTime, formatTimeLeft, formatPercent, timeLabel, SKIP_BACK_LARGE, SKIP_FWD_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, nextSpeed, formatSpeed, SPEEDS, formatScrubPreview, nextChapterLabel, endOfChapterPreview } from "./playback";
+import { clampSeek, formatTime, formatTimeLeft, formatPercent, timeLabel, SKIP_BACK_LARGE, SKIP_FWD_LARGE, SKIP_BACK_SMALL, SKIP_FWD_SMALL, nextSpeed, formatSpeed, SPEEDS, formatScrubPreview, nextChapterLabel, endOfChapterPreview, playbackErrorText } from "./playback";
 
 describe("clampSeek", () => {
   it("adds the delta within bounds", () => {
@@ -125,5 +125,14 @@ describe("speed helpers (PL-1)", () => {
   });
   it("formats a multiplier", () => {
     expect(formatSpeed(1.25)).toBe("1.25×");
+  });
+});
+
+describe("playbackErrorText", () => {
+  it("names the chapter that couldn't be played", () => {
+    expect(playbackErrorText("Chapter One")).toBe("“Chapter One” couldn’t be played");
+  });
+  it("falls back when no title", () => {
+    expect(playbackErrorText("")).toBe("This file couldn’t be played");
   });
 });

@@ -48,6 +48,7 @@ export interface PlayerBarProps extends PlayerControls {
   onCycleTimeLabel?: () => void;
   onCycleSpeed?: () => void;     // M24 (PL-1)
   onOpenChapters?: () => void;   // M24 (PL-6)
+  playbackError?: string | null;
 }
 
 export function PlaybackButtons(props: Pick<PlayerControls, "isPlaying" | "onToggle" | "onSkip">) {
@@ -75,6 +76,9 @@ export function PlayerBar(props: PlayerBarProps) {
           <CreatorIdentity authorId={context.authorId} authorName={context.authorName} size={26} onOpen={() => props.onOpenAuthor(context.authorId)} />
           <div><strong dir="auto">{context.workTitle}</strong></div>
           <div className="muted"><span dir="auto">{context.chapter.title}</span> · <span className="player-bar__chapter-pos">Chapter {context.chapter.chapterNo} of {context.workTotalChapters}</span></div>
+          {props.playbackError ? (
+            <div className="player-bar__error" role="alert">{props.playbackError}</div>
+          ) : null}
         </div>
       </div>
       <div>

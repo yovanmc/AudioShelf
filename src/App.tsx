@@ -53,7 +53,7 @@ import { MiniPlayer } from "./player/MiniPlayer";
 import { NowPlayingPanel } from "./player/NowPlayingPanel";
 import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
-import { clampSeek, nextSpeed, type TimeLabelMode } from "./player/playback";
+import { clampSeek, nextSpeed, type TimeLabelMode, playbackErrorText } from "./player/playback";
 import { runSteps } from "./harness/runner";
 import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps, m34Steps } from "./harness/walkthroughs";
 import {
@@ -265,6 +265,7 @@ export default function App() {
   const sleepIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPosSaveRef = useRef(0); // wall-clock ms of last persisted position
   const [currentWorkChapters, setCurrentWorkChapters] = useState<ChapterRow[]>([]);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   const [home, setHome] = useState<HomeData | null>(null);
   const [homeNow, setHomeNow] = useState(0);
@@ -923,6 +924,7 @@ export default function App() {
 
   function playChapter(context: PlaybackContext) {
     setCurrent(context);
+    setPlaybackError(null);
     const audio = audioRef.current;
     if (audio) {
       // Per-second resume (M24): seed a resume seek only if no bookmark seek is already pending.
@@ -3420,6 +3422,7 @@ export default function App() {
       sleepRemaining={sleepRemaining}
       sleepAtChapterEnd={sleepAtChapterEnd}
       onOpenChapters={() => setPlayerExpanded(true)}
+      playbackError={playbackError}
     />
   );
   const view = routedView();
@@ -3456,6 +3459,7 @@ export default function App() {
           }
         }}
         onLoadedMetadata={(e) => {
+          setPlaybackError(null);
           setDuration(e.currentTarget.duration || 0);
           if (pendingSeekRef.current != null) {
             try { e.currentTarget.currentTime = pendingSeekRef.current; } catch {}
@@ -3463,6 +3467,11 @@ export default function App() {
           }
           e.currentTarget.playbackRate = playbackSpeedRef.current;
           e.currentTarget.muted = muted;
+        }}
+        onError={() => {
+          const cur = currentRef.current;
+          setIsPlaying(false);
+          setPlaybackError(playbackErrorText(cur?.chapter.title ?? ""));
         }}
         onEnded={handleEnded}
       />

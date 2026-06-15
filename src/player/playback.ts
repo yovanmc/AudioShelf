@@ -74,3 +74,9 @@ export function timeLabel(mode: TimeLabelMode, currentTime: number, duration: nu
   if (mode === "percent") return formatPercent(currentTime, duration);
   return formatTime(currentTime);
 }
+
+/** Honest, user-facing message when an audio file can't be decoded/played. */
+export function playbackErrorText(title: string): string {
+  const t = title.trim();
+  return t ? `“${t}” couldn’t be played` : "This file couldn’t be played";
+}
