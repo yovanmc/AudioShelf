@@ -274,14 +274,15 @@ pub fn query_authors(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<Author
     let mut stmt = conn.prepare(
         "SELECT a.id,
                 COALESCE(a.display_name, a.folder_name) AS name,
-                (SELECT count(*) FROM works w WHERE w.author_id=a.id AND w.status='active'),
-                (SELECT count(*) FROM chapters c JOIN works w ON c.work_id=w.id
-                   WHERE w.author_id=a.id AND c.status='active'),
-                (SELECT count(*) FROM chapters c JOIN works w ON c.work_id=w.id
-                   WHERE w.author_id=a.id AND c.status='active' AND c.played=0),
-                (SELECT COALESCE(sum(c.duration_secs), 0) FROM chapters c JOIN works w ON c.work_id=w.id
-                   WHERE w.author_id=a.id AND c.status='active')
-         FROM authors a WHERE a.status='active'",
+                COUNT(DISTINCT w.id) AS work_count,
+                COUNT(c.id) AS chapter_count,
+                COALESCE(SUM(CASE WHEN c.played = 0 THEN 1 ELSE 0 END), 0) AS unplayed_count,
+                COALESCE(SUM(c.duration_secs), 0) AS total_secs
+         FROM authors a
+         LEFT JOIN works w    ON w.author_id = a.id AND w.status = 'active'
+         LEFT JOIN chapters c ON c.work_id  = w.id AND c.status = 'active'
+         WHERE a.status = 'active'
+         GROUP BY a.id",
     )?;
     let mut rows: Vec<AuthorRow> = stmt
         .query_map([], |r| {
@@ -527,6 +528,13 @@ pub fn search(conn: &rusqlite::Connection, query: &str, cap: usize) -> rusqlite:
 pub fn search_library(state: tauri::State<DbState>, query: String) -> Result<SearchResults, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     search(&conn, &query, SEARCH_CAP).map_err(|e| e.to_string())
+}
+
+/// Test-only thin wrapper around [`search`] that accepts a `&Connection` directly (bypassing
+/// Tauri `State`). Used by the `measure_queries_at_scale` integration test in `scaled_scan.rs`.
+#[doc(hidden)]
+pub fn search_library_for_test(conn: &rusqlite::Connection, query: &str) -> rusqlite::Result<SearchResults> {
+    search(conn, query, SEARCH_CAP)
 }
 
 fn duration_label(d: &crate::query::DurationFilter) -> String {
@@ -3600,7 +3608,7 @@ mod tests {
         // The pre-seeded schema_version key reflects the latest migration version.
         assert_eq!(
             get_setting_value(&conn, "schema_version").unwrap(),
-            Some("11".to_string())
+            Some("12".to_string())
         );
     }
 
@@ -3969,7 +3977,7 @@ mod tests {
         ).unwrap();
         assert_eq!(full_count, 2, "full open must have both taxonomy tables");
         let ver: i64 = full_conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(ver, 11);
+        assert_eq!(ver, 12);
     }
 
     #[test]
@@ -4136,7 +4144,7 @@ mod tests {
         // Upgrade to latest via open_in_memory pattern (open_at_version then migrate).
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 11);
+        assert_eq!(full_ver, 12);
 
         let col3: i64 = full.query_row(
             "SELECT count(*) FROM pragma_table_info('works') WHERE name='metadata_source'",
@@ -4265,10 +4273,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist at v3");
 
-        // After a full open (which runs migrate), both tables must exist and version is 11.
+        // After a full open (which runs migrate), both tables must exist and version is 12.
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 11);
+        assert_eq!(full_ver, 12);
 
         let series_count: i64 = full.query_row(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
@@ -5593,6 +5601,91 @@ mod tests {
         assert_eq!(data.works_rated, 2, "works_rated should count works with non-empty completion_rating (active only)");
         // works_re_entered = works 2 + 3 (both active with non-empty re_entry_note).
         assert_eq!(data.works_re_entered, 2, "works_re_entered should count works with non-empty re_entry_note (active only)");
+    }
+
+    // ---- M32: index existence, query equivalence, and EXPLAIN QUERY PLAN proof ----
+
+    #[test]
+    fn m32_indices_exist() {
+        let conn = open_in_memory().unwrap();
+        let has = |name: &str| -> bool {
+            conn.query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?1",
+                [name],
+                |_| Ok(()),
+            )
+            .optional()
+            .unwrap()
+            .is_some()
+        };
+        assert!(has("idx_chapters_work"), "covering chapters index missing");
+        assert!(has("idx_play_events_chapter"), "play_events FK index missing");
+    }
+
+    #[test]
+    fn query_authors_aggregates_across_multiple_works() {
+        // Seed directly to control the exact work/chapter layout and avoid
+        // depending on the scanner's grouping heuristic.
+        let conn = open_in_memory().unwrap();
+        conn.execute_batch(
+            "INSERT INTO authors(id,folder_name,display_name,status) VALUES (1,'Multi Work Author','Multi Work Author','active');
+             INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES
+               (1,1,'Alpha','alpha','active'),
+               (2,1,'Beta','beta','active');
+             INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status) VALUES
+               (1,1,'/mwa/alpha1.mp3','alpha1.mp3',1,'mp3',100,0,'active'),
+               (2,1,'/mwa/alpha2.mp3','alpha2.mp3',2,'mp3',100,0,'active'),
+               (3,2,'/mwa/beta1.mp3','beta1.mp3',1,'mp3',100,0,'active'),
+               (4,2,'/mwa/beta2.mp3','beta2.mp3',2,'mp3',100,0,'active'),
+               (5,2,'/mwa/beta3.mp3','beta3.mp3',3,'mp3',100,0,'active');",
+        ).unwrap();
+
+        // Mark exactly one chapter played so unplayed_count != chapter_count.
+        conn.execute(
+            "UPDATE chapters SET played = 1 WHERE id = 1",
+            [],
+        )
+        .unwrap();
+
+        let authors = query_authors(&conn).unwrap();
+        assert_eq!(authors.len(), 1);
+        let a = &authors[0];
+        assert_eq!(a.work_count, 2, "two distinct works (no fan-out double-count)");
+        assert_eq!(a.chapter_count, 5, "five active chapters total");
+        assert_eq!(a.unplayed_count, 4, "one of five marked played");
+    }
+
+    #[test]
+    fn query_authors_plan_uses_covering_index() {
+        let conn = open_in_memory().unwrap();
+        let plan: String = {
+            let mut stmt = conn
+                .prepare(
+                    "EXPLAIN QUERY PLAN
+                     SELECT a.id,
+                            COALESCE(a.display_name, a.folder_name) AS name,
+                            COUNT(DISTINCT w.id),
+                            COUNT(c.id),
+                            COALESCE(SUM(CASE WHEN c.played = 0 THEN 1 ELSE 0 END), 0),
+                            COALESCE(SUM(c.duration_secs), 0)
+                     FROM authors a
+                     LEFT JOIN works w    ON w.author_id = a.id AND w.status = 'active'
+                     LEFT JOIN chapters c ON c.work_id  = w.id AND c.status = 'active'
+                     WHERE a.status = 'active'
+                     GROUP BY a.id",
+                )
+                .unwrap();
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(3))
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap();
+            rows.join(" | ")
+        };
+        assert!(
+            plan.contains("idx_chapters_work"),
+            "query_authors should use idx_chapters_work; plan was: {plan}"
+        );
     }
 }
 
