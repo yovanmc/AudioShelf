@@ -18,6 +18,8 @@ pub struct ScanResult {
     pub removed: usize,
     #[serde(default)]
     pub skipped: usize,
+    #[serde(default)]
+    pub unknown_duration: usize,
     /// Files/folders that could not be read this scan (skipped, not fatal).
     #[serde(default)]
     pub errors: Vec<ScanError>,

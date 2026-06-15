@@ -10,6 +10,7 @@ export interface ScanResult {
   updated?: number;
   removed?: number;
   skipped?: number;
+  unknownDuration?: number;
   errors?: ScanError[];
   cancelled?: boolean;
 }

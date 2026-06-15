@@ -49,3 +49,10 @@ fn embedded_cover_art_extracts_and_thumbnails() {
     let thumb = make_thumbnail_png(&bytes, 256).expect("thumbnail should encode");
     assert!(!thumb.is_empty());
 }
+
+#[test]
+fn scan_result_reports_unknown_duration_count() {
+    let conn = open_in_memory().unwrap();
+    let report = scan_into(&conn, &media_root()).unwrap();
+    assert!(report.unknown_duration >= 1, "corrupt file should count as unknown-duration");
+}
