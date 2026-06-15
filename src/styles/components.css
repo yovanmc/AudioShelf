@@ -323,6 +323,9 @@ kbd {
 .shortcut-list li { display: flex; align-items: center; gap: 10px; }
 .shortcut-list span { color: var(--color-text-muted); }
 
+/* M34 — keep virtualized journal entry rows a predictable height */
+.journal-entry__text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
 /* M30 — scan progress bar + scan-diff summary */
 .scan-progress { margin: 16px 0; }
 .scan-progress__track { height: 8px; border-radius: 999px; background: var(--color-surface-raised, #182333); overflow: hidden; }
