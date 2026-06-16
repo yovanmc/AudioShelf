@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runSteps } from "./runner";
 import type { Step } from "./types";
-import { m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps, m34Steps, m35Steps } from "./walkthroughs";
+import { m12Steps, m16Steps, journalSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps, m34Steps, m35Steps } from "./walkthroughs";
 
 describe("runSteps", () => {
   it("runs every step in order and captures a numbered shot per step", async () => {
@@ -77,23 +77,6 @@ describe("journalSteps", () => {
       "journal-browse",
       "journal-search",
       "now-playing-bookmarks",
-    ]);
-  });
-});
-
-describe("insightsSteps", () => {
-  it("captures the four M18 insights surfaces in order", () => {
-    const noop = async () => {};
-    expect(insightsSteps({
-      showInsightsEmpty: noop,
-      showInsightsOverview: noop,
-      showInsightsTrends: noop,
-      showInsightsRecap: noop,
-    }).map((step) => step.name)).toEqual([
-      "insights-empty",
-      "insights-overview",
-      "insights-trends",
-      "insights-recap",
     ]);
   });
 });
@@ -207,30 +190,22 @@ describe("m26Steps", () => {
 });
 
 describe("m27Steps", () => {
-  it("captures the ten M27 reflection-that-connects surfaces in order", () => {
+  it("captures the six M27 journal-connects surfaces in order", () => {
     const noop = async () => {};
     expect(m27Steps({
       seedJournalAndEvents: noop,
       showJournalPlayable: noop,
       showJournalPlay: noop,
-      showInsightsReflections: noop,
-      showPlayedRange: noop,
-      showInsightsTagToLibrary: noop,
       showChapterJournalAffordance: noop,
       showJournalBack: noop,
-      showInsightsBack: noop,
       showNavGroups: noop,
     }).map((s) => s.name)).toEqual([
       "01-seed",
       "02-journal-playable",
       "03-journal-play",
-      "04-insights-reflections",
-      "05-played-range",
-      "06-insights-tag-to-library",
-      "07-chapter-journal-affordance",
-      "08-journal-back",
-      "09-insights-back",
-      "10-nav-groups",
+      "04-chapter-journal-affordance",
+      "05-journal-back",
+      "06-nav-groups",
     ]);
   });
 });

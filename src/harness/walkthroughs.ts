@@ -204,20 +204,6 @@ export function journalSteps(nav: {
   ];
 }
 
-export function insightsSteps(nav: {
-  showInsightsEmpty: () => Promise<void>;
-  showInsightsOverview: () => Promise<void>;
-  showInsightsTrends: () => Promise<void>;
-  showInsightsRecap: () => Promise<void>;
-}): Step[] {
-  return [
-    { name: "insights-empty", run: nav.showInsightsEmpty },
-    { name: "insights-overview", run: nav.showInsightsOverview },
-    { name: "insights-trends", run: nav.showInsightsTrends },
-    { name: "insights-recap", run: nav.showInsightsRecap },
-  ];
-}
-
 /**
  * Build the "m19" walkthrough: nine new surfaces introduced in M19 (Power & Scale) —
  * command palette (Ctrl+K overlay with search results), scoped search (duration/tag
@@ -402,25 +388,17 @@ export function m27Steps(nav: {
   seedJournalAndEvents: () => Promise<void>;
   showJournalPlayable: () => Promise<void>;
   showJournalPlay: () => Promise<void>;
-  showInsightsReflections: () => Promise<void>;
-  showPlayedRange: () => Promise<void>;
-  showInsightsTagToLibrary: () => Promise<void>;
   showChapterJournalAffordance: () => Promise<void>;
   showJournalBack: () => Promise<void>;
-  showInsightsBack: () => Promise<void>;
   showNavGroups: () => Promise<void>;
 }): Step[] {
   return [
     { name: "01-seed", run: nav.seedJournalAndEvents },
     { name: "02-journal-playable", run: nav.showJournalPlayable },
     { name: "03-journal-play", run: nav.showJournalPlay },
-    { name: "04-insights-reflections", run: nav.showInsightsReflections },
-    { name: "05-played-range", run: nav.showPlayedRange },
-    { name: "06-insights-tag-to-library", run: nav.showInsightsTagToLibrary },
-    { name: "07-chapter-journal-affordance", run: nav.showChapterJournalAffordance },
-    { name: "08-journal-back", run: nav.showJournalBack },
-    { name: "09-insights-back", run: nav.showInsightsBack },
-    { name: "10-nav-groups", run: nav.showNavGroups },
+    { name: "04-chapter-journal-affordance", run: nav.showChapterJournalAffordance },
+    { name: "05-journal-back", run: nav.showJournalBack },
+    { name: "06-nav-groups", run: nav.showNavGroups },
   ];
 }
 

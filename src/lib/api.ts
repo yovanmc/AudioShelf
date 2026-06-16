@@ -116,46 +116,6 @@ export interface ListeningStats {
   recent: RecentItem[];
 }
 
-export interface DayCell { day: number; dateMs: number; count: number; }
-export interface PeriodSummary { label: string; chapters: number; secs: number; activeDays: number; }
-export interface WeekPoint { weekStartDay: number; weekStartMs: number; chapters: number; }
-export interface CreatorStat { authorId: number; authorName: string; chapters: number; secs: number; }
-export interface InsightTagStat { tag: string; owned: number; finished: number; }
-export interface RecapData {
-  year: number;
-  totalSecs: number;
-  totalChapters: number;
-  activeDays: number;
-  longestStreak: number;
-  topCreator: string | null;
-  topCreatorChapters: number;
-  topTag: string | null;
-  busiestMonth: string | null;
-  busiestWeekday: string | null;
-  firstPlayMs: number | null;
-  lastPlayMs: number | null;
-}
-export interface InsightsData {
-  generatedAt: number;
-  totalSecs: number;
-  totalChapters: number;
-  activeDays: number;
-  currentStreak: number;
-  longestStreak: number;
-  heatmap: DayCell[];
-  byWeekday: number[];
-  byHour: number[];
-  thisMonth: PeriodSummary;
-  lastMonth: PeriodSummary;
-  rhythm: WeekPoint[];
-  topCreators: CreatorStat[];
-  topTags: InsightTagStat[];
-  recap: RecapData;
-  /** CUR-10: works with a non-empty completion_rating. */
-  worksRated: number;
-  /** CUR-10: works with a non-empty re_entry_note. */
-  worksReEntered: number;
-}
 export interface HomeData {
   keepListening: ContinueItem | null;
   recommendations: RecommendationWork[];
@@ -274,12 +234,6 @@ export const suggestTags = (workId: number) =>
   invoke<string[]>("suggest_tags", { workId });
 export const queryHome = (nowMs: number, tzOffsetMinutes: number) =>
   invoke<HomeData>("query_home", { nowMs, tzOffsetMinutes });
-
-export const queryInsights = (nowMs: number, tzOffsetMinutes: number) =>
-  invoke<InsightsData>("query_insights", { nowMs, tzOffsetMinutes });
-
-export const exportRecapPng = (path: string, bytes: number[]) =>
-  invoke<string>("export_recap_png", { path, bytes });
 
 export const seedPlayEvents = (events: { chapterId: number; playedAt: number }[]) =>
   invoke<void>("seed_play_events", { events });
@@ -433,10 +387,6 @@ export const deleteLabelType = (name: string) =>
   invoke<void>("delete_label_type", { name });
 export const reorderLabelTypes = (names: string[]) =>
   invoke<void>("reorder_label_types", { names });
-
-// M27 CUR-5 — "Played in range" drill-down
-export const queryPlayedInRange = (startMs: number, endMs: number) =>
-  invoke<ScopedResults>("query_played_in_range", { startMs, endMs });
 
 // M26 Unified Labels — convenience aliases for attaching/detaching labels
 /** Attach a label (facet/value pair) to an entity. Delegates to addMetadataValue. */

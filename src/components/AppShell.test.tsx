@@ -14,7 +14,6 @@ function props(overrides = {}) {
     onDiscovery: vi.fn(),
     onSettings: vi.fn(),
     onJournal: vi.fn(),
-    onInsights: vi.fn(),
     onCollections: vi.fn(),
     onOpenPalette: vi.fn(),
     hasHistory: true,
@@ -42,7 +41,6 @@ describe("AppShell", () => {
     expect(screen.getByRole("button", { name: "Library" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Discover" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Journal" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Insights" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
     expect(screen.getByText("Browse")).toBeInTheDocument();
     expect(screen.getByText("My listening")).toBeInTheDocument();

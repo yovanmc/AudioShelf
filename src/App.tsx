@@ -16,7 +16,7 @@ import {
   setWorkReEntryNote, setWorkRating,
   getChapterJournal, addChapterNote, deleteChapterNote, addBookmark, deleteBookmark,
   queryJournal, exportJournal,
-  queryInsights, exportRecapPng, seedPlayEvents,
+  seedPlayEvents,
   advancedSearch, listSavedSearches, createSavedSearch, deleteSavedSearch,
   listCollections, createCollection, deleteCollection, reorderCollections, resolveCollection,
   bulkSetWorkTags, setWorkChapterSort,
@@ -30,14 +30,11 @@ import {
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
   type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
   type SeriesView, type ChapterJournal, type JournalResults, type ChapterBookmark,
-  type InsightsData, type ScopedResults, type SavedSearch, type Collection,
+  type ScopedResults, type SavedSearch, type Collection,
   type ImportReport, type HealthReport, type MetaTerm, type LabelType,
 } from "./lib/api";
 import { hasScopedTokens } from "./lib/query";
-import { buildRecapSvg } from "./lib/recap";
 import { HomeView } from "./views/HomeView";
-import { InsightsView } from "./views/InsightsView";
-import { PlayedRangeView } from "./views/PlayedRangeView";
 import { JournalView } from "./views/JournalView";
 import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
@@ -55,7 +52,7 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { clampSeek, nextSpeed, type TimeLabelMode, playbackErrorText } from "./player/playback";
 import { runSteps } from "./harness/runner";
-import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, insightsSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps, m34Steps, m35Steps } from "./harness/walkthroughs";
+import { homeSteps, browseSteps, playerSteps, discoverySteps, renameSteps, groupingSteps, settingsSteps, m7Steps, coversSteps, tagsSteps, m12Steps, m16Steps, journalSteps, m19Steps, m20Steps, m21Steps, m24Steps, m25Steps, m26Steps, m27Steps, m28Steps, m29Steps, m30Steps, m34Steps, m35Steps } from "./harness/walkthroughs";
 import {
   parseBrowsePrefs,
   type BrowsePrefs,
@@ -110,9 +107,7 @@ type Route =
   | { kind: "metadata" }
   | { kind: "settings"; firstRun: boolean }
   | { kind: "journal" }
-  | { kind: "insights" }
-  | { kind: "collections" }
-  | { kind: "played-range"; startMs: number; endMs: number; label: string };
+  | { kind: "collections" };
 
 function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
@@ -121,35 +116,8 @@ function shellRoute(route: Route): ShellRoute {
   if (route.kind === "metadata") return "settings";
   if (route.kind === "settings") return "settings";
   if (route.kind === "journal") return "journal";
-  if (route.kind === "insights") return "insights";
-  if (route.kind === "played-range") return "insights";
   if (route.kind === "collections") return "collections";
   return "library";
-}
-
-// SVG string → PNG bytes via the WebView canvas. The SVG is self-contained (no external
-// images) so the canvas is never tainted and toBlob succeeds. Returns null on failure.
-async function rasterizeSvgToPng(svg: string, w: number, h: number): Promise<Uint8Array | null> {
-  try {
-    const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-    const img = new Image();
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("svg decode failed"));
-      img.src = url;
-    });
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.drawImage(img, 0, 0, w, h);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-    if (!blob) return null;
-    return new Uint8Array(await blob.arrayBuffer());
-  } catch {
-    return null;
-  }
 }
 
 export default function App() {
@@ -269,9 +237,6 @@ export default function App() {
 
   const [home, setHome] = useState<HomeData | null>(null);
   const [homeNow, setHomeNow] = useState(0);
-  const [insights, setInsights] = useState<InsightsData | null>(null);
-  const [insightsNow, setInsightsNow] = useState<number>(() => Date.now());
-  const [recapStatus, setRecapStatus] = useState<string | null>(null);
   const routeRef = useRef<Route>(route);
   routeRef.current = route;
 
@@ -347,35 +312,6 @@ export default function App() {
   async function openHome() {
     await loadHome();
     setRoute({ kind: "home" });
-  }
-
-  async function loadInsights(nowMs?: number) {
-    const now = nowMs ?? Date.now();
-    setInsightsNow(now);
-    const data = await queryInsights(now, new Date().getTimezoneOffset());
-    setInsights(data);
-  }
-  function openInsights() {
-    void loadInsights();
-    setRoute({ kind: "insights" });
-  }
-  async function handleExportRecap() {
-    if (!insights) return;
-    const svg = buildRecapSvg(insights.recap);
-    const bytes = await rasterizeSvgToPng(svg, 1080, 1350);
-    if (!bytes) {
-      setRecapStatus("Could not render the recap image.");
-      setTimeout(() => setRecapStatus(null), 4000);
-      return;
-    }
-    const path = await save({
-      defaultPath: `audioshelf-year-in-listening-${insights.recap.year}.png`,
-      filters: [{ name: "PNG image", extensions: ["png"] }],
-    });
-    if (!path) return;
-    const saved = await exportRecapPng(path, Array.from(bytes));
-    setRecapStatus(`Saved recap to ${saved}`);
-    setTimeout(() => setRecapStatus(null), 4000);
   }
 
   async function requestMoreLikeThis(workId: number) {
@@ -1571,72 +1507,6 @@ export default function App() {
                   await settle();
                 },
               })
-            : args.walkthrough === "insights"
-            ? insightsSteps({
-                // Fixed anchor (UTC) so the heatmap/trends are identical every run.
-                // 2026-06-12T18:00:00Z.
-                showInsightsEmpty: async () => {
-                  await resetPlayHistory();
-                  await loadInsights(Date.UTC(2026, 5, 12, 18, 0, 0));
-                  setRoute({ kind: "insights" });
-                  document.querySelector(".app-main")?.scrollTo({ top: 0 });
-                  await settle();
-                },
-                showInsightsOverview: async () => {
-                  // Seed ~120 + streak events (same deterministic spread used previously).
-                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0);
-                  const DAY = 86_400_000;
-                  const authors = await getAuthors();
-                  // Collect a handful of real chapter ids to attribute events to.
-                  const chapterIds: number[] = [];
-                  for (const a of authors.slice(0, 3)) {
-                    const d = await getAuthorDetail(a.id);
-                    for (const w of d.works) for (const c of w.chapters) chapterIds.push(c.id);
-                  }
-                  if (chapterIds.length === 0) return;
-                  // Deterministic spread: vary day offset (0..90), hour, and chapter — no RNG.
-                  const events: { chapterId: number; playedAt: number }[] = [];
-                  for (let i = 0; i < 120; i++) {
-                    const dayOffset = (i * 7) % 90;            // spreads across ~13 weeks
-                    const hour = 8 + (i % 12);                 // daytime/evening spread
-                    const chapterId = chapterIds[i % chapterIds.length];
-                    events.push({ chapterId, playedAt: NOW - dayOffset * DAY - hour * 3_600_000 });
-                  }
-                  // A short current streak ending "today".
-                  for (let k = 0; k < 4; k++) {
-                    events.push({ chapterId: chapterIds[k % chapterIds.length], playedAt: NOW - k * DAY - 3_600_000 });
-                  }
-                  await seedPlayEvents(events);
-                  await loadInsights(NOW);
-                  setRoute({ kind: "insights" });
-                  // Scroll to top: stats + heatmap + month-vs-last are at the top.
-                  document.querySelector(".app-main")?.scrollTo({ top: 0 });
-                  await settle();
-                },
-                showInsightsTrends: async () => {
-                  // Relies on the seeded state from showInsightsOverview — do NOT reset.
-                  await loadInsights(Date.UTC(2026, 5, 12, 18, 0, 0));
-                  setRoute({ kind: "insights" });
-                  await settle();
-                  // Scroll the first bar-chart's parent Card into view at the top of the
-                  // viewport so all three bar-chart cards (time-of-day, day-of-week, rhythm)
-                  // are visible.
-                  const firstBarChart = document.querySelector(".bar-chart");
-                  const barCard = firstBarChart?.closest(".card") ?? firstBarChart;
-                  (barCard as HTMLElement | null)?.scrollIntoView({ block: "start" });
-                  await settle();
-                },
-                showInsightsRecap: async () => {
-                  // Relies on the seeded state from showInsightsOverview — do NOT reset.
-                  await loadInsights(Date.UTC(2026, 5, 12, 18, 0, 0));
-                  setRoute({ kind: "insights" });
-                  await settle();
-                  // Scroll the recap card to the bottom of the viewport so the breakdowns
-                  // above it are visible and the Export PNG button is in frame.
-                  document.querySelector(".recap-card")?.scrollIntoView({ block: "end" });
-                  await settle();
-                },
-              })
             : args.walkthrough === "m19"
             ? m19Steps({
                 // Step 1: open the command palette with a prefilled query ("cool") so
@@ -2211,54 +2081,7 @@ export default function App() {
                   await settle();
                 },
 
-                // Step 4: Insights view — the Reflections stat row shows "N rated · M revisited".
-                // Use the same anchor as the insights walkthrough for a stable heatmap.
-                showInsightsReflections: async () => {
-                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0);
-                  await loadInsights(NOW);
-                  setRoute({ kind: "insights" });
-                  document.querySelector(".app-main")?.scrollTo({ top: 0 });
-                  await settle();
-                  await settle();
-                },
-
-                // Step 5: click a heatmap day with activity → played-range results.
-                // We know NOW is 2026-06-12; that day was seeded with play_events (dayOffset=0).
-                // Navigate directly to the played-range route with that day's window.
-                showPlayedRange: async () => {
-                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0);
-                  const DAY = 86_400_000;
-                  // Use the exact same dateMs the heatmap cell would pass for "today" (June 12).
-                  // Cell dateMs is computed from the day index; for June 12 UTC this is the
-                  // UTC midnight of that day: Date.UTC(2026, 5, 12, 0, 0, 0).
-                  const dayMs = Date.UTC(2026, 5, 12, 0, 0, 0);
-                  const label = new Date(dayMs).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-                  setRoute({ kind: "played-range", startMs: dayMs, endMs: dayMs + DAY, label });
-                  await settle();
-                  await settle();
-                  void NOW; // suppress unused warning
-                },
-
-                // Step 6: go back to Insights, then click the top-tag bar for "cozy"
-                // (seeded on Jane in step 1) → Library filtered by that tag.
-                showInsightsTagToLibrary: async () => {
-                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0);
-                  await loadInsights(NOW);
-                  setRoute({ kind: "insights" });
-                  await settle();
-                  // Programmatically apply the Library label-filter and navigate, exactly
-                  // as InsightsView's onFilterTag callback does.
-                  setLabelFilter({ facet: "tag", value: "cozy" });
-                  await loadAuthors();
-                  setQuery("");
-                  setResults(null);
-                  setScopedResults(null);
-                  setRoute({ kind: "library" });
-                  await settle();
-                  await settle();
-                },
-
-                // Step 7: AuthorDetailView for Jane Doe — the seeded chapter (has note +
+                // Step 4 (was 7): AuthorDetailView for Jane Doe — the seeded chapter (has note +
                 // bookmark + summary) should show the journal icon affordance.
                 showChapterJournalAffordance: async () => {
                   const list = await getAuthors();
@@ -2297,7 +2120,7 @@ export default function App() {
                   await settle();
                 },
 
-                // Step 8: Journal view — back control is present at the top.
+                // Step 5 (was 8): Journal view — back control is present at the top.
                 showJournalBack: async () => {
                   setJournalChapterId(null);
                   setOpenJournal(null);
@@ -2309,18 +2132,8 @@ export default function App() {
                   await settle();
                 },
 
-                // Step 9: Insights view — back control is present at the top.
-                showInsightsBack: async () => {
-                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0);
-                  await loadInsights(NOW);
-                  setRoute({ kind: "insights" });
-                  document.querySelector(".app-main")?.scrollTo({ top: 0 });
-                  await settle();
-                  await settle();
-                },
-
-                // Step 10: nav grouping — show the sidebar with Collections under Browse
-                // and Journal/Insights under My listening. Navigate home so the sidebar
+                // Step 6 (was 10): nav grouping — show the sidebar with Collections under Browse
+                // and Journal under My listening. Navigate home so the sidebar
                 // is in its default (non-collapsed) state.
                 showNavGroups: async () => {
                   setSidebarCollapsedState(false);
@@ -3365,35 +3178,6 @@ export default function App() {
         />
       );
     }
-    if (route.kind === "insights") {
-      return (
-        <InsightsView
-          data={insights}
-          now={insightsNow}
-          onExportRecap={handleExportRecap}
-          recapStatus={recapStatus}
-          onBack={() => setRoute({ kind: "home" })}
-          onDrillRange={(startMs, endMs, label) =>
-            setRoute({ kind: "played-range", startMs, endMs, label })
-          }
-          onFilterTag={(tag) => {
-            setLabelFilter({ facet: "tag", value: tag });
-            setRoute({ kind: "library" });
-          }}
-        />
-      );
-    }
-    if (route.kind === "played-range") {
-      return (
-        <PlayedRangeView
-          startMs={route.startMs}
-          endMs={route.endMs}
-          label={route.label}
-          onOpenAuthor={(authorId) => { void openAuthor(authorId); }}
-          onBack={() => setRoute({ kind: "insights" })}
-        />
-      );
-    }
     if (route.kind === "collections") {
       return (
         <CollectionsView
@@ -3545,7 +3329,6 @@ export default function App() {
           onDiscovery={openDiscovery}
           onSettings={openSettings}
           onJournal={openJournalView}
-          onInsights={openInsights}
           onCollections={openCollections}
           onOpenPalette={() => setPaletteOpen(true)}
           hasHistory={home == null || !(!home.keepListening && home.stats.recent.length === 0 && home.stats.chaptersFinished === 0)}
