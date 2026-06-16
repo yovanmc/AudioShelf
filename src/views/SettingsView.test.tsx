@@ -241,34 +241,27 @@ describe("SettingsView — Home shelves", () => {
 });
 
 describe("SettingsView — Library tools", () => {
-  it("renders both Library tools buttons and fires their callbacks", () => {
+  it("renders the Library tools button and fires its callback", () => {
     const onOpenRename = vi.fn();
-    const onOpenMetadata = vi.fn();
     render(
       <SettingsView
-        {...baseSettingsProps({ onOpenRename, onOpenMetadata })}
+        {...baseSettingsProps({ onOpenRename })}
       />,
     );
     const renameBtn = screen.getByRole("button", { name: "Standardize file names…" });
-    const metaBtn = screen.getByRole("button", { name: "Import metadata from files…" });
     expect(renameBtn).toBeInTheDocument();
-    expect(metaBtn).toBeInTheDocument();
     fireEvent.click(renameBtn);
     expect(onOpenRename).toHaveBeenCalledOnce();
-    fireEvent.click(metaBtn);
-    expect(onOpenMetadata).toHaveBeenCalledOnce();
   });
 
   it("does not render Library tools section on first run", () => {
     const onOpenRename = vi.fn();
-    const onOpenMetadata = vi.fn();
     render(
       <SettingsView
-        {...baseSettingsProps({ firstRun: true, onOpenRename, onOpenMetadata })}
+        {...baseSettingsProps({ firstRun: true, onOpenRename })}
       />,
     );
     expect(screen.queryByRole("button", { name: "Standardize file names…" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Import metadata from files…" })).toBeNull();
   });
 });
 
@@ -277,13 +270,11 @@ describe("SettingsView — Settings group headings", () => {
     render(<SettingsView {...baseSettingsProps()} />);
     // sub-nav also renders the same words as links — check for heading role specifically
     expect(screen.getByRole("heading", { name: "Curation" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Maintenance" })).toBeInTheDocument();
   });
 
   it("does not show group headings on first run", () => {
     render(<SettingsView {...baseSettingsProps({ firstRun: true })} />);
     expect(screen.queryByText("Curation")).toBeNull();
-    expect(screen.queryByText("Maintenance")).toBeNull();
   });
 });
 

@@ -3,7 +3,7 @@
 use crate::db;
 use crate::metadata::{is_valid_facet, scope_table, facet_label};
 use crate::model::LabelType;
-use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterBookmark, ChapterHit, ChapterJournal, ChapterNote, ChapterRow, Collection, ContinueItem, DiscoveryWork, DormantWork, HomeData, JournalEntry, JournalExportReport, JournalResults, ListeningStats, MetaTag, MetaTerm, MetadataApplyReport, MetadataProposal, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SavedSearch, SearchResults, UndoResult, WorkHit, WorkRow};
+use crate::model::{AuthorDetail, AuthorHit, AuthorRow, ChapterBookmark, ChapterHit, ChapterJournal, ChapterNote, ChapterRow, Collection, ContinueItem, DiscoveryWork, DormantWork, HomeData, JournalEntry, JournalExportReport, JournalResults, ListeningStats, MetaTag, MetaTerm, MoreWork, RecentItem, RecommendationWork, RenameItem, RenameResult, ScanResult, SavedSearch, SearchResults, UndoResult, WorkHit, WorkRow};
 use crate::natsort::natural_cmp;
 use crate::regroup;
 use crate::rename;
@@ -351,7 +351,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
     )?;
 
     let mut wstmt = conn.prepare(
-        "SELECT id, base_title, re_entry_note, completion_rating, chapter_sort FROM works WHERE author_id=?1 AND status='active'",
+        "SELECT id, base_title, re_entry_note, completion_rating FROM works WHERE author_id=?1 AND status='active'",
     )?;
     let mut works: Vec<WorkRow> = wstmt
         .query_map(params![author_id], |r| {
@@ -362,7 +362,6 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                 chapters: Vec::new(),
                 re_entry_note: r.get::<_, String>(2).unwrap_or_default(),
                 completion_rating: r.get::<_, String>(3).unwrap_or_default(),
-                chapter_sort: r.get::<_, String>(4).unwrap_or_default(),
                 metadata: Vec::new(),
                 labels: Vec::new(),
             })
@@ -406,14 +405,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
-        match work.chapter_sort.as_str() {
-            "number_desc"   => chapters.sort_by(|a, b| b.chapter_no.cmp(&a.chapter_no)),
-            "title_asc"     => chapters.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase())),
-            "title_desc"    => chapters.sort_by(|a, b| b.title.to_lowercase().cmp(&a.title.to_lowercase())),
-            "duration_asc"  => chapters.sort_by(|a, b| a.duration_secs.cmp(&b.duration_secs)),
-            "duration_desc" => chapters.sort_by(|a, b| b.duration_secs.cmp(&a.duration_secs)),
-            _               => chapters.sort_by(|a, b| a.chapter_no.cmp(&b.chapter_no)), // "" / unknown = default
-        }
+        chapters.sort_by(|a, b| a.chapter_no.cmp(&b.chapter_no));
 
         // Chapter labels: all facets from chapter_metadata; derive tags + metadata.
         for ch in &mut chapters {
@@ -1447,244 +1439,7 @@ pub fn undo_renames(state: tauri::State<DbState>, manifest_path: String) -> Resu
     })
 }
 
-// ---- embedded-metadata ingestion commands (M16 Task 4) --------------------------------
-
-/// Embedded tag fields captured from a single audio file via lofty.
-struct EmbeddedMeta {
-    title: Option<String>,
-    album: Option<String>,
-    track: Option<u32>,
-    genre: Option<String>,
-}
-
-/// Read embedded metadata from `path` using lofty. Returns defaults (all None) on failure.
-fn read_embedded_meta(path: &std::path::Path) -> EmbeddedMeta {
-    use lofty::prelude::*;
-    let Ok(tagged) = lofty::read_from_path(path) else {
-        return EmbeddedMeta { title: None, album: None, track: None, genre: None };
-    };
-    let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) else {
-        return EmbeddedMeta { title: None, album: None, track: None, genre: None };
-    };
-    let title = tag.get_string(&lofty::tag::ItemKey::TrackTitle).map(|s| s.to_string());
-    // Prefer AlbumTitle as the work title; fall back to TrackTitle for single-file works.
-    let album = tag.get_string(&lofty::tag::ItemKey::AlbumTitle).map(|s| s.to_string());
-    let track = tag.track();
-    let genre = tag.get_string(&lofty::tag::ItemKey::Genre).map(|s| s.to_string());
-    EmbeddedMeta { title, album, track, genre }
-}
-
-/// Trim and return Some only if the string is non-empty.
-fn non_empty(s: &str) -> Option<&str> {
-    let t = s.trim();
-    if t.is_empty() { None } else { Some(t) }
-}
-
-/// Build `MetadataProposal` rows for a single author (or all authors if None).
-/// Re-reads files via lofty; does NOT cache; emits only genuine differences.
-pub fn build_metadata_proposals(
-    conn: &rusqlite::Connection,
-    author_id: Option<i64>,
-) -> rusqlite::Result<Vec<MetadataProposal>> {
-    // Fetch all active chapters with their work info (optionally filtered by author).
-    let sql = if author_id.is_some() {
-        "SELECT c.id, c.file_path, c.chapter_no, w.id, w.base_title
-         FROM chapters c JOIN works w ON c.work_id = w.id
-         JOIN authors a ON w.author_id = a.id
-         WHERE c.status='active' AND w.status='active' AND a.status='active'
-           AND w.author_id = ?1"
-    } else {
-        "SELECT c.id, c.file_path, c.chapter_no, w.id, w.base_title
-         FROM chapters c JOIN works w ON c.work_id = w.id
-         JOIN authors a ON w.author_id = a.id
-         WHERE c.status='active' AND w.status='active' AND a.status='active'"
-    };
-
-    struct Row { chapter_id: i64, file_path: String, chapter_no: i64, work_id: i64, base_title: String }
-    let rows: Vec<Row> = {
-        let mut stmt = conn.prepare(sql)?;
-        let mapped = if let Some(aid) = author_id {
-            stmt.query_map(params![aid], |r| Ok(Row {
-                chapter_id: r.get(0)?,
-                file_path: r.get(1)?,
-                chapter_no: r.get(2)?,
-                work_id: r.get(3)?,
-                base_title: r.get(4)?,
-            }))?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-        } else {
-            stmt.query_map([], |r| Ok(Row {
-                chapter_id: r.get(0)?,
-                file_path: r.get(1)?,
-                chapter_no: r.get(2)?,
-                work_id: r.get(3)?,
-                base_title: r.get(4)?,
-            }))?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-        };
-        mapped
-    };
-
-    let mut proposals: Vec<MetadataProposal> = Vec::new();
-    // Track work_id -> proposed title so we don't emit the same work-title proposal twice.
-    let mut work_title_proposed: std::collections::HashSet<i64> = std::collections::HashSet::new();
-    // Track (work_id, tag) so duplicate genre proposals per work are suppressed.
-    let mut work_tags_proposed: std::collections::HashSet<(i64, String)> = std::collections::HashSet::new();
-
-    for row in &rows {
-        let path = std::path::Path::new(&row.file_path);
-        let meta = read_embedded_meta(path);
-
-        // --- work title proposal: use album tag, else track title ---
-        let embedded_title = meta.album.as_deref().or(meta.title.as_deref());
-        if let Some(et) = embedded_title.and_then(non_empty) {
-            if et != row.base_title.trim() && !work_title_proposed.contains(&row.work_id) {
-                work_title_proposed.insert(row.work_id);
-                proposals.push(MetadataProposal {
-                    chapter_id: row.chapter_id,
-                    work_id: row.work_id,
-                    field: "title".to_string(),
-                    current: row.base_title.clone(),
-                    proposed: et.to_string(),
-                    source: "embedded".to_string(),
-                });
-            }
-        }
-
-        // --- chapter order proposal: track number ---
-        if let Some(track) = meta.track {
-            let track_i64 = track as i64;
-            if track_i64 != row.chapter_no && track_i64 > 0 {
-                proposals.push(MetadataProposal {
-                    chapter_id: row.chapter_id,
-                    work_id: row.work_id,
-                    field: "order".to_string(),
-                    current: row.chapter_no.to_string(),
-                    proposed: track_i64.to_string(),
-                    source: "embedded".to_string(),
-                });
-            }
-        }
-
-        // --- genre tag proposal ---
-        if let Some(genre) = meta.genre.as_deref().and_then(non_empty) {
-            let key = (row.work_id, genre.to_string());
-            if !work_tags_proposed.contains(&key) {
-                // Only propose if this tag is not already on the work.
-                let exists: i64 = conn.query_row(
-                    "SELECT count(*) FROM work_tags WHERE work_id=?1 AND tag=?2",
-                    params![row.work_id, genre],
-                    |r| r.get(0),
-                ).unwrap_or(0);
-                if exists == 0 {
-                    work_tags_proposed.insert(key);
-                    proposals.push(MetadataProposal {
-                        chapter_id: row.chapter_id,
-                        work_id: row.work_id,
-                        field: "tag".to_string(),
-                        current: String::new(),
-                        proposed: genre.to_string(),
-                        source: "embedded".to_string(),
-                    });
-                }
-            }
-        }
-    }
-
-    Ok(proposals)
-}
-
-#[tauri::command]
-pub fn preview_metadata(
-    state: tauri::State<DbState>,
-    author_id: Option<i64>,
-) -> Result<Vec<MetadataProposal>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    build_metadata_proposals(&conn, author_id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn apply_metadata(
-    state: tauri::State<DbState>,
-    proposals: Vec<MetadataProposal>,
-) -> Result<MetadataApplyReport, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    apply_metadata_proposals(&conn, &proposals).map_err(|e| e.to_string())
-}
-
-/// Inner DB-only apply: updates works/chapters and marks metadata_source='embedded'.
-/// Wrapped in a transaction for atomicity.
-pub fn apply_metadata_proposals(
-    conn: &rusqlite::Connection,
-    proposals: &[MetadataProposal],
-) -> rusqlite::Result<MetadataApplyReport> {
-    let tx = conn.unchecked_transaction()?;
-    let mut applied: i64 = 0;
-    let mut skipped: i64 = 0;
-
-    for p in proposals {
-        let ok = match p.field.as_str() {
-            "title" => {
-                tx.execute(
-                    "UPDATE works SET base_title=?1, sort_key=lower(?1), metadata_source='embedded' WHERE id=?2",
-                    params![p.proposed, p.work_id],
-                )? > 0
-            }
-            "order" => {
-                let new_no: i64 = p.proposed.parse().unwrap_or(0);
-                if new_no <= 0 {
-                    false
-                } else {
-                    tx.execute(
-                        "UPDATE chapters SET chapter_no=?1, metadata_source='embedded' WHERE id=?2",
-                        params![new_no, p.chapter_id],
-                    )? > 0
-                }
-            }
-            "tag" => {
-                // Insert the genre tag on the work; mark the work's metadata_source.
-                tx.execute(
-                    "INSERT OR IGNORE INTO work_tags(work_id, tag) VALUES (?1, ?2)",
-                    params![p.work_id, p.proposed],
-                )? > 0
-                || {
-                    // Even if tag already existed (OR IGNORE), we still update the source.
-                    tx.execute(
-                        "UPDATE works SET metadata_source='embedded' WHERE id=?1",
-                        params![p.work_id],
-                    ).is_ok()
-                }
-            }
-            _ => false,
-        };
-        if ok { applied += 1; } else { skipped += 1; }
-    }
-
-    tx.commit()?;
-    Ok(MetadataApplyReport { applied, skipped })
-}
-
-// `undo_metadata` is DEFERRED — the feature is low-value without persistent manifests
-// (proposals are ephemeral; user can re-scan and re-preview). Not implemented in Task 4.
-
-// ---- series / reading-order detection (M16 Task 6) ------------------------------------
-
-/// A proposed member of a detected series.
-#[derive(Debug, Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SeriesMemberProposal {
-    pub work_id: i64,
-    pub base_title: String,
-    pub position: i64,
-}
-
-/// A detected series proposal (not yet persisted).
-#[derive(Debug, Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SeriesProposal {
-    pub title: String,
-    pub members: Vec<SeriesMemberProposal>,
-}
+// ---- series / reading-order (M16 Task 6) — kept: query + display ----------------------
 
 /// One member's view with progress, as returned by `get_author_series`.
 #[derive(Debug, Serialize)]
@@ -1704,116 +1459,6 @@ pub struct SeriesView {
     pub id: i64,
     pub title: String,
     pub members: Vec<SeriesMemberView>,
-}
-
-/// Detect series proposals for an author by grouping works whose `base_title`
-/// shares a common stem after stripping trailing numerics (via `grouping::parse_stem`).
-/// Returns only groups with ≥2 members. Does NOT write to the DB.
-pub fn detect_series_for_author(
-    conn: &rusqlite::Connection,
-    author_id: i64,
-) -> rusqlite::Result<Vec<SeriesProposal>> {
-    use crate::grouping::parse_stem;
-
-    // Load all active works for this author.
-    let mut stmt = conn.prepare(
-        "SELECT id, base_title FROM works WHERE author_id=?1 AND status='active'",
-    )?;
-    let works: Vec<(i64, String)> = stmt
-        .query_map(params![author_id], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect::<rusqlite::Result<_>>()?;
-
-    // Group works by the stem of their `base_title` using `parse_stem`.
-    // If the base_title itself ends in a number, parse_stem strips it to give the stem.
-    use std::collections::BTreeMap;
-    // Map: stem -> Vec<(work_id, base_title, numeric position extracted from title)>
-    let mut groups: BTreeMap<String, Vec<(i64, String, i64)>> = BTreeMap::new();
-
-    for (work_id, base_title) in &works {
-        let parsed = parse_stem(base_title);
-        // Only group when there's actually a trailing number (had_number == true), or when
-        // the title is "exactly the stem" (position 1 of a numbered series).
-        // Strategy: use the parsed stem as the group key; use chapter_no as position.
-        // For a title like "Cool Story" with no trailing number, parse_stem returns
-        //   base="Cool Story", chapter_no=1, had_number=false.
-        // For "Cool Story 2" it returns base="Cool Story", chapter_no=2, had_number=true.
-        // We group ALL works under the same stem. If had_number is false, position = 1.
-        let stem = parsed.base.clone();
-        let position = parsed.chapter_no as i64;
-        groups.entry(stem).or_default().push((work_id.clone(), base_title.clone(), position));
-    }
-
-    let mut proposals = Vec::new();
-    for (stem, mut members) in groups {
-        if members.len() < 2 {
-            continue; // only propose groups with ≥2 members
-        }
-        // Sort members by position.
-        members.sort_by_key(|(_, _, pos)| *pos);
-        proposals.push(SeriesProposal {
-            title: stem,
-            members: members
-                .into_iter()
-                .map(|(work_id, base_title, position)| SeriesMemberProposal {
-                    work_id,
-                    base_title,
-                    position,
-                })
-                .collect(),
-        });
-    }
-
-    Ok(proposals)
-}
-
-#[tauri::command]
-pub fn detect_series(
-    state: tauri::State<DbState>,
-    author_id: i64,
-) -> Result<Vec<SeriesProposal>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    detect_series_for_author(&conn, author_id).map_err(|e| e.to_string())
-}
-
-/// Persist series proposals: INSERT (OR IGNORE on UNIQUE) each series row, then
-/// INSERT OR REPLACE the membership rows. One transaction.
-pub fn apply_series_proposals(
-    conn: &rusqlite::Connection,
-    author_id: i64,
-    proposals: &[SeriesProposal],
-) -> rusqlite::Result<()> {
-    let tx = conn.unchecked_transaction()?;
-    for proposal in proposals {
-        let sort_key = proposal.title.to_lowercase();
-        // Insert series (UNIQUE on author_id+title — ignore if already exists).
-        tx.execute(
-            "INSERT OR IGNORE INTO series(author_id, title, sort_key) VALUES (?1, ?2, ?3)",
-            params![author_id, proposal.title, sort_key],
-        )?;
-        let series_id: i64 = tx.query_row(
-            "SELECT id FROM series WHERE author_id=?1 AND title=?2",
-            params![author_id, proposal.title],
-            |r| r.get(0),
-        )?;
-        for member in &proposal.members {
-            tx.execute(
-                "INSERT OR REPLACE INTO work_series_membership(work_id, series_id, position)
-                 VALUES (?1, ?2, ?3)",
-                params![member.work_id, series_id, member.position],
-            )?;
-        }
-    }
-    tx.commit()
-}
-
-#[tauri::command]
-pub fn apply_series(
-    state: tauri::State<DbState>,
-    author_id: i64,
-    proposals: Vec<SeriesProposal>,
-) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    apply_series_proposals(&conn, author_id, &proposals).map_err(|e| e.to_string())
 }
 
 /// Fetch the persisted series for an author, with per-member progress.
@@ -2767,19 +2412,6 @@ pub fn bulk_set_work_tags(
     bulk_set_work_tags_rows(&conn, &work_ids, &add, &remove).map_err(|e| e.to_string())
 }
 
-// ---- M19 Task 6: per-work chapter-sort override ----------------------------------------
-
-#[tauri::command]
-pub fn set_work_chapter_sort(state: tauri::State<DbState>, work_id: i64, sort: String) -> Result<(), String> {
-    const ALLOWED: [&str; 6] = ["", "number_desc", "title_asc", "title_desc", "duration_asc", "duration_desc"];
-    if !ALLOWED.contains(&sort.as_str()) {
-        return Err(format!("invalid chapter sort: {sort}"));
-    }
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    conn.execute("UPDATE works SET chapter_sort=?2 WHERE id=?1", params![work_id, sort]).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 // ---- M21 Task 3: metadata vocabulary CRUD commands ------------------------------------
 
 /// Create-or-fetch a metadata term. Idempotent on UNIQUE(facet, value). Trims the
@@ -3385,7 +3017,7 @@ mod tests {
         // The pre-seeded schema_version key reflects the latest migration version.
         assert_eq!(
             get_setting_value(&conn, "schema_version").unwrap(),
-            Some("13".to_string())
+            Some(crate::db::LATEST.to_string())
         );
     }
 
@@ -3754,7 +3386,7 @@ mod tests {
         ).unwrap();
         assert_eq!(full_count, 2, "full open must have both taxonomy tables");
         let ver: i64 = full_conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(ver, 13);
+        assert_eq!(ver, crate::db::LATEST);
     }
 
     #[test]
@@ -3778,133 +3410,6 @@ mod tests {
         assert!(resolved.contains(&"mystery".to_string()));
     }
 
-    // ---- embedded-metadata ingestion tests (M16 Task 4) --------------------------------
-
-    /// Seed a minimal library and manually insert chapters/works, then test the diff logic
-    /// by calling build_metadata_proposals with a helper that overrides the lofty read.
-    /// Because the fixture generator (gen-fixture/gen_fixture) uses `hound` with no tag
-    /// support, it CANNOT embed ID3/Vorbis tags into WAV files. We therefore test the
-    /// proposal/apply logic directly against an in-memory DB, bypassing the file-read path,
-    /// and document this limitation.
-    #[test]
-    fn metadata_apply_updates_work_title_chapter_no_and_adds_tag() {
-        let conn = open_in_memory().unwrap();
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        std::fs::create_dir_all(root.join("Alice")).unwrap();
-        let _ = std::fs::File::create(root.join("Alice").join("Book 1.mp3"));
-        let _ = std::fs::File::create(root.join("Alice").join("Book 1 2.mp3"));
-        scan::scan_into(&conn, root).unwrap();
-
-        let author_id = query_authors(&conn).unwrap()[0].id;
-        let detail = query_author_detail(&conn, author_id).unwrap();
-        let work = &detail.works[0];
-        let ch = &work.chapters[0];
-
-        // Build fake proposals (simulating what lofty would have returned from embedded tags).
-        let proposals = vec![
-            super::MetadataProposal {
-                chapter_id: ch.id,
-                work_id: work.id,
-                field: "title".to_string(),
-                current: work.base_title.clone(),
-                proposed: "The Real Title".to_string(),
-                source: "embedded".to_string(),
-            },
-            super::MetadataProposal {
-                chapter_id: ch.id,
-                work_id: work.id,
-                field: "order".to_string(),
-                current: ch.chapter_no.to_string(),
-                proposed: "7".to_string(),
-                source: "embedded".to_string(),
-            },
-            super::MetadataProposal {
-                chapter_id: ch.id,
-                work_id: work.id,
-                field: "tag".to_string(),
-                current: String::new(),
-                proposed: "fantasy".to_string(),
-                source: "embedded".to_string(),
-            },
-        ];
-
-        let report = super::apply_metadata_proposals(&conn, &proposals).unwrap();
-        assert!(report.applied >= 3, "expected all 3 proposals applied, got {}", report.applied);
-
-        // Verify work title updated and metadata_source set.
-        let (new_title, src): (String, String) = conn.query_row(
-            "SELECT base_title, metadata_source FROM works WHERE id=?1",
-            params![work.id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        ).unwrap();
-        assert_eq!(new_title, "The Real Title");
-        assert_eq!(src, "embedded");
-
-        // Verify chapter_no updated.
-        let new_no: i64 = conn.query_row(
-            "SELECT chapter_no FROM chapters WHERE id=?1",
-            params![ch.id],
-            |r| r.get(0),
-        ).unwrap();
-        assert_eq!(new_no, 7);
-
-        // Verify genre tag inserted on work.
-        let tag_count: i64 = conn.query_row(
-            "SELECT count(*) FROM work_tags WHERE work_id=?1 AND tag='fantasy'",
-            params![work.id],
-            |r| r.get(0),
-        ).unwrap();
-        assert_eq!(tag_count, 1);
-    }
-
-    #[test]
-    fn metadata_apply_is_transactional_and_returns_counts() {
-        let conn = open_in_memory().unwrap();
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        std::fs::create_dir_all(root.join("Bob")).unwrap();
-        let _ = std::fs::File::create(root.join("Bob").join("Story.mp3"));
-        scan::scan_into(&conn, root).unwrap();
-
-        let author_id = query_authors(&conn).unwrap()[0].id;
-        let detail = query_author_detail(&conn, author_id).unwrap();
-        let work = &detail.works[0];
-        let ch = &work.chapters[0];
-
-        // One valid proposal + one with unknown field (skipped).
-        let proposals = vec![
-            super::MetadataProposal {
-                chapter_id: ch.id,
-                work_id: work.id,
-                field: "title".to_string(),
-                current: work.base_title.clone(),
-                proposed: "New Title".to_string(),
-                source: "embedded".to_string(),
-            },
-            super::MetadataProposal {
-                chapter_id: ch.id,
-                work_id: work.id,
-                field: "unknown_field".to_string(),
-                current: String::new(),
-                proposed: "x".to_string(),
-                source: "embedded".to_string(),
-            },
-        ];
-
-        let report = super::apply_metadata_proposals(&conn, &proposals).unwrap();
-        assert_eq!(report.applied, 1);
-        assert_eq!(report.skipped, 1);
-    }
-
-    #[test]
-    fn metadata_apply_is_empty_for_no_proposals() {
-        let conn = open_in_memory().unwrap();
-        let report = super::apply_metadata_proposals(&conn, &[]).unwrap();
-        assert_eq!(report.applied, 0);
-        assert_eq!(report.skipped, 0);
-    }
-
     #[test]
     fn migration_v2_lacks_metadata_source_column_then_v3_adds_it() {
         // open_at_version(2) must NOT have metadata_source on works or chapters.
@@ -3921,7 +3426,7 @@ mod tests {
         // Upgrade to latest via open_in_memory pattern (open_at_version then migrate).
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 13);
+        assert_eq!(full_ver, crate::db::LATEST);
 
         let col3: i64 = full.query_row(
             "SELECT count(*) FROM pragma_table_info('works') WHERE name='metadata_source'",
@@ -3936,7 +3441,7 @@ mod tests {
         assert_eq!(col3c, 1, "metadata_source must exist on chapters at v3");
     }
 
-    // ---- series / reading-order tests (M16 Task 6) ------------------------------------
+    // ---- series / reading-order tests (M16 Task 6 — query coverage) -------------------
 
     fn seed_series_author(conn: &rusqlite::Connection) -> i64 {
         conn.execute(
@@ -3964,38 +3469,10 @@ mod tests {
         conn.query_row("SELECT id FROM chapters WHERE file_path=?1", params![path], |r| r.get(0)).unwrap()
     }
 
+    /// Seed series + membership directly via SQL (no detection path) and assert
+    /// `query_author_series` returns ordered members with progress.
     #[test]
-    fn detect_series_proposes_group_of_three() {
-        let conn = open_in_memory().unwrap();
-        let author_id = seed_series_author(&conn);
-        insert_work(&conn, author_id, "Cool Story");
-        insert_work(&conn, author_id, "Cool Story 2");
-        insert_work(&conn, author_id, "Cool Story 3");
-
-        let proposals = super::detect_series_for_author(&conn, author_id).unwrap();
-        assert_eq!(proposals.len(), 1, "should detect exactly one series");
-        let p = &proposals[0];
-        assert_eq!(p.title, "Cool Story");
-        assert_eq!(p.members.len(), 3);
-        // Members ordered by position (numeric extracted from title).
-        let positions: Vec<i64> = p.members.iter().map(|m| m.position).collect();
-        assert_eq!(positions, vec![1, 2, 3], "members must be in order by position");
-        let titles: Vec<&str> = p.members.iter().map(|m| m.base_title.as_str()).collect();
-        assert_eq!(titles, vec!["Cool Story", "Cool Story 2", "Cool Story 3"]);
-    }
-
-    #[test]
-    fn detect_series_standalone_yields_no_proposal() {
-        let conn = open_in_memory().unwrap();
-        let author_id = seed_series_author(&conn);
-        insert_work(&conn, author_id, "Standalone Work");
-
-        let proposals = super::detect_series_for_author(&conn, author_id).unwrap();
-        assert!(proposals.is_empty(), "single work must not produce a series proposal");
-    }
-
-    #[test]
-    fn apply_series_writes_membership_and_get_returns_ordered_members_with_progress() {
+    fn query_author_series_returns_ordered_members_with_progress() {
         let conn = open_in_memory().unwrap();
         let author_id = seed_series_author(&conn);
         let w1 = insert_work(&conn, author_id, "Cool Story");
@@ -4008,19 +3485,35 @@ mod tests {
         insert_chapter(&conn, w2, 1, false);
         insert_chapter(&conn, w3, 1, false);
 
-        // Detect, then apply.
-        let proposals = super::detect_series_for_author(&conn, author_id).unwrap();
-        assert_eq!(proposals.len(), 1);
-        super::apply_series_proposals(&conn, author_id, &proposals).unwrap();
+        // Insert series and membership directly (no detection command).
+        conn.execute(
+            "INSERT INTO series(author_id, title, sort_key) VALUES (?1, 'Cool Story', 'cool story')",
+            params![author_id],
+        ).unwrap();
+        let series_id: i64 = conn.query_row(
+            "SELECT id FROM series WHERE author_id=?1 AND title='Cool Story'",
+            params![author_id], |r| r.get(0),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO work_series_membership(work_id, series_id, position) VALUES (?1, ?2, 1)",
+            params![w1, series_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO work_series_membership(work_id, series_id, position) VALUES (?1, ?2, 2)",
+            params![w2, series_id],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO work_series_membership(work_id, series_id, position) VALUES (?1, ?2, 3)",
+            params![w3, series_id],
+        ).unwrap();
 
-        // get_author_series should return the series with 3 ordered members and correct progress.
+        // query_author_series should return the series with 3 ordered members and correct progress.
         let series = super::query_author_series(&conn, author_id).unwrap();
         assert_eq!(series.len(), 1);
         let s = &series[0];
         assert_eq!(s.title, "Cool Story");
         assert_eq!(s.members.len(), 3);
 
-        // Ordered by position.
         assert_eq!(s.members[0].work_id, w1);
         assert_eq!(s.members[0].position, 1);
         assert_eq!(s.members[0].total_chapters, 2);
@@ -4050,10 +3543,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist at v3");
 
-        // After a full open (which runs migrate), both tables must exist and version is 13.
+        // After a full open (which runs migrate), both tables must exist and version is LATEST.
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 13);
+        assert_eq!(full_ver, crate::db::LATEST);
 
         let series_count: i64 = full.query_row(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
@@ -4705,48 +4198,6 @@ mod tests {
         assert_eq!(total, 0);
     }
 
-    // ---- M19 Task 6: chapter_sort_override -----------------------------------------------
-
-    #[test]
-    fn chapter_sort_override_reorders_in_detail() {
-        // Must be at least v10 so that work_metadata table exists (query_author_detail reads it).
-        let conn = crate::db::open_at_version(10).unwrap();
-        conn.execute_batch(
-            "INSERT INTO authors(id, folder_name, status) VALUES (1,'a','active');
-             INSERT INTO works(id, author_id, base_title, sort_key, status, chapter_sort) VALUES (1,1,'W','w','active','number_desc');
-             INSERT INTO chapters(id, work_id, raw_filename, chapter_no, format, duration_secs, file_path, status, played, user_summary, takeaway, is_favorite)
-               VALUES (1,1,'a.mp3',1,'mp3',10,'/a','active',0,'','',0),
-                      (2,1,'b.mp3',2,'mp3',20,'/b','active',0,'','',0);",
-        ).unwrap();
-        let detail = query_author_detail(&conn, 1).unwrap();
-        let nums: Vec<i64> = detail.works[0].chapters.iter().map(|c| c.chapter_no).collect();
-        assert_eq!(nums, vec![2, 1]); // descending
-    }
-
-    // ---- M19 Task 7: library_health_scan ------------------------------------------------
-
-    #[test]
-    fn health_scan_flags_missing_and_zero_byte() {
-        let dir = std::env::temp_dir().join(format!("ashm19_{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let zero = dir.join("zero.mp3");
-        std::fs::write(&zero, b"").unwrap();
-        let missing = dir.join("gone.mp3");
-
-        let conn = crate::db::open_at_version(7).unwrap();
-        conn.execute_batch("INSERT INTO authors(id, folder_name, status) VALUES (1,'a','active');
-            INSERT INTO works(id, author_id, base_title, sort_key, status) VALUES (1,1,'W','w','active');").unwrap();
-        conn.execute("INSERT INTO chapters(id, work_id, raw_filename, chapter_no, format, duration_secs, file_path, status, played, user_summary, takeaway, is_favorite) VALUES (1,1,'zero.mp3',1,'mp3',0,?1,'active',0,'','',0)", params![zero.to_string_lossy()]).unwrap();
-        conn.execute("INSERT INTO chapters(id, work_id, raw_filename, chapter_no, format, duration_secs, file_path, status, played, user_summary, takeaway, is_favorite) VALUES (2,1,'gone.mp3',2,'mp3',0,?1,'active',0,'','',0)", params![missing.to_string_lossy()]).unwrap();
-
-        let rep = library_health_scan_rows(&conn).unwrap();
-        assert_eq!(rep.zero_byte.len(), 1);
-        assert_eq!(rep.missing_files.len(), 1);
-        assert_eq!(rep.zero_byte[0].chapter_id, 1);
-        assert_eq!(rep.missing_files[0].chapter_id, 2);
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
     // ---- M21 Task 3: metadata vocabulary CRUD tests ------------------------------------
 
     #[test]
@@ -5351,92 +4802,6 @@ pub fn get_author_cover(
         COVER_MAX,
     );
     Ok(p.map(|x| x.to_string_lossy().to_string()))
-}
-
-// ---- M19 Task 7: library health scan -----------------------------------------------
-
-/// Core read-only health triage: orphan, zero-byte, unreadable, schema-drift checks.
-pub(crate) fn library_health_scan_rows(conn: &rusqlite::Connection) -> rusqlite::Result<crate::model::HealthReport> {
-    use crate::model::{HealthItem, HealthReport};
-    let mut rep = HealthReport { latest_schema: crate::db::LATEST, ..Default::default() };
-    rep.schema_version = get_setting_value(conn, "schema_version")?
-        .and_then(|s| s.parse::<i64>().ok())
-        .unwrap_or(0);
-    rep.schema_drift = rep.schema_version != rep.latest_schema;
-
-    let mut stmt = conn.prepare(
-        "SELECT c.id, c.raw_filename, w.base_title, COALESCE(a.display_name, a.folder_name), c.file_path
-         FROM chapters c JOIN works w ON c.work_id=w.id JOIN authors a ON w.author_id=a.id
-         WHERE c.status='active'",
-    )?;
-    let rows: Vec<(i64, String, String, String, String)> = stmt
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
-        .collect::<rusqlite::Result<_>>()?;
-
-    for (chapter_id, raw, work_title, author_name, file_path) in rows {
-        let title = std::path::Path::new(&raw)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or(raw);
-        let item = |size_bytes: i64| HealthItem {
-            chapter_id,
-            title: title.clone(),
-            work_title: work_title.clone(),
-            author_name: author_name.clone(),
-            file_path: file_path.clone(),
-            size_bytes,
-        };
-        match std::fs::metadata(&file_path) {
-            Err(_) => rep.missing_files.push(item(-1)),
-            Ok(md) => {
-                let len = md.len() as i64;
-                if len == 0 {
-                    rep.zero_byte.push(item(0));
-                } else if std::fs::File::open(&file_path).is_err() {
-                    rep.unreadable.push(item(len));
-                }
-            }
-        }
-    }
-    Ok(rep)
-}
-
-#[tauri::command]
-pub fn library_health_scan(state: tauri::State<DbState>) -> Result<crate::model::HealthReport, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    library_health_scan_rows(&conn).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn export_curation_json(state: tauri::State<DbState>, path: String, exported_at: i64) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let v = crate::backup::build_curation_export(&conn, exported_at).map_err(|e| e.to_string())?;
-    let text = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn export_db_snapshot(state: tauri::State<DbState>, path: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    // VACUUM INTO writes a consistent snapshot from the live connection (no file-lock issue).
-    conn.execute("VACUUM INTO ?1", params![path]).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-/// Holds the resolved path of the live SQLite DB so restore commands can locate it.
-pub struct DbPathState(pub String);
-
-#[tauri::command]
-pub fn import_curation_json(state: tauri::State<DbState>, path: String) -> Result<crate::model::ImportReport, String> {
-    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let root: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("invalid backup JSON: {e}"))?;
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    crate::backup::apply_curation_import(&conn, &root).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn stage_db_restore(db_path: tauri::State<DbPathState>, src: String) -> Result<(), String> {
-    crate::backup::stage_db_restore(&db_path.0, &src)
 }
 
 #[tauri::command]

@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { save, open } from "@tauri-apps/plugin-dialog";
+import { save } from "@tauri-apps/plugin-dialog";
 import {
   getLaunchArgs, scanLibrary, cancelScan, getAuthors, getAuthorDetail,
   setChapterPlayed, markChapterFinished, captureWindow, finishWalkthrough, fileUrl,
   getAllTags, setAuthorTags, setWorkTags, setChapterTags, getDiscovery, getDiscoveryByTags,
   getDormantWorks, getMoreLikeThis, suggestTags,
   previewRenames, applyRenames, undoRenames,
-  previewMetadata, applyMetadata,
   setGroupingOverride, clearGroupingOverride,
   getSetting, setSetting, pickFolder, searchLibrary, queryHome, resetPlayHistory,
   listTagsWithCounts, renameTag, mergeTags, setTagAlias, clearTagAlias,
-  detectSeries, applySeries, getAuthorSeries,
+  getAuthorSeries,
   savePlaybackPosition,
   setChapterSummary, setChapterTakeaway, setChapterFavorite,
   setWorkReEntryNote, setWorkRating,
@@ -19,8 +18,7 @@ import {
   seedPlayEvents,
   advancedSearch, listSavedSearches, createSavedSearch, deleteSavedSearch,
   listCollections, createCollection, deleteCollection, reorderCollections, resolveCollection,
-  bulkSetWorkTags, setWorkChapterSort,
-  exportCurationJson, exportDbSnapshot, importCurationJson, stageDbRestore, libraryHealthScan,
+  bulkSetWorkTags,
   openMiniPlayer,
   listMetadataTerms, createMetadataTerm, renameMetadataTerm, deleteMetadataTerm, mergeMetadataTerms,
   addMetadataValue, removeMetadataValue, getDiscoveryByMetadata,
@@ -28,10 +26,10 @@ import {
   addLabel, removeLabel,
   type AuthorRow, type AuthorDetail, type ScanResult, type ScanProgress, type DiscoveryWork, type DormantWork,
   type RenameItem, type RenameResult, type SearchResults, type HomeData, type PlaybackContext,
-  type ChapterRow, type TagStat, type MetadataProposal, type MetadataApplyReport,
+  type ChapterRow, type TagStat,
   type SeriesView, type ChapterJournal, type JournalResults, type ChapterBookmark,
   type ScopedResults, type SavedSearch, type Collection,
-  type ImportReport, type HealthReport, type MetaTerm, type LabelType,
+  type MetaTerm, type LabelType,
 } from "./lib/api";
 import { hasScopedTokens } from "./lib/query";
 import { HomeView } from "./views/HomeView";
@@ -40,7 +38,6 @@ import { LibraryView } from "./views/LibraryView";
 import { AuthorDetailView } from "./views/AuthorDetailView";
 import { DiscoveryView } from "./views/DiscoveryView";
 import { RenameView } from "./views/RenameView";
-import { MetadataView } from "./views/MetadataView";
 import { SettingsView } from "./views/SettingsView";
 import { ScanView } from "./views/ScanView";
 import { CollectionsView } from "./components/CollectionsView";
@@ -104,7 +101,6 @@ type Route =
   | { kind: "author" }
   | { kind: "discovery" }
   | { kind: "rename" }
-  | { kind: "metadata" }
   | { kind: "settings"; firstRun: boolean }
   | { kind: "journal" }
   | { kind: "collections" };
@@ -113,7 +109,6 @@ function shellRoute(route: Route): ShellRoute {
   if (route.kind === "home") return "home";
   if (route.kind === "discovery") return "discovery";
   if (route.kind === "rename") return "settings";
-  if (route.kind === "metadata") return "settings";
   if (route.kind === "settings") return "settings";
   if (route.kind === "journal") return "journal";
   if (route.kind === "collections") return "collections";
@@ -160,11 +155,6 @@ export default function App() {
   const [resolvedCollections, setResolvedCollections] = useState<Record<number, ScopedResults | undefined>>({});
   const [collectionsInitialOpenId, setCollectionsInitialOpenId] = useState<number | null>(null);
 
-  // ---- M19 backup & maintenance ----
-  const [importReport, setImportReport] = useState<ImportReport | null>(null);
-  const [healthReport, setHealthReport] = useState<HealthReport | null>(null);
-  const [restoreStaged, setRestoreStaged] = useState(false);
-
   // ---- M21: metadata vocabulary terms ----
   const [metaTerms, setMetaTerms] = useState<MetaTerm[]>([]);
 
@@ -200,10 +190,6 @@ export default function App() {
   const [renameItems, setRenameItems] = useState<RenameItem[]>([]);
   const [renameResult, setRenameResult] = useState<RenameResult | null>(null);
   const lastManifestRef = useRef<string | null>(null);
-
-  // ---- metadata import state ----
-  const [metadataProposals, setMetadataProposals] = useState<MetadataProposal[]>([]);
-  const [metadataResult, setMetadataResult] = useState<MetadataApplyReport | null>(null);
 
   // ---- player state ----
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -505,11 +491,6 @@ export default function App() {
     await refreshDetailAfterJournalMutation();
   }
 
-  async function onChapterSortChange(workId: number, sort: string) {
-    await setWorkChapterSort(workId, sort);
-    if (detailRef.current) setDetail(await getAuthorDetail(detailRef.current.id));
-  }
-
   // ---- M17: journal view helpers ----
 
   async function loadJournal(q: string) {
@@ -667,21 +648,6 @@ export default function App() {
     setRenameItems(await previewRenames());
   }
 
-  async function openMetadata() {
-    setMetadataResult(null);
-    setMetadataProposals(await previewMetadata());
-    setRoute({ kind: "metadata" });
-  }
-  async function reloadMetadataPreview() {
-    setMetadataResult(null);
-    setMetadataProposals(await previewMetadata());
-  }
-  async function doApplyMetadata(accepted: MetadataProposal[]) {
-    const res = await applyMetadata(accepted);
-    setMetadataResult(res);
-    setMetadataProposals(await previewMetadata()); // refresh to remove applied diffs
-  }
-
   async function openDiscovery() {
     setForYou(await getDiscovery());
     await refreshTags();
@@ -781,15 +747,7 @@ export default function App() {
     const d = await getAuthorDetail(id);
     setDetail(d);
     setRoute({ kind: "author" });
-    // Load persisted series; if none yet, auto-detect-and-apply silently (low friction).
-    let series = await getAuthorSeries(id);
-    if (series.length === 0) {
-      const proposals = await detectSeries(id);
-      if (proposals.length > 0) {
-        await applySeries(id, proposals);
-        series = await getAuthorSeries(id);
-      }
-    }
+    const series = await getAuthorSeries(id);
     setAuthorSeries(series);
     // Load auto-tag suggestions for each of this author's works.
     for (const work of d.works) {
@@ -1005,25 +963,6 @@ export default function App() {
     await reorderCollections(ids);
     await refreshCollections();
   }
-
-  // ---- M19 backup & maintenance handlers ----
-  const onExportJson = async () => {
-    const path = await save({ defaultPath: "audioshelf-curation.json", filters: [{ name: "JSON", extensions: ["json"] }] });
-    if (path) await exportCurationJson(path, Date.now());
-  };
-  const onExportSnapshot = async () => {
-    const path = await save({ defaultPath: "audioshelf-snapshot.db", filters: [{ name: "SQLite", extensions: ["db"] }] });
-    if (path) await exportDbSnapshot(path);
-  };
-  const onImportJson = async () => {
-    const path = await open({ multiple: false, filters: [{ name: "JSON", extensions: ["json"] }] });
-    if (typeof path === "string") setImportReport(await importCurationJson(path));
-  };
-  const onRestoreSnapshot = async () => {
-    const path = await open({ multiple: false, filters: [{ name: "SQLite", extensions: ["db"] }] });
-    if (typeof path === "string") { await stageDbRestore(path); setRestoreStaged(true); }
-  };
-  const onHealthScan = async () => setHealthReport(await libraryHealthScan());
 
   useEffect(() => {
     void refreshSavedSearches();
@@ -1359,19 +1298,7 @@ export default function App() {
                   await refreshTags();
                   setRoute({ kind: "settings", firstRun: false });
                 },
-                // Surface 2: MetadataView — WAV fixtures carry no embedded tags so the
-                // diff list will be empty (no proposals). Capture honest empty state.
-                showMetadataDiff: async () => {
-                  await openMetadata();
-                },
-                // Surface 3: Series spine in AuthorDetail — openAuthor already runs
-                // detectSeries/applySeries; with the numeric fixtures the series may or
-                // may not be detected. Either way the author detail renders correctly.
-                showSeriesSpine: async () => {
-                  const list = await getAuthors();
-                  if (list.length > 0) await openAuthor(list[0].id);
-                },
-                // Surface 4 (now surface 4): Forgotten shelf on Home — seed a play event far in the past
+                // Surface 2 (now surface 2): Forgotten shelf on Home — seed a play event far in the past
                 // (91 days ago) so getDormantWorks(now, 30) returns it, then open Home.
                 // Self-contained: reset first, then seed exactly one old event.
                 showForgottenShelf: async () => {
@@ -1637,50 +1564,6 @@ export default function App() {
                   setScopedResults(sr);
                   setResults(null);
                   setRoute({ kind: "library" });
-                  await settle();
-                },
-                // Step 7: open the first author and set its first work's chapter sort to
-                // "title-az" so the sort control is visible in AuthorDetail.
-                // We navigate first (so the route is set), then set chapter sort and
-                // refresh the detail — avoiding a second openAuthor call that re-runs
-                // detectSeries (already applied in earlier steps).
-                showChapterSort: async () => {
-                  const list = await getAuthors();
-                  if (list.length > 0) {
-                    const d0 = await getAuthorDetail(list[0].id);
-                    setDetail(d0);
-                    setRoute({ kind: "author" });
-                    const work = d0.works[0];
-                    if (work) {
-                      await setWorkChapterSort(work.id, "title_asc").catch(() => {});
-                      const d1 = await getAuthorDetail(list[0].id);
-                      setDetail(d1);
-                    }
-                  }
-                  await settle();
-                },
-                // Step 8: open Settings with the Backup & maintenance section visible
-                // (all five action buttons: export JSON, export snapshot, import JSON,
-                // restore snapshot, health scan).
-                showBackupMaintenance: async () => {
-                  setHealthReport(null);
-                  setImportReport(null);
-                  setRestoreStaged(false);
-                  setRoute({ kind: "settings", firstRun: false });
-                  await settle();
-                  // Scroll the backup section into view.
-                  document.querySelector(".backup-maintenance")?.scrollIntoView({ block: "start" });
-                  await settle();
-                },
-                // Step 9: run the health scan so the HealthReport panel renders (counts +
-                // any issue lists + schema version banner). Over synthetic fixtures some
-                // checks may return zero issues — the shot proves the surface renders.
-                showHealthReport: async () => {
-                  const report = await libraryHealthScan();
-                  setHealthReport(report);
-                  setRoute({ kind: "settings", firstRun: false });
-                  await settle();
-                  document.querySelector(".health-report")?.scrollIntoView({ block: "start" });
                   await settle();
                 },
               })
@@ -3053,7 +2936,6 @@ export default function App() {
           onDeleteBookmark={handleDeleteBookmark}
           onSetWorkReEntryNote={handleSetWorkReEntryNote}
           onSetWorkRating={handleSetWorkRating}
-          onChapterSortChange={onChapterSortChange}
           metaSuggestions={metaSuggestions}
           onAddChapterMeta={handleAddChapterMeta}
           onRemoveChapterMeta={handleRemoveChapterMeta}
@@ -3098,17 +2980,6 @@ export default function App() {
         />
       );
     }
-    if (route.kind === "metadata") {
-      return (
-        <MetadataView
-          proposals={metadataProposals}
-          result={metadataResult}
-          onApply={doApplyMetadata}
-          onReload={reloadMetadataPreview}
-          onBack={openSettings}
-        />
-      );
-    }
     if (route.kind === "settings") {
       return (
         <SettingsView
@@ -3139,14 +3010,6 @@ export default function App() {
           onDensityChange={onDensityChange}
           a11y={a11y}
           onA11yChange={updateA11y}
-          onExportJson={onExportJson}
-          onExportSnapshot={onExportSnapshot}
-          onImportJson={onImportJson}
-          onRestoreSnapshot={onRestoreSnapshot}
-          onHealthScan={onHealthScan}
-          importReport={importReport}
-          healthReport={healthReport}
-          restoreStaged={restoreStaged}
           metaTerms={metaTerms}
           onCreateMetaTerm={handleCreateMetaTerm}
           onRenameMetaTerm={handleRenameMetaTerm}
@@ -3158,7 +3021,6 @@ export default function App() {
           onDeleteLabelType={handleDeleteLabelType}
           onReorderLabelTypes={handleReorderLabelTypes}
           onOpenRename={openRename}
-          onOpenMetadata={openMetadata}
         />
       );
     }

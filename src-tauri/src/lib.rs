@@ -1,4 +1,3 @@
-mod backup;
 mod capture;
 mod commands;
 mod covers;
@@ -14,7 +13,7 @@ mod scoped;
 mod rename;
 mod scan;
 
-use commands::{DbPathState, DbState};
+use commands::DbState;
 use launch::LaunchArgs;
 use std::sync::Mutex;
 use tauri::Manager;
@@ -31,10 +30,8 @@ pub fn run() {
         .manage(args)
         .setup(|app| {
             let handle = app.handle();
-            let db_path = commands::resolve_db_path(&handle);
             let conn = commands::init_db(&handle);
             app.manage(DbState(Mutex::new(conn)));
-            app.manage(DbPathState(db_path));
             app.manage(commands::ScanControl(std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false))));
             // Cover thumbnails are cached here and served via the asset protocol.
             let covers_dir = handle
@@ -90,10 +87,6 @@ pub fn run() {
             commands::clear_tag_alias,
             commands::set_tag_parent,
             commands::clear_tag_parent,
-            commands::preview_metadata,
-            commands::apply_metadata,
-            commands::detect_series,
-            commands::apply_series,
             commands::get_author_series,
             commands::get_dormant_works,
             commands::get_more_like_this,
@@ -116,12 +109,6 @@ pub fn run() {
             commands::reorder_collections,
             commands::resolve_collection,
             commands::bulk_set_work_tags,
-            commands::set_work_chapter_sort,
-            commands::library_health_scan,
-            commands::export_curation_json,
-            commands::export_db_snapshot,
-            commands::import_curation_json,
-            commands::stage_db_restore,
             commands::open_mini_player,
             commands::close_mini_player,
             commands::create_metadata_term,
@@ -144,14 +131,12 @@ pub fn run() {
 
 // Exposed for integration tests.
 pub mod testing {
-    pub use crate::backup::{apply_curation_import, apply_pending_restore, build_curation_export, stage_db_restore};
-    pub use crate::commands::{apply_metadata_proposals, apply_series_proposals, build_metadata_proposals, detect_series_for_author, query_author_detail, query_author_series, query_authors, query_dormant_works, more_like_this, suggest_tags_from, search_library_for_test, SeriesMemberProposal, SeriesProposal, SeriesView};
+    pub use crate::commands::{query_author_detail, query_author_series, query_authors, query_dormant_works, more_like_this, suggest_tags_from, search_library_for_test, SeriesView};
     pub use crate::covers::{
         cover_cache_for_chapter, find_folder_image, make_thumbnail_png, read_embedded_picture,
         CoverPriority,
     };
     pub use crate::db::{open_at_version, open_in_memory};
-    pub use crate::model::{MetadataApplyReport, MetadataProposal};
     pub use crate::regroup::regroup_author;
     pub use crate::rename::{build_plan, execute, undo, ItemStatus};
     pub use crate::query::{parse_query, CmpOp, DurationFilter, ParsedQuery, StatusFilter};

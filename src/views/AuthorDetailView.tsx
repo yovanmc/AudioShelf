@@ -22,14 +22,6 @@ const WORK_SORT_OPTIONS: SelectOption<string>[] = [
   { value: "played", label: "Played %" },
 ];
 
-const CHAPTER_SORT_OPTIONS: SelectOption<string>[] = [
-  { value: "", label: "Chapter order" },
-  { value: "number_desc", label: "Reverse order" },
-  { value: "title_asc", label: "Title A–Z" },
-  { value: "title_desc", label: "Title Z–A" },
-  { value: "duration_asc", label: "Shortest first" },
-  { value: "duration_desc", label: "Longest first" },
-];
 
 /** Compact inline "Where I left off" note field. */
 function WorkReEntryField(props: {
@@ -174,7 +166,6 @@ export function AuthorDetailView(props: {
   onDeleteBookmark?: (bookmarkId: number) => void;
   onSetWorkReEntryNote?: (workId: number, note: string) => void;
   onSetWorkRating?: (workId: number, rating: string) => void;
-  onChapterSortChange?: (workId: number, sort: string) => void;
   // ---- M21 per-entity metadata editor props (all optional so existing tests stay unbroken) ----
   metaSuggestions?: string[];
   onAddChapterMeta?: (chapterId: number, facet: string, value: string) => void;
@@ -406,17 +397,6 @@ export function AuthorDetailView(props: {
                       )}
                     </div>
                   )}
-                  {props.onChapterSortChange && (
-                    <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                      <span className="muted" style={{ fontSize: "0.85rem" }}>Chapter order:</span>
-                      <Select<string>
-                        label={`Chapter sort for ${w.baseTitle}`}
-                        value={w.chapterSort}
-                        options={CHAPTER_SORT_OPTIONS}
-                        onChange={(v) => props.onChapterSortChange!(w.id, v)}
-                      />
-                    </div>
-                  )}
                 </div>
               );
             }
@@ -532,17 +512,6 @@ export function AuthorDetailView(props: {
                     onSave={props.onSetWorkRating}
                   />
                 )}
-              </div>
-            )}
-            {props.onChapterSortChange && (
-              <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                <span className="muted" style={{ fontSize: "0.85rem" }}>Chapter order:</span>
-                <Select<string>
-                  label={`Chapter sort for ${w.baseTitle}`}
-                  value={w.chapterSort}
-                  options={CHAPTER_SORT_OPTIONS}
-                  onChange={(v) => props.onChapterSortChange!(w.id, v)}
-                />
               </div>
             )}
             {!collapsed.has(w.id) && (

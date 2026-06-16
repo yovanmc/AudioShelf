@@ -18,7 +18,7 @@ const detail: AuthorDetail = {
       labels: [],
       reEntryNote: "",
       completionRating: "",
-      chapterSort: "",
+
       metadata: [],
       chapters: [
         { id: 100, title: "Cool Story", chapterNo: 1, format: "mp3", durationSecs: 65, filePath: "x/Cool Story.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
@@ -276,7 +276,7 @@ describe("AuthorDetailView", () => {
           labels: [],
           reEntryNote: "",
           completionRating: "",
-          chapterSort: "",
+    
           metadata: [],
           chapters: [
             { id: 100, title: "Cool Chapter A", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/a.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
@@ -289,7 +289,7 @@ describe("AuthorDetailView", () => {
           labels: [],
           reEntryNote: "",
           completionRating: "",
-          chapterSort: "",
+    
           metadata: [],
           chapters: [
             { id: 200, title: "Other Chapter B", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/b.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
@@ -341,7 +341,7 @@ describe("AuthorDetailView", () => {
           labels: [],
           reEntryNote: "",
           completionRating: "",
-          chapterSort: "",
+    
           metadata: [],
           chapters: [
             { id: 100, title: "Alpha Ch1", chapterNo: 1, format: "mp3", durationSecs: 60, filePath: "x/a.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
@@ -354,7 +354,7 @@ describe("AuthorDetailView", () => {
           labels: [],
           reEntryNote: "",
           completionRating: "",
-          chapterSort: "",
+    
           metadata: [],
           chapters: [
             { id: 200, title: "Bravo Ch1", chapterNo: 1, format: "mp3", durationSecs: 300, filePath: "x/b.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
@@ -452,7 +452,7 @@ describe("AuthorDetailView", () => {
           labels: [],
           reEntryNote: "",
           completionRating: "",
-          chapterSort: "",
+    
           metadata: [],
           chapters: [
             // 2h 5m = 7500s
@@ -484,7 +484,7 @@ describe("AuthorDetailView", () => {
           labels: [],
           reEntryNote: "",
           completionRating: "",
-          chapterSort: "",
+    
           metadata: [],
           chapters: [
             { id: 300, title: "Part 1", chapterNo: 1, format: "mp3", durationSecs: 3600, filePath: "x/1.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
