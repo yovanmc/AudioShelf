@@ -4,7 +4,6 @@ mod commands;
 mod covers;
 mod db;
 mod grouping;
-mod insights;
 mod launch;
 mod model;
 mod natsort;
@@ -74,7 +73,6 @@ pub fn run() {
             commands::get_discovery_by_tags,
             commands::get_more_from_author,
             commands::query_home,
-            commands::query_insights,
             commands::preview_renames,
             commands::apply_renames,
             commands::undo_renames,
@@ -107,7 +105,6 @@ pub fn run() {
             commands::delete_bookmark,
             commands::query_journal,
             commands::export_journal,
-            commands::export_recap_png,
             commands::advanced_search,
             commands::create_saved_search,
             commands::list_saved_searches,
@@ -139,8 +136,7 @@ pub fn run() {
             commands::create_label_type,
             commands::rename_label_type,
             commands::delete_label_type,
-            commands::reorder_label_types,
-            commands::query_played_in_range
+            commands::reorder_label_types
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -155,7 +151,6 @@ pub mod testing {
         CoverPriority,
     };
     pub use crate::db::{open_at_version, open_in_memory};
-    pub use crate::insights::{build_insights, civil_from_days, compute_insights, longest_run, weekday_of, Ev, WorkAgg};
     pub use crate::model::{MetadataApplyReport, MetadataProposal};
     pub use crate::regroup::regroup_author;
     pub use crate::rename::{build_plan, execute, undo, ItemStatus};
