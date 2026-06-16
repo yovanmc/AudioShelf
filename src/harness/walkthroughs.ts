@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28", "m29", "m30", "m34", "m35"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28", "m29", "m30", "m34", "m35"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -201,20 +201,6 @@ export function journalSteps(nav: {
     { name: "journal-browse", run: nav.showJournalBrowse },
     { name: "journal-search", run: nav.showJournalSearch },
     { name: "now-playing-bookmarks", run: nav.showNowPlayingBookmarks },
-  ];
-}
-
-export function insightsSteps(nav: {
-  showInsightsEmpty: () => Promise<void>;
-  showInsightsOverview: () => Promise<void>;
-  showInsightsTrends: () => Promise<void>;
-  showInsightsRecap: () => Promise<void>;
-}): Step[] {
-  return [
-    { name: "insights-empty", run: nav.showInsightsEmpty },
-    { name: "insights-overview", run: nav.showInsightsOverview },
-    { name: "insights-trends", run: nav.showInsightsTrends },
-    { name: "insights-recap", run: nav.showInsightsRecap },
   ];
 }
 
@@ -390,37 +376,28 @@ export function m26Steps(nav: {
 }
 
 /**
- * Build the "m27" walkthrough: ten surfaces introduced in M27 (Reflection that Connects) —
- * runtime seed (note + bookmark + rating + re-entry note + play_events on Jane Doe's first
- * chapter so the heatmap/rhythm have activity), journal with play affordance, insights
- * Reflections stat, played-range drill-down, tag-to-library drill, author-detail journal
- * affordance on the seeded chapter, back-nav on Journal & Insights, and nav grouping
- * showing Collections under Browse + Journal/Insights under My listening.
+ * Build the "m27" walkthrough: the journal-centric surfaces from M27 (Reflection that
+ * Connects) — runtime seed (note + bookmark + rating + re-entry note + play_events on
+ * Jane Doe's first chapter), journal with play affordance, author-detail journal
+ * affordance on the seeded chapter, back-nav on Journal, and nav grouping showing
+ * Collections under Browse + Journal under My listening.
  * All data is seeded at runtime (idempotently) so on-disk fixtures stay 43/44/47.
  */
 export function m27Steps(nav: {
   seedJournalAndEvents: () => Promise<void>;
   showJournalPlayable: () => Promise<void>;
   showJournalPlay: () => Promise<void>;
-  showInsightsReflections: () => Promise<void>;
-  showPlayedRange: () => Promise<void>;
-  showInsightsTagToLibrary: () => Promise<void>;
   showChapterJournalAffordance: () => Promise<void>;
   showJournalBack: () => Promise<void>;
-  showInsightsBack: () => Promise<void>;
   showNavGroups: () => Promise<void>;
 }): Step[] {
   return [
     { name: "01-seed", run: nav.seedJournalAndEvents },
     { name: "02-journal-playable", run: nav.showJournalPlayable },
     { name: "03-journal-play", run: nav.showJournalPlay },
-    { name: "04-insights-reflections", run: nav.showInsightsReflections },
-    { name: "05-played-range", run: nav.showPlayedRange },
-    { name: "06-insights-tag-to-library", run: nav.showInsightsTagToLibrary },
-    { name: "07-chapter-journal-affordance", run: nav.showChapterJournalAffordance },
-    { name: "08-journal-back", run: nav.showJournalBack },
-    { name: "09-insights-back", run: nav.showInsightsBack },
-    { name: "10-nav-groups", run: nav.showNavGroups },
+    { name: "04-chapter-journal-affordance", run: nav.showChapterJournalAffordance },
+    { name: "05-journal-back", run: nav.showJournalBack },
+    { name: "06-nav-groups", run: nav.showNavGroups },
   ];
 }
 

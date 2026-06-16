@@ -1370,16 +1370,6 @@ pub fn query_home(state: tauri::State<DbState>, now_ms: i64, tz_offset_minutes: 
 }
 
 #[tauri::command]
-pub fn query_insights(
-    state: tauri::State<DbState>,
-    now_ms: i64,
-    tz_offset_minutes: i64,
-) -> Result<crate::model::InsightsData, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    crate::insights::compute_insights(&conn, now_ms, tz_offset_minutes).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub fn get_discovery(state: tauri::State<DbState>) -> Result<Vec<DiscoveryWork>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     discovery_for_you(&conn).map_err(|e| e.to_string())
@@ -2073,7 +2063,7 @@ pub fn reset_play_history(state: tauri::State<DbState>) -> Result<(), String> {
 }
 
 /// Harness-only: insert play_events at arbitrary timestamps (and mark those chapters played),
-/// so the `insights` walkthrough can populate a deterministic heatmap/trends across many days.
+/// so the journal / m27 walkthrough can seed deterministic listening activity across many days.
 /// NOT wired into any user-facing UI.
 #[tauri::command]
 pub fn seed_play_events(
@@ -2743,19 +2733,6 @@ pub fn export_journal(state: tauri::State<DbState>, path: String, format: String
     Ok(JournalExportReport { path, format, entry_count: entries.len() })
 }
 
-/// Write the recap PNG bytes (rasterized client-side from the recap SVG) to a user-chosen path.
-/// Read-only-on-disk is preserved: this writes only to a non-audio path the user picked via the
-/// save dialog (`dialog:allow-save`, already granted). No image/base64 crate — the bytes are a
-/// finished PNG produced by the WebView canvas.
-#[tauri::command]
-pub fn export_recap_png(path: String, bytes: Vec<u8>) -> Result<String, String> {
-    if bytes.is_empty() {
-        return Err("empty recap image".to_string());
-    }
-    std::fs::write(&path, &bytes).map_err(|e| format!("write failed: {e}"))?;
-    Ok(path)
-}
-
 /// Additive bulk work-tagging: INSERT OR IGNORE the `add` tags and DELETE the `remove` tags
 /// for each work id. Skips empty/whitespace tags. Never a blanket replace.
 pub(crate) fn bulk_set_work_tags_rows(
@@ -3083,87 +3060,6 @@ pub fn add_metadata_value(state: tauri::State<DbState>, scope: String, id: i64, 
 pub fn remove_metadata_value(state: tauri::State<DbState>, scope: String, id: i64, term_id: i64) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     detach_value(&conn, &scope, id, term_id).map_err(|e| e.to_string())
-}
-
-// ── CUR-5: "works played in a time range" ────────────────────────────────────
-
-/// Inner read-only query: returns one ScopedWork per work that was played within
-/// [start_ms, end_ms), ordered by most-recent play in the range then title.
-/// Reuses the same per-work summary shape as `scoped::run_scoped_query`.
-pub(crate) fn played_in_range(
-    conn: &rusqlite::Connection,
-    start_ms: i64,
-    end_ms: i64,
-) -> rusqlite::Result<crate::model::ScopedResults> {
-    // 1. Distinct work-ids in the play window, ordered by last play DESC then title ASC.
-    let mut id_stmt = conn.prepare(
-        "SELECT w.id, w.base_title, a.id, COALESCE(a.display_name, a.folder_name),
-                MAX(pe.played_at) AS last_play
-         FROM play_events pe
-         JOIN chapters c ON c.id = pe.chapter_id
-         JOIN works w    ON w.id = c.work_id
-         JOIN authors a  ON a.id = w.author_id
-         WHERE pe.played_at >= ?1 AND pe.played_at < ?2
-           AND w.status = 'active'
-         GROUP BY w.id
-         ORDER BY last_play DESC, w.base_title",
-    )?;
-    let rows: Vec<(i64, String, i64, String)> = id_stmt
-        .query_map(rusqlite::params![start_ms, end_ms], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
-        })?
-        .collect::<rusqlite::Result<_>>()?;
-
-    // 2. Per-work aggregates + legacy tags (same builder pattern as run_scoped_query).
-    let mut agg = conn.prepare(
-        "SELECT COUNT(*), COALESCE(SUM(duration_secs),0), COALESCE(SUM(played),0)
-         FROM chapters WHERE work_id=?1 AND status='active'",
-    )?;
-    let mut tagstmt =
-        conn.prepare("SELECT tag FROM work_tags WHERE work_id=?1 ORDER BY tag")?;
-
-    let mut works: Vec<crate::model::ScopedWork> = Vec::new();
-    for (work_id, base_title, author_id, author_name) in rows {
-        let (chapter_count, total_secs, played_count): (i64, i64, i64) =
-            agg.query_row(rusqlite::params![work_id], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-            })?;
-        if chapter_count == 0 {
-            continue;
-        }
-        let tags: Vec<String> = tagstmt
-            .query_map(rusqlite::params![work_id], |r| r.get::<_, String>(0))?
-            .collect::<rusqlite::Result<_>>()?;
-        works.push(crate::model::ScopedWork {
-            work_id,
-            base_title,
-            author_id,
-            author_name,
-            total_secs,
-            chapter_count,
-            played_count,
-            tags,
-        });
-    }
-
-    Ok(crate::model::ScopedResults {
-        works,
-        tags: vec![],
-        text: String::new(),
-        duration_label: String::new(),
-        status_label: String::new(),
-    })
-}
-
-/// Tauri command: works played within [start_ms, end_ms). Read-only drill-down for Insights (CUR-5).
-#[tauri::command]
-pub fn query_played_in_range(
-    state: tauri::State<DbState>,
-    start_ms: i64,
-    end_ms: i64,
-) -> Result<crate::model::ScopedResults, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    played_in_range(&conn, start_ms, end_ms).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -4766,18 +4662,6 @@ mod tests {
         assert!(md.contains("★ Favorite"), "missing favorite marker");
     }
 
-    #[test]
-    fn export_recap_png_writes_bytes() {
-        let dir = std::env::temp_dir().join(format!("audioshelf_recap_test_{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("recap.png");
-        let bytes = vec![0x89u8, 0x50, 0x4e, 0x47, 1, 2, 3];
-        std::fs::write(&path, &bytes).unwrap(); // mirror of the command body (command needs tauri State)
-        let read = std::fs::read(&path).unwrap();
-        assert_eq!(read, bytes);
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
     // ---- M19 Task 4: saved-search + smart-collection CRUD tests -----------------------
 
     #[test]
@@ -5207,88 +5091,6 @@ mod tests {
         assert!(row.has_journal, "has_journal should be true when user_summary is non-empty");
     }
 
-    // ---- CUR-5: played_in_range --------------------------------------------------------
-
-    #[test]
-    fn played_in_range_returns_only_in_window_works_deduped() {
-        let conn = open_in_memory().unwrap();
-        // Seed: two authors, two works each, one chapter per work.
-        conn.execute_batch(
-            "INSERT INTO authors(id,folder_name,display_name,status) VALUES
-               (1,'AuthA','Author A','active'),
-               (2,'AuthB','Author B','active');
-             INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES
-               (1,1,'Alpha','alpha','active'),
-               (2,1,'Beta','beta','active'),
-               (3,2,'Gamma','gamma','active'),
-               (4,2,'Delta','delta','inactive');
-             INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status) VALUES
-               (1,1,'/a.mp3','a.mp3',1,'mp3',600,1,'active'),
-               (2,2,'/b.mp3','b.mp3',1,'mp3',1200,1,'active'),
-               (3,3,'/c.mp3','c.mp3',1,'mp3',300,1,'active'),
-               (4,4,'/d.mp3','d.mp3',1,'mp3',300,1,'active');",
-        ).unwrap();
-
-        // Window: [1000, 2000).
-        // Work 1 (Alpha): two play events — one in window, one outside. Should appear once.
-        // Work 2 (Beta): play event before window. Should NOT appear.
-        // Work 3 (Gamma): play event in window. Should appear.
-        // Work 4 (Delta): play event in window but work is inactive. Should NOT appear.
-        conn.execute_batch(
-            "INSERT INTO play_events(chapter_id, played_at) VALUES
-               (1, 1500),  -- Alpha, in window
-               (1, 500),   -- Alpha again, outside window (dedup: still just one ScopedWork)
-               (2, 800),   -- Beta, outside window
-               (3, 1800),  -- Gamma, in window
-               (4, 1600);  -- Delta (inactive work), in window",
-        ).unwrap();
-
-        let r = super::played_in_range(&conn, 1000, 2000).unwrap();
-
-        let ids: Vec<i64> = r.works.iter().map(|w| w.work_id).collect();
-        // Alpha (1) and Gamma (3) must appear; Beta (2) and Delta (4) must not.
-        assert!(ids.contains(&1), "Alpha should appear (in-window play)");
-        assert!(ids.contains(&3), "Gamma should appear (in-window play)");
-        assert!(!ids.contains(&2), "Beta should NOT appear (play outside window)");
-        assert!(!ids.contains(&4), "Delta should NOT appear (inactive work)");
-
-        // Dedup: Alpha appears exactly once even though it has 2 play_events (one in-window, one out).
-        assert_eq!(ids.iter().filter(|&&id| id == 1).count(), 1, "Alpha must be deduped to one ScopedWork");
-
-        // Ordering: Gamma's last in-window play (1800) > Alpha's (1500) → Gamma first.
-        assert_eq!(ids[0], 3, "Gamma should be first (most recent in-window play)");
-        assert_eq!(ids[1], 1, "Alpha should be second");
-
-        // Shape check: ScopedWork fields populated.
-        let alpha = r.works.iter().find(|w| w.work_id == 1).unwrap();
-        assert_eq!(alpha.base_title, "Alpha");
-        assert_eq!(alpha.author_name, "Author A");
-        assert_eq!(alpha.chapter_count, 1);
-        assert_eq!(alpha.total_secs, 600);
-
-        // Echo fields are empty (no query filter context for a range query).
-        assert!(r.tags.is_empty());
-        assert!(r.text.is_empty());
-        assert!(r.duration_label.is_empty());
-        assert!(r.status_label.is_empty());
-    }
-
-    #[test]
-    fn played_in_range_returns_empty_when_no_events_in_window() {
-        let conn = open_in_memory().unwrap();
-        conn.execute_batch(
-            "INSERT INTO authors(id,folder_name,display_name,status) VALUES (1,'A','A','active');
-             INSERT INTO works(id,author_id,base_title,sort_key,status) VALUES (1,1,'W','w','active');
-             INSERT INTO chapters(id,work_id,file_path,raw_filename,chapter_no,format,duration_secs,played,status)
-               VALUES (1,1,'/a.mp3','a.mp3',1,'mp3',100,1,'active');
-             INSERT INTO play_events(chapter_id, played_at) VALUES (1, 500);",
-        ).unwrap();
-
-        // Window starts after the only play event.
-        let r = super::played_in_range(&conn, 1000, 2000).unwrap();
-        assert!(r.works.is_empty(), "no works when all play events fall outside the window");
-    }
-
     // ---- CUR-10: affection-seed discovery -----------------------------------------------
 
     #[test]
@@ -5364,29 +5166,6 @@ mod tests {
                 "cold-start results must not carry affection reason, got: {:?}", w.reason
             );
         }
-    }
-
-    #[test]
-    fn compute_insights_counts_rated_and_reentered_works() {
-        let conn = open_in_memory().unwrap();
-        // Seed works: one rated, one re-entered, one both, one neither.
-        conn.execute_batch(
-            "INSERT INTO authors(id,folder_name,display_name,status) VALUES (1,'A','A','active');
-             INSERT INTO works(id,author_id,base_title,sort_key,status,completion_rating,re_entry_note) VALUES
-               (1,1,'Rated Only','rated','active','loved it',''),
-               (2,1,'ReEntered Only','reentered','active','','came back'),
-               (3,1,'Both','both','active','great','read again'),
-               (4,1,'Neither','neither','active','',''),
-               (5,1,'Inactive Rated','inactive_rated','inactive','great','');",
-        ).unwrap();
-
-        let now_ms = 30 * 86_400_000i64;
-        let data = crate::insights::compute_insights(&conn, now_ms, 0).unwrap();
-
-        // works_rated = works 1 + 3 (both active with non-empty completion_rating).
-        assert_eq!(data.works_rated, 2, "works_rated should count works with non-empty completion_rating (active only)");
-        // works_re_entered = works 2 + 3 (both active with non-empty re_entry_note).
-        assert_eq!(data.works_re_entered, 2, "works_re_entered should count works with non-empty re_entry_note (active only)");
     }
 
     // ---- M32: index existence, query equivalence, and EXPLAIN QUERY PLAN proof ----

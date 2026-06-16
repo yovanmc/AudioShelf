@@ -4,9 +4,9 @@ import { IconButton } from "./ui";
 import type { Density } from "../lib/density";
 import { type A11yPrefs, a11yDataAttrs } from "../lib/a11y";
 
-export type ShellRoute = "home" | "library" | "discovery" | "rename" | "metadata" | "settings" | "journal" | "insights" | "collections";
+export type ShellRoute = "home" | "library" | "discovery" | "rename" | "metadata" | "settings" | "journal" | "collections";
 
-export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onSettings, onJournal, onInsights, onCollections, onOpenPalette, hasHistory, density, a11y, children, player }: {
+export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onSettings, onJournal, onCollections, onOpenPalette, hasHistory, density, a11y, children, player }: {
   active: ShellRoute;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
@@ -15,7 +15,6 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
   onDiscovery: () => void;
   onSettings: () => void;
   onJournal: () => void;
-  onInsights: () => void;
   onCollections: () => void;
   onOpenPalette: () => void;
   hasHistory: boolean;
@@ -34,7 +33,6 @@ export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibra
     ] },
     { label: "My listening", items: [
       { key: "journal", label: "Journal", icon: "journal", action: onJournal },
-      { key: "insights", label: "Insights", icon: "insights", action: onInsights },
     ] },
   ];
   const groups = hasHistory ? allGroups : allGroups.filter(g => g.label !== "My listening");

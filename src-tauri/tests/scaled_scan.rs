@@ -1,4 +1,4 @@
-use audioshelf_lib::testing::{open_in_memory, scan_into, query_authors, search_library_for_test, compute_insights};
+use audioshelf_lib::testing::{open_in_memory, scan_into, query_authors, search_library_for_test};
 
 #[test]
 fn scaled_fixture_scans_to_expected_counts_and_rescan_skips() {
@@ -50,13 +50,6 @@ fn measure_queries_at_scale() {
     let conn = open_in_memory().unwrap();
     scan_into(&conn, tmp.path()).unwrap();
 
-    // Seed a moderate number of play_events so compute_insights' event scan is non-trivial.
-    conn.execute_batch(
-        "INSERT INTO play_events(chapter_id, played_at)
-         SELECT id, 1700000000000 + id * 1000 FROM chapters LIMIT 3000;",
-    )
-    .unwrap();
-
     let t = std::time::Instant::now();
     let _ = query_authors(&conn).unwrap();
     let qa_ms = t.elapsed().as_millis();
@@ -65,15 +58,10 @@ fn measure_queries_at_scale() {
     let _ = search_library_for_test(&conn, "story").unwrap();
     let search_ms = t.elapsed().as_millis();
 
-    let t = std::time::Instant::now();
-    let _ = compute_insights(&conn, 1700100000000, 0).unwrap();
-    let insights_ms = t.elapsed().as_millis();
-
     println!(
-        "QUERY-METRICS {{\"chapters\":{},\"queryAuthorsMs\":{},\"searchMs\":{},\"insightsMs\":{}}}",
+        "QUERY-METRICS {{\"chapters\":{},\"queryAuthorsMs\":{},\"searchMs\":{}}}",
         authors * works * chapters,
         qa_ms,
-        search_ms,
-        insights_ms
+        search_ms
     );
 }
