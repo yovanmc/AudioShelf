@@ -2001,11 +2001,11 @@ export default function App() {
                 // Step 1 (seed): idempotently seed — for Jane Doe's first chapter — a note
                 // at 12 s, a bookmark at 30 s, a user_summary, a completion_rating, and a
                 // re_entry_note; then insert play_events at known timestamps anchored to
-                // 2026-06-12T18:00:00Z so the heatmap has a clickable day. Also seed a
-                // tag on Jane so the top-tag bar in Insights is populated for the tag-drill
-                // step. seedPlayEvents is insert-or-ignore so re-runs don't accumulate.
+                // 2026-06-12T18:00:00Z so the journal has deterministic activity. Also seed a
+                // tag on Jane so her tags are populated.
+                // seedPlayEvents is insert-or-ignore so re-runs don't accumulate.
                 seedJournalAndEvents: async () => {
-                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0); // same anchor as insights walkthrough
+                  const NOW = Date.UTC(2026, 5, 12, 18, 0, 0); // deterministic anchor for seeded activity
                   const DAY = 86_400_000;
                   const list = await getAuthors();
                   const jane = list.find((a) => a.name === "Jane Doe") ?? list[0];
@@ -2027,7 +2027,7 @@ export default function App() {
                   // Work-level meta — idempotent SET
                   await setWorkRating(work.id, "captivating");
                   await setWorkReEntryNote(work.id, "Resume from the chapter about the journey.");
-                  // Seed a tag on Jane so Insights top-tags list is populated.
+                  // Seed a tag on Jane so her tags are populated.
                   await setAuthorTags(jane.id, ["cozy"]);
                   // Play events — seedPlayEvents is insert-or-ignore in the backend.
                   // Seed events across the last 7 days relative to NOW so today+adjacent

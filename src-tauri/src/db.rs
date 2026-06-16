@@ -239,7 +239,7 @@ fn migration_v11_scan_tracking(conn: &Connection) -> rusqlite::Result<()> {
 
 /// v12 — query performance: the two genuinely-missing indices.
 /// `idx_chapters_work` is a COVERING index for the work-grouped aggregations in
-/// `query_authors` and `compute_insights` (work_id join + status/played/duration read
+/// `query_authors` (work_id join + status/played/duration read
 /// entirely from the index → index-only scan). `idx_play_events_chapter` is the FK
 /// index for per-chapter event lookups. (works.author_id and metadata_terms(facet,value)
 /// are intentionally NOT added — already covered by their UNIQUE auto-indexes; see the

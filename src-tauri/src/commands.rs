@@ -2063,7 +2063,7 @@ pub fn reset_play_history(state: tauri::State<DbState>) -> Result<(), String> {
 }
 
 /// Harness-only: insert play_events at arbitrary timestamps (and mark those chapters played),
-/// so the `insights` walkthrough can populate a deterministic heatmap/trends across many days.
+/// so the journal / m27 walkthrough can seed deterministic listening activity across many days.
 /// NOT wired into any user-facing UI.
 #[tauri::command]
 pub fn seed_play_events(
