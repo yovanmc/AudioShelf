@@ -48,7 +48,7 @@ export function playerSteps(nav: {
   ];
 }
 
-export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "insights", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28", "m29", "m30", "m34", "m35"] as const;
+export const walkthroughs = ["home", "browse", "player", "discovery", "rename", "grouping", "settings", "m7", "covers", "tags", "m12", "m16", "journal", "m19", "m20", "m21", "m24", "m25", "m26", "m27", "m28", "m29", "m30", "m34", "m35"] as const;
 export type WalkthroughName = (typeof walkthroughs)[number];
 
 export function discoverySteps(nav: {
@@ -376,12 +376,11 @@ export function m26Steps(nav: {
 }
 
 /**
- * Build the "m27" walkthrough: ten surfaces introduced in M27 (Reflection that Connects) —
- * runtime seed (note + bookmark + rating + re-entry note + play_events on Jane Doe's first
- * chapter so the heatmap/rhythm have activity), journal with play affordance, insights
- * Reflections stat, played-range drill-down, tag-to-library drill, author-detail journal
- * affordance on the seeded chapter, back-nav on Journal & Insights, and nav grouping
- * showing Collections under Browse + Journal/Insights under My listening.
+ * Build the "m27" walkthrough: the journal-centric surfaces from M27 (Reflection that
+ * Connects) — runtime seed (note + bookmark + rating + re-entry note + play_events on
+ * Jane Doe's first chapter), journal with play affordance, author-detail journal
+ * affordance on the seeded chapter, back-nav on Journal, and nav grouping showing
+ * Collections under Browse + Journal under My listening.
  * All data is seeded at runtime (idempotently) so on-disk fixtures stay 43/44/47.
  */
 export function m27Steps(nav: {
