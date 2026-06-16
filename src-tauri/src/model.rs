@@ -318,27 +318,6 @@ pub struct JournalExportReport {
     pub entry_count: usize,
 }
 
-/// One field proposed to change based on embedded audio metadata.
-/// `field` is one of: "title" (work base_title), "order" (chapter_no), "tag" (genre).
-#[derive(Serialize, serde::Deserialize, Debug, PartialEq, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct MetadataProposal {
-    pub chapter_id: i64,
-    pub work_id: i64,
-    pub field: String,      // "title" | "order" | "tag"
-    pub current: String,
-    pub proposed: String,
-    pub source: String,     // always "embedded"
-}
-
-/// Result of applying a set of metadata proposals.
-#[derive(Serialize, Debug, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct MetadataApplyReport {
-    pub applied: i64,
-    pub skipped: i64,
-}
-
 // Harness-only seeding payload (journal / m27 walkthrough). Deserialize from camelCase JS.
 #[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -409,40 +388,3 @@ pub struct SavedSearch { pub id: i64, pub name: String, pub query: String }
 #[serde(rename_all = "camelCase")]
 pub struct Collection { pub id: i64, pub name: String, pub query: String, pub position: i64 }
 
-#[derive(Serialize, Debug, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct HealthItem {
-    pub chapter_id: i64,
-    pub title: String,
-    pub work_title: String,
-    pub author_name: String,
-    pub file_path: String,
-    pub size_bytes: i64,
-}
-
-#[derive(Serialize, Debug, PartialEq, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct HealthReport {
-    pub missing_files: Vec<HealthItem>,
-    pub zero_byte: Vec<HealthItem>,
-    pub unreadable: Vec<HealthItem>,
-    pub schema_version: i64,
-    pub latest_schema: i64,
-    pub schema_drift: bool,
-}
-
-#[derive(Serialize, Debug, PartialEq, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportReport {
-    pub tags_added: i64,
-    pub played_marked: i64,
-    pub favorites_marked: i64,
-    pub journal_fields_filled: i64,
-    pub notes_added: i64,
-    pub bookmarks_added: i64,
-    pub collections_added: i64,
-    pub searches_added: i64,
-    pub unmatched_authors: i64,
-    pub unmatched_works: i64,
-    pub unmatched_chapters: i64,
-}
