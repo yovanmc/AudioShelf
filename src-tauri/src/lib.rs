@@ -109,7 +109,6 @@ pub fn run() {
             commands::reorder_collections,
             commands::resolve_collection,
             commands::bulk_set_work_tags,
-            commands::set_work_chapter_sort,
             commands::open_mini_player,
             commands::close_mini_player,
             commands::create_metadata_term,

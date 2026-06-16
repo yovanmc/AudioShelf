@@ -92,7 +92,6 @@ pub struct WorkRow {
     pub chapters: Vec<ChapterRow>,
     pub re_entry_note: String,
     pub completion_rating: String,
-    pub chapter_sort: String,   // NEW: per-work chapter ordering preference
     pub metadata: Vec<MetaTag>, // derived: labels where facet!="tag"
     pub labels: Vec<MetaTag>,   // all directly-attached work-level terms (every facet)
 }

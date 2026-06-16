@@ -351,7 +351,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
     )?;
 
     let mut wstmt = conn.prepare(
-        "SELECT id, base_title, re_entry_note, completion_rating, chapter_sort FROM works WHERE author_id=?1 AND status='active'",
+        "SELECT id, base_title, re_entry_note, completion_rating FROM works WHERE author_id=?1 AND status='active'",
     )?;
     let mut works: Vec<WorkRow> = wstmt
         .query_map(params![author_id], |r| {
@@ -362,7 +362,6 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                 chapters: Vec::new(),
                 re_entry_note: r.get::<_, String>(2).unwrap_or_default(),
                 completion_rating: r.get::<_, String>(3).unwrap_or_default(),
-                chapter_sort: r.get::<_, String>(4).unwrap_or_default(),
                 metadata: Vec::new(),
                 labels: Vec::new(),
             })
@@ -406,14 +405,7 @@ pub fn query_author_detail(conn: &rusqlite::Connection, author_id: i64) -> rusql
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
-        match work.chapter_sort.as_str() {
-            "number_desc"   => chapters.sort_by(|a, b| b.chapter_no.cmp(&a.chapter_no)),
-            "title_asc"     => chapters.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase())),
-            "title_desc"    => chapters.sort_by(|a, b| b.title.to_lowercase().cmp(&a.title.to_lowercase())),
-            "duration_asc"  => chapters.sort_by(|a, b| a.duration_secs.cmp(&b.duration_secs)),
-            "duration_desc" => chapters.sort_by(|a, b| b.duration_secs.cmp(&a.duration_secs)),
-            _               => chapters.sort_by(|a, b| a.chapter_no.cmp(&b.chapter_no)), // "" / unknown = default
-        }
+        chapters.sort_by(|a, b| a.chapter_no.cmp(&b.chapter_no));
 
         // Chapter labels: all facets from chapter_metadata; derive tags + metadata.
         for ch in &mut chapters {
@@ -2420,19 +2412,6 @@ pub fn bulk_set_work_tags(
     bulk_set_work_tags_rows(&conn, &work_ids, &add, &remove).map_err(|e| e.to_string())
 }
 
-// ---- M19 Task 6: per-work chapter-sort override ----------------------------------------
-
-#[tauri::command]
-pub fn set_work_chapter_sort(state: tauri::State<DbState>, work_id: i64, sort: String) -> Result<(), String> {
-    const ALLOWED: [&str; 6] = ["", "number_desc", "title_asc", "title_desc", "duration_asc", "duration_desc"];
-    if !ALLOWED.contains(&sort.as_str()) {
-        return Err(format!("invalid chapter sort: {sort}"));
-    }
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    conn.execute("UPDATE works SET chapter_sort=?2 WHERE id=?1", params![work_id, sort]).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 // ---- M21 Task 3: metadata vocabulary CRUD commands ------------------------------------
 
 /// Create-or-fetch a metadata term. Idempotent on UNIQUE(facet, value). Trims the
@@ -3038,7 +3017,7 @@ mod tests {
         // The pre-seeded schema_version key reflects the latest migration version.
         assert_eq!(
             get_setting_value(&conn, "schema_version").unwrap(),
-            Some("13".to_string())
+            Some(crate::db::LATEST.to_string())
         );
     }
 
@@ -3407,7 +3386,7 @@ mod tests {
         ).unwrap();
         assert_eq!(full_count, 2, "full open must have both taxonomy tables");
         let ver: i64 = full_conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(ver, 13);
+        assert_eq!(ver, crate::db::LATEST);
     }
 
     #[test]
@@ -3447,7 +3426,7 @@ mod tests {
         // Upgrade to latest via open_in_memory pattern (open_at_version then migrate).
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 13);
+        assert_eq!(full_ver, crate::db::LATEST);
 
         let col3: i64 = full.query_row(
             "SELECT count(*) FROM pragma_table_info('works') WHERE name='metadata_source'",
@@ -3564,10 +3543,10 @@ mod tests {
         ).unwrap();
         assert_eq!(no_series, 0, "series tables must not exist at v3");
 
-        // After a full open (which runs migrate), both tables must exist and version is 13.
+        // After a full open (which runs migrate), both tables must exist and version is LATEST.
         let full = crate::db::open_in_memory().unwrap();
         let full_ver: i64 = full.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(full_ver, 13);
+        assert_eq!(full_ver, crate::db::LATEST);
 
         let series_count: i64 = full.query_row(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('series','work_series_membership')",
@@ -4217,24 +4196,6 @@ mod tests {
         assert_eq!(t1, vec!["fresh".to_string()]);
         let total: i64 = conn.query_row("SELECT COUNT(*) FROM work_tags WHERE tag='old'", [], |r| r.get(0)).unwrap();
         assert_eq!(total, 0);
-    }
-
-    // ---- M19 Task 6: chapter_sort_override -----------------------------------------------
-
-    #[test]
-    fn chapter_sort_override_reorders_in_detail() {
-        // Must be at least v10 so that work_metadata table exists (query_author_detail reads it).
-        let conn = crate::db::open_at_version(10).unwrap();
-        conn.execute_batch(
-            "INSERT INTO authors(id, folder_name, status) VALUES (1,'a','active');
-             INSERT INTO works(id, author_id, base_title, sort_key, status, chapter_sort) VALUES (1,1,'W','w','active','number_desc');
-             INSERT INTO chapters(id, work_id, raw_filename, chapter_no, format, duration_secs, file_path, status, played, user_summary, takeaway, is_favorite)
-               VALUES (1,1,'a.mp3',1,'mp3',10,'/a','active',0,'','',0),
-                      (2,1,'b.mp3',2,'mp3',20,'/b','active',0,'','',0);",
-        ).unwrap();
-        let detail = query_author_detail(&conn, 1).unwrap();
-        let nums: Vec<i64> = detail.works[0].chapters.iter().map(|c| c.chapter_no).collect();
-        assert_eq!(nums, vec![2, 1]); // descending
     }
 
     // ---- M21 Task 3: metadata vocabulary CRUD tests ------------------------------------

@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 "#;
 
 /// The current schema version. Bump this constant whenever a new migration step is added.
-pub(crate) const LATEST: i64 = 13;
+pub(crate) const LATEST: i64 = 14;
 
 /// Open a file-backed connection and ensure the schema exists (idempotent).
 pub fn open(path: &str) -> rusqlite::Result<Connection> {
@@ -262,6 +262,15 @@ fn migration_v13_drop_transcripts(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+fn migration_v14_drop_chapter_sort(conn: &Connection) -> rusqlite::Result<()> {
+    // M37: the per-work chapter-sort override feature is removed. After the
+    // override command + reorder logic are gone, nothing reads this column
+    // (curation export/import, its only other reader, was removed in Task 1).
+    // SQLite 3.35+ supports DROP COLUMN; the bundled rusqlite SQLite is newer.
+    conn.execute_batch("ALTER TABLE works DROP COLUMN chapter_sort;")?;
+    Ok(())
+}
+
 /// Add the metadata_terms vocabulary + chapter_metadata / author_metadata attach
 /// tables (migration v8). Faceted user-defined metadata (narrator / language / mood)
 /// applied to files and creators. Additive only — no existing table touched.
@@ -351,6 +360,9 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     if current < 11 { run_step(conn, 11, migration_v11_scan_tracking)?; }
     if current < 12 { run_step(conn, 12, migration_v12_query_indices)?; }
     if current < 13 { run_step(conn, 13, migration_v13_drop_transcripts)?; }
+    if current < 14 {
+        run_step(conn, 14, migration_v14_drop_chapter_sort)?;
+    }
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES ('schema_version', ?1)",
         [LATEST.to_string()],
@@ -419,6 +431,7 @@ pub fn open_at_version(version: i64) -> rusqlite::Result<Connection> {
     if version >= 11 { run_step(&conn, 11, migration_v11_scan_tracking)?; }
     if version >= 12 { run_step(&conn, 12, migration_v12_query_indices)?; }
     if version >= 13 { run_step(&conn, 13, migration_v13_drop_transcripts)?; }
+    if version >= 14 { run_step(&conn, 14, migration_v14_drop_chapter_sort)?; }
     Ok(conn)
 }
 
@@ -454,18 +467,18 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 13);
+        assert_eq!(ver, LATEST);
     }
 
     #[test]
     fn migrate_from_v1_is_noop_when_current() {
         let conn = open_in_memory().unwrap();
-        // Running migrate a second time must leave user_version at 13 without error.
+        // Running migrate a second time must leave user_version at LATEST without error.
         super::migrate(&conn).unwrap();
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 13);
+        assert_eq!(ver, LATEST);
     }
 
     #[test]
@@ -484,7 +497,7 @@ mod tests {
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 13);
+        assert_eq!(post, LATEST);
     }
 
     #[test]
@@ -531,7 +544,7 @@ mod tests {
         let ver: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(ver, 13);
+        assert_eq!(ver, LATEST);
     }
 
     #[test]
@@ -542,12 +555,12 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(pre, 1);
-        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale, v8 metadata, v9 playback_position, v10 label_types, v11 scan_tracking, v12 query_indices, v13 drop_transcripts.
+        // Run full migration — should add v2 tables, v3 columns, v4 series tables, v5 transcripts, v6 journal, v7 power-scale, v8 metadata, v9 playback_position, v10 label_types, v11 scan_tracking, v12 query_indices, v13 drop_transcripts, v14 drop_chapter_sort.
         super::migrate(&conn).unwrap();
         let post: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(post, 13);
+        assert_eq!(post, LATEST);
         let v2_count: i64 = conn
             .query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table'
@@ -580,7 +593,7 @@ mod tests {
         // Run the full migration to reach latest.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 13);
+        assert_eq!(post, LATEST);
 
         // Now both tables must have the column.
         let works_col: i64 = conn
@@ -638,7 +651,7 @@ mod tests {
         // Run the full migration to reach latest.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 13);
+        assert_eq!(post, LATEST);
 
         // Both tables must now exist.
         let series_count: i64 = conn.query_row(
@@ -698,7 +711,7 @@ mod tests {
         // Run the full migration.
         super::migrate(&conn).unwrap();
         let post: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(post, 13);
+        assert_eq!(post, LATEST);
 
         // transcripts was added by v5 then dropped by v13 — must not exist after full migration.
         let has_transcripts: i64 = conn
@@ -759,11 +772,11 @@ mod tests {
 
     #[test]
     fn legacy_db_upgrades_through_v6() {
-        // Open at v1 (legacy), run full migrate(), expect LATEST (v13) and journal columns present.
+        // Open at v1 (legacy), run full migrate(), expect LATEST and journal columns present.
         let conn = open_at_version(1).unwrap();
         migrate(&conn).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 13);
+        assert_eq!(v, LATEST);
     }
 
     #[test]
@@ -800,10 +813,9 @@ mod tests {
     }
 
     #[test]
-    fn open_at_version_13_reaches_latest() {
-        let conn = open_at_version(13).unwrap();
+    fn open_at_version_14_reaches_latest() {
+        let conn = open_at_version(14).unwrap();
         let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 13);
         assert_eq!(v, LATEST);
     }
 
@@ -816,6 +828,27 @@ mod tests {
         let conn13 = open_at_version(13).unwrap();
         let at13: i64 = conn13.query_row(q, [], |r| r.get(0)).unwrap();
         assert_eq!(at13, 0, "transcripts should be dropped at v13");
+    }
+
+    #[test]
+    fn migration_v14_drops_chapter_sort_column() {
+        // Open at v13 (column present from v7), full migrate to LATEST (v14), confirm gone.
+        let column_exists = |conn: &Connection, col: &str| -> bool {
+            let mut s = conn.prepare("PRAGMA table_info(works)").unwrap();
+            let cols: Vec<String> = s.query_map([], |r| r.get::<_, String>(1))
+                .unwrap()
+                .filter_map(Result::ok)
+                .collect();
+            cols.iter().any(|c| c == col)
+        };
+        let conn = open_at_version(13).unwrap();
+        let pre = column_exists(&conn, "chapter_sort");
+        assert!(pre, "chapter_sort must exist at v13");
+        crate::db::migrate(&conn).unwrap();
+        let post = column_exists(&conn, "chapter_sort");
+        assert!(!post, "chapter_sort must be dropped by v14 migration");
+        let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, LATEST);
     }
 
     #[test]
@@ -877,10 +910,10 @@ mod tests {
             rusqlite::params![chapter_id],
         ).unwrap();
 
-        // Run migrate() to apply v10 + v11 + v12 + v13.
+        // Run migrate() to apply v10 + v11 + v12 + v13 + v14.
         super::migrate(&conn).unwrap();
         let v10: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v10, 13);
+        assert_eq!(v10, LATEST);
 
         // label_types has the 4 seeded built-in rows.
         let lt_count: i64 = conn
