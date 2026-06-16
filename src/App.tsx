@@ -1298,18 +1298,7 @@ export default function App() {
                   await refreshTags();
                   setRoute({ kind: "settings", firstRun: false });
                 },
-                // Surface 2: MetadataView removed in M37 — stub navigates to Settings.
-                showMetadataDiff: async () => {
-                  setRoute({ kind: "settings", firstRun: false });
-                },
-                // Surface 3: Series spine in AuthorDetail — openAuthor already runs
-                // detectSeries/applySeries; with the numeric fixtures the series may or
-                // may not be detected. Either way the author detail renders correctly.
-                showSeriesSpine: async () => {
-                  const list = await getAuthors();
-                  if (list.length > 0) await openAuthor(list[0].id);
-                },
-                // Surface 4 (now surface 4): Forgotten shelf on Home — seed a play event far in the past
+                // Surface 2 (now surface 2): Forgotten shelf on Home — seed a play event far in the past
                 // (91 days ago) so getDormantWorks(now, 30) returns it, then open Home.
                 // Self-contained: reset first, then seed exactly one old event.
                 showForgottenShelf: async () => {
@@ -1575,22 +1564,6 @@ export default function App() {
                   setScopedResults(sr);
                   setResults(null);
                   setRoute({ kind: "library" });
-                  await settle();
-                },
-                // Step 7: chapter-sort removed in M37 — stub opens author detail.
-                showChapterSort: async () => {
-                  const list = await getAuthors();
-                  if (list.length > 0) await openAuthor(list[0].id);
-                  await settle();
-                },
-                // Step 8: backup-maintenance removed in M37 — stub opens Settings.
-                showBackupMaintenance: async () => {
-                  setRoute({ kind: "settings", firstRun: false });
-                  await settle();
-                },
-                // Step 9: health-report removed in M37 — stub opens Settings.
-                showHealthReport: async () => {
-                  setRoute({ kind: "settings", firstRun: false });
                   await settle();
                 },
               })

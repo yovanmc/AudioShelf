@@ -156,24 +156,19 @@ export function tagsSteps(nav: {
 }
 
 /**
- * Build the "m16" walkthrough: five surfaces introduced in M16 — manage-tags
- * (Settings tag manager with seeded tag stats), metadata diff-preview
- * (MetadataView in its empty/honest state), series spine (AuthorDetail — empty
- * when no numeric series detected in fixtures), forgotten shelf
+ * Build the "m16" walkthrough: three surfaces introduced in M16 — manage-tags
+ * (Settings tag manager with seeded tag stats), forgotten shelf
  * (Home with a dormant work seeded via a far-past play event), and discover reasons
  * (DiscoveryView cards showing the reason string after seeding play history + tags).
+ * Note: metadata-diff (MetadataView) and series-spine were removed in M37.
  */
 export function m16Steps(nav: {
   showManageTags: () => Promise<void>;
-  showMetadataDiff: () => Promise<void>;
-  showSeriesSpine: () => Promise<void>;
   showForgottenShelf: () => Promise<void>;
   showDiscoverReasons: () => Promise<void>;
 }): Step[] {
   return [
     { name: "manage-tags", run: nav.showManageTags },
-    { name: "metadata-diff", run: nav.showMetadataDiff },
-    { name: "series-spine", run: nav.showSeriesSpine },
     { name: "forgotten-shelf", run: nav.showForgottenShelf },
     { name: "discover-reasons", run: nav.showDiscoverReasons },
   ];
@@ -205,13 +200,12 @@ export function journalSteps(nav: {
 }
 
 /**
- * Build the "m19" walkthrough: nine new surfaces introduced in M19 (Power & Scale) —
+ * Build the "m19" walkthrough: six surfaces introduced in M19 (Power & Scale) —
  * command palette (Ctrl+K overlay with search results), scoped search (duration/tag
  * tokens with parsed chips), saved searches (a recall-able named search), collections
  * (the Collections route listing a seeded collection), bulk select (select mode active
- * with ≥1 work checked and the bulk bar), density spacious (visibly looser grid),
- * chapter sort (per-work sort control in AuthorDetail), backup & maintenance (the five
- * Settings actions), and health report (counts + schema version banner).
+ * with ≥1 work checked and the bulk bar), and density spacious (visibly looser grid).
+ * Note: chapter-sort, backup-maintenance, and health-report were removed in M37.
  * All data is seeded at runtime so on-disk fixtures stay 43/44/47.
  */
 export function m19Steps(nav: {
@@ -221,9 +215,6 @@ export function m19Steps(nav: {
   showCollections: () => Promise<void>;
   showBulkSelect: () => Promise<void>;
   showDensitySpacious: () => Promise<void>;
-  showChapterSort: () => Promise<void>;
-  showBackupMaintenance: () => Promise<void>;
-  showHealthReport: () => Promise<void>;
 }): Step[] {
   return [
     { name: "command-palette", run: nav.showCommandPalette },
@@ -232,9 +223,6 @@ export function m19Steps(nav: {
     { name: "collections", run: nav.showCollections },
     { name: "bulk-select", run: nav.showBulkSelect },
     { name: "density-spacious", run: nav.showDensitySpacious },
-    { name: "chapter-sort", run: nav.showChapterSort },
-    { name: "backup-maintenance", run: nav.showBackupMaintenance },
-    { name: "health-report", run: nav.showHealthReport },
   ];
 }
 

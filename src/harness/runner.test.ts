@@ -42,18 +42,14 @@ describe("m12Steps", () => {
 });
 
 describe("m16Steps", () => {
-  it("captures the five new M16 surfaces in order", () => {
+  it("captures the three M16 surfaces in order (metadata-diff and series-spine removed in M37)", () => {
     const noop = async () => {};
     expect(m16Steps({
       showManageTags: noop,
-      showMetadataDiff: noop,
-      showSeriesSpine: noop,
       showForgottenShelf: noop,
       showDiscoverReasons: noop,
     }).map((step) => step.name)).toEqual([
       "manage-tags",
-      "metadata-diff",
-      "series-spine",
       "forgotten-shelf",
       "discover-reasons",
     ]);
@@ -82,15 +78,14 @@ describe("journalSteps", () => {
 });
 
 describe("m19Steps", () => {
-  it("captures the nine M19 power-&-scale surfaces in order", () => {
+  it("captures the six M19 power-&-scale surfaces in order (chapter-sort, backup-maintenance, health-report removed in M37)", () => {
     const noop = async () => {};
     expect(m19Steps({
       showCommandPalette: noop, showScopedSearch: noop, showSavedSearches: noop,
       showCollections: noop, showBulkSelect: noop, showDensitySpacious: noop,
-      showChapterSort: noop, showBackupMaintenance: noop, showHealthReport: noop,
     }).map((s) => s.name)).toEqual([
       "command-palette", "scoped-search", "saved-searches", "collections",
-      "bulk-select", "density-spacious", "chapter-sort", "backup-maintenance", "health-report",
+      "bulk-select", "density-spacious",
     ]);
   });
 });
