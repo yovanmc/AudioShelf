@@ -198,7 +198,7 @@ const workDetail: AuthorDetail = {
       labels: [],
       reEntryNote: "Chapter 3 was where I stopped",
       completionRating: "brilliant",
-      chapterSort: "",
+
       metadata: [],
       chapters: [
         {

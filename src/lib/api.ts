@@ -35,7 +35,7 @@ export interface ChapterRow {
 }
 export interface WorkRow {
   id: number; baseTitle: string; tags: string[]; chapters: ChapterRow[];
-  reEntryNote: string; completionRating: string; chapterSort: string; metadata: MetaTag[];
+  reEntryNote: string; completionRating: string; metadata: MetaTag[];
   labels: MetaTag[];
 }
 
@@ -140,15 +140,6 @@ export interface RenameItem {
 export interface RenameResult { renamedCount: number; failures: string[]; manifestPath: string; }
 export interface UndoResult { revertedCount: number; failures: string[]; }
 
-export interface SeriesMemberProposal {
-  workId: number;
-  baseTitle: string;
-  position: number;
-}
-export interface SeriesProposal {
-  title: string;
-  members: SeriesMemberProposal[];
-}
 export interface SeriesMemberView {
   workId: number;
   baseTitle: string;
@@ -162,15 +153,6 @@ export interface SeriesView {
   members: SeriesMemberView[];
 }
 
-export interface MetadataProposal {
-  chapterId: number;
-  workId: number;
-  field: "title" | "order" | "tag";
-  current: string;
-  proposed: string;
-  source: "embedded";
-}
-export interface MetadataApplyReport { applied: number; skipped: number; }
 
 export interface LaunchArgs {
   library: string | null;
@@ -244,17 +226,8 @@ export const applyRenames = (chapterIds: number[], nowMs: number) =>
 export const undoRenames = (manifestPath: string) =>
   invoke<UndoResult>("undo_renames", { manifestPath });
 
-export const detectSeries = (authorId: number) =>
-  invoke<SeriesProposal[]>("detect_series", { authorId });
-export const applySeries = (authorId: number, proposals: SeriesProposal[]) =>
-  invoke("apply_series", { authorId, proposals });
 export const getAuthorSeries = (authorId: number) =>
   invoke<SeriesView[]>("get_author_series", { authorId });
-
-export const previewMetadata = (authorId?: number) =>
-  invoke<MetadataProposal[]>("preview_metadata", { authorId: authorId ?? null });
-export const applyMetadata = (proposals: MetadataProposal[]) =>
-  invoke<MetadataApplyReport>("apply_metadata", { proposals });
 
 export const setGroupingOverride = (chapterId: number, baseTitle: string | null, chapterNo: number | null) =>
   invoke<AuthorDetail>("set_grouping_override", { chapterId, baseTitle, chapterNo });
@@ -309,19 +282,6 @@ export interface ScopedResults {
 }
 export interface SavedSearch { id: number; name: string; query: string; }
 export interface Collection { id: number; name: string; query: string; position: number; }
-export interface HealthItem {
-  chapterId: number; title: string; workTitle: string; authorName: string; filePath: string; sizeBytes: number;
-}
-export interface HealthReport {
-  missingFiles: HealthItem[]; zeroByte: HealthItem[]; unreadable: HealthItem[];
-  schemaVersion: number; latestSchema: number; schemaDrift: boolean;
-}
-export interface ImportReport {
-  tagsAdded: number; playedMarked: number; favoritesMarked: number; journalFieldsFilled: number;
-  notesAdded: number; bookmarksAdded: number; collectionsAdded: number; searchesAdded: number;
-  unmatchedAuthors: number; unmatchedWorks: number; unmatchedChapters: number;
-}
-
 // M19 Power & Scale — invoke wrappers
 export const advancedSearch = (query: string) => invoke<ScopedResults>("advanced_search", { query });
 
@@ -341,17 +301,6 @@ export const resolveCollection = (id: number) => invoke<ScopedResults>("resolve_
 
 export const bulkSetWorkTags = (workIds: number[], add: string[], remove: string[]) =>
   invoke("bulk_set_work_tags", { workIds, add, remove });
-
-export const setWorkChapterSort = (workId: number, sort: string) =>
-  invoke("set_work_chapter_sort", { workId, sort });
-
-export const libraryHealthScan = () => invoke<HealthReport>("library_health_scan");
-
-export const exportCurationJson = (path: string, exportedAt: number) =>
-  invoke("export_curation_json", { path, exportedAt });
-export const exportDbSnapshot = (path: string) => invoke("export_db_snapshot", { path });
-export const importCurationJson = (path: string) => invoke<ImportReport>("import_curation_json", { path });
-export const stageDbRestore = (src: string) => invoke("stage_db_restore", { src });
 
 export const openMiniPlayer = () => invoke("open_mini_player");
 export const closeMiniPlayer = () => invoke("close_mini_player");

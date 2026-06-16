@@ -195,7 +195,7 @@ describe("loadShelfItems — creator", () => {
           labels: [],
           reEntryNote: "",
           completionRating: "",
-          chapterSort: "",
+
           metadata: [],
           chapters: [
             { id: 1, title: "Ch 1", chapterNo: 1, format: "mp3", durationSecs: 300, filePath: "a.mp3", played: true, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },
@@ -209,7 +209,7 @@ describe("loadShelfItems — creator", () => {
           labels: [],
           reEntryNote: "",
           completionRating: "",
-          chapterSort: "",
+
           metadata: [],
           chapters: [
             { id: 3, title: "Ch 1", chapterNo: 1, format: "mp3", durationSecs: 600, filePath: "c.mp3", played: false, tags: [], labels: [], userSummary: "", takeaway: "", isFavorite: false, metadata: [], playbackPositionSecs: 0, hasJournal: false },

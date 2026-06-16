@@ -45,7 +45,7 @@ function makeDetail(chapterCount: number): AuthorDetail {
     labels: [],
     reEntryNote: "",
     completionRating: "",
-    chapterSort: "",
+
     metadata: [],
     chapters,
   };
@@ -94,7 +94,7 @@ describe("AuthorDetailView scale (M34)", () => {
       labels: [],
       reEntryNote: "",
       completionRating: "",
-      chapterSort: "",
+  
       metadata: [],
       chapters: [makeChapter(10, 1), makeChapter(11, 2)],
     };
@@ -105,7 +105,7 @@ describe("AuthorDetailView scale (M34)", () => {
       labels: [],
       reEntryNote: "",
       completionRating: "",
-      chapterSort: "",
+  
       metadata: [],
       chapters: [makeChapter(20, 1), makeChapter(21, 2)],
     };
@@ -129,7 +129,7 @@ describe("AuthorDetailView scale (M34)", () => {
       labels: [],
       reEntryNote: "",
       completionRating: "",
-      chapterSort: "",
+  
       metadata: [],
       chapters: [makeChapter(10, 1), makeChapter(11, 2)],
     };

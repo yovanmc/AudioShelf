@@ -4,7 +4,7 @@ import { IconButton } from "./ui";
 import type { Density } from "../lib/density";
 import { type A11yPrefs, a11yDataAttrs } from "../lib/a11y";
 
-export type ShellRoute = "home" | "library" | "discovery" | "rename" | "metadata" | "settings" | "journal" | "collections";
+export type ShellRoute = "home" | "library" | "discovery" | "rename" | "settings" | "journal" | "collections";
 
 export function AppShell({ active, collapsed, onCollapsedChange, onHome, onLibrary, onDiscovery, onSettings, onJournal, onCollections, onOpenPalette, hasHistory, density, a11y, children, player }: {
   active: ShellRoute;

@@ -34,7 +34,7 @@ function makeWork(id: number, title: string, chapters: ChapterRow[]): WorkRow {
     chapters,
     reEntryNote: "",
     completionRating: "",
-    chapterSort: "",
+
     metadata: [],
     labels: [],
   };
